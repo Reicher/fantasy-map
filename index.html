@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Isolerad fantasivärld</title>
+    <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="%23e6d7b6"/><path d="M6 22 L13 10 L20 22 M12 17 L16 12 L23 22" fill="none" stroke="%23543f27" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' />
+    <link rel="stylesheet" href="./styles.css?v=20260402f" />
+  </head>
+  <body>
+    <div id="editor-shell" class="app-shell">
+      <aside class="control-panel">
+        <div class="mode-row">
+          <button id="enter-play" type="button" class="ghost-button mode-button">Spela</button>
+        </div>
+
+        <form id="controls" class="controls">
+          <label class="field seed-field">
+            <span class="field-label">Seed</span>
+            <div class="seed-row">
+              <input id="seed" name="seed" type="text" spellcheck="false" />
+              <button id="random-seed" type="button" class="ghost-button">
+                Slumpa
+              </button>
+            </div>
+          </label>
+
+          <div class="field">
+            <div class="field-header">
+              <span class="field-label">Kartstorlek</span>
+              <span id="mapSize-value" class="field-value"></span>
+            </div>
+            <input id="mapSize" name="mapSize" type="range" min="10" max="100" step="1" />
+          </div>
+
+          <div class="field">
+            <div class="field-header">
+              <span class="field-label">Bergighet</span>
+              <span id="mountainousness-value" class="field-value"></span>
+            </div>
+            <input
+              id="mountainousness"
+              name="mountainousness"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+            />
+          </div>
+
+          <div class="field">
+            <div class="field-header">
+              <span class="field-label">Stadstäthet</span>
+              <span id="cityDensity-value" class="field-value"></span>
+            </div>
+            <input id="cityDensity" name="cityDensity" type="range" min="0" max="100" step="1" />
+          </div>
+
+          <div class="field">
+            <div class="field-header">
+              <span class="field-label">Sjömängd</span>
+              <span id="lakeAmount-value" class="field-value"></span>
+            </div>
+            <input
+              id="lakeAmount"
+              name="lakeAmount"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+            />
+          </div>
+
+          <div class="field">
+            <div class="field-header">
+              <span class="field-label">Sjöstorlek</span>
+              <span id="lakeSize-value" class="field-value"></span>
+            </div>
+            <input
+              id="lakeSize"
+              name="lakeSize"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+            />
+          </div>
+
+          <div class="field">
+            <div class="field-header">
+              <span class="field-label">Kustkomplexitet</span>
+              <span id="coastComplexity-value" class="field-value"></span>
+            </div>
+            <input
+              id="coastComplexity"
+              name="coastComplexity"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+            />
+          </div>
+
+          <div class="field">
+            <div class="field-header">
+              <span class="field-label">Rasterupplösning</span>
+              <span id="edgeDetail-value" class="field-value"></span>
+            </div>
+            <input
+              id="edgeDetail"
+              name="edgeDetail"
+              type="range"
+              min="180"
+              max="520"
+              step="10"
+            />
+          </div>
+
+          <div class="button-row">
+            <button id="generate" type="submit" class="primary-button">Generera karta</button>
+            <button id="reset" type="button" class="ghost-button">Återställ</button>
+          </div>
+        </form>
+
+        <section class="info-card">
+          <h2>Världsöversikt</h2>
+          <dl id="stats" class="stats"></dl>
+        </section>
+      </aside>
+
+      <main class="map-panel">
+        <div class="map-frame">
+          <div class="map-toolbar">
+            <span id="world-title" class="world-title"></span>
+            <div class="map-actions">
+              <button id="toggle-biome-labels" type="button" class="ghost-button toggle-button">Kartnamn</button>
+              <button id="toggle-city-labels" type="button" class="ghost-button toggle-button">Städer</button>
+              <button id="toggle-snow" type="button" class="ghost-button toggle-button">Snö</button>
+              <span id="zoom-level" class="zoom-chip">100%</span>
+              <button id="reset-view" type="button" class="ghost-button">Återställ vy</button>
+              <button id="save-image" type="button" class="ghost-button">Spara PNG</button>
+            </div>
+          </div>
+          <div class="canvas-wrap">
+            <canvas id="map-canvas" width="1200" height="840" aria-label="Genererad fantasikarta"></canvas>
+            <div id="tooltip" class="tooltip" hidden></div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <section id="play-view" class="play-view" hidden>
+      <div class="play-frame">
+        <div class="play-toolbar">
+          <button id="exit-play" type="button" class="ghost-button mode-button">Editor</button>
+        </div>
+        <canvas id="play-canvas" width="1200" height="840" aria-label="Spelvy"></canvas>
+        <section id="play-journey-panel" class="play-journey-panel" hidden>
+          <div class="play-journey-copy">
+            <h1 id="play-journey-title" class="play-journey-title"></h1>
+            <div id="play-journey-subtitle" class="play-journey-subtitle"></div>
+            <p id="play-journey-detail" class="play-journey-detail"></p>
+          </div>
+        </section>
+        <div class="play-mode-hint">Tryck M för att visa eller dölja kartan</div>
+      </div>
+    </section>
+
+    <script type="module" src="./src/app.js?v=20260402u"></script>
+  </body>
+</html>

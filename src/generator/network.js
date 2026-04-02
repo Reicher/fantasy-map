@@ -1,0 +1,174 @@
+export function buildWorldNetwork(world) {
+  return buildRoadNetwork({
+    cities: world.cities,
+    roads: world.roads.roads,
+    width: world.terrain.width
+  });
+}
+
+export function buildRoadNetwork({ cities, roads, width }) {
+  const nodes = [];
+  const nodeIdByCell = new Map();
+
+  for (const city of cities) {
+    const node = {
+      id: nodes.length,
+      type: "city",
+      cell: city.cell,
+      x: city.x,
+      y: city.y,
+      cityId: city.id,
+      name: city.name
+    };
+    nodes.push(node);
+    nodeIdByCell.set(city.cell, node.id);
+  }
+
+  for (const road of roads) {
+    for (const endpoint of [road.cells[0], road.cells[road.cells.length - 1]]) {
+      if (nodeIdByCell.has(endpoint)) {
+        continue;
+      }
+      const [x, y] = coordsOfCell(endpoint, width);
+      const node = {
+        id: nodes.length,
+        type: road.type === "sea-route" ? "harbor" : "junction",
+        cell: endpoint,
+        x,
+        y,
+        name: road.type === "sea-route" ? "Hamnpunkt" : "Vägknut"
+      };
+      nodes.push(node);
+      nodeIdByCell.set(endpoint, node.id);
+    }
+  }
+
+  const links = buildRoadLinks(roads, nodes, nodeIdByCell);
+  const { components, adjacencyByNodeId } = buildNetworkComponents(nodes, links);
+  tagComponents(nodes, links, components);
+
+  return {
+    nodes,
+    links,
+    components,
+    adjacencyByNodeId
+  };
+}
+
+function buildRoadLinks(roads, nodes, nodeIdByCell) {
+  const links = [];
+
+  for (const road of roads) {
+    const breakpoints = [];
+
+    for (let index = 0; index < road.cells.length; index += 1) {
+      const cell = road.cells[index];
+      const nodeId = nodeIdByCell.get(cell);
+      if (nodeId == null) {
+        continue;
+      }
+      if (breakpoints[breakpoints.length - 1]?.nodeId === nodeId) {
+        continue;
+      }
+      breakpoints.push({ nodeId, index });
+    }
+
+    for (let index = 1; index < breakpoints.length; index += 1) {
+      const start = breakpoints[index - 1];
+      const end = breakpoints[index];
+      if (start.nodeId === end.nodeId) {
+        continue;
+      }
+
+      const cells = road.cells.slice(start.index, end.index + 1);
+      if (cells.length < 2) {
+        continue;
+      }
+
+      links.push({
+        id: links.length,
+        type: road.type,
+        roadId: road.id,
+        fromNodeId: start.nodeId,
+        toNodeId: end.nodeId,
+        fromCityId: nodes[start.nodeId].cityId ?? null,
+        toCityId: nodes[end.nodeId].cityId ?? null,
+        length: cells.length,
+        cost: road.cost,
+        cells
+      });
+    }
+  }
+
+  return links;
+}
+
+function buildNetworkComponents(nodes, links) {
+  const adjacency = new Map();
+  for (const node of nodes) {
+    adjacency.set(node.id, []);
+  }
+  for (const link of links) {
+    adjacency.get(link.fromNodeId)?.push({ nodeId: link.toNodeId, linkId: link.id });
+    adjacency.get(link.toNodeId)?.push({ nodeId: link.fromNodeId, linkId: link.id });
+  }
+
+  const visited = new Uint8Array(nodes.length);
+  const components = [];
+
+  for (const node of nodes) {
+    if (visited[node.id]) {
+      continue;
+    }
+
+    const queue = [node.id];
+    visited[node.id] = 1;
+    const nodeIds = [];
+    const linkIds = new Set();
+    const cityIds = [];
+
+    while (queue.length > 0) {
+      const current = queue.pop();
+      nodeIds.push(current);
+      if (nodes[current].cityId != null) {
+        cityIds.push(nodes[current].cityId);
+      }
+
+      for (const edge of adjacency.get(current) ?? []) {
+        linkIds.add(edge.linkId);
+        if (visited[edge.nodeId]) {
+          continue;
+        }
+        visited[edge.nodeId] = 1;
+        queue.push(edge.nodeId);
+      }
+    }
+
+    components.push({
+      id: components.length,
+      nodeIds,
+      linkIds: [...linkIds],
+      cityIds
+    });
+  }
+
+  return {
+    components,
+    adjacencyByNodeId: adjacency
+  };
+}
+
+function tagComponents(nodes, links, components) {
+  for (const component of components) {
+    for (const nodeId of component.nodeIds) {
+      nodes[nodeId].componentId = component.id;
+    }
+    for (const linkId of component.linkIds) {
+      links[linkId].componentId = component.id;
+    }
+  }
+}
+
+function coordsOfCell(cell, width) {
+  return [cell % width, Math.floor(cell / width)];
+}
