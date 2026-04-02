@@ -45,6 +45,7 @@ export function generateHydrology(terrain, params) {
   const selectedSources = selectRiverSources({
     width,
     size,
+    params,
     lakeAmountFactor,
     rng,
     isLand,
@@ -459,6 +460,7 @@ function buildBaseRainfall(width, size, params, isLand, oceanDistance, elevation
 function selectRiverSources({
   width,
   size,
+  params,
   rng,
   isLand,
   elevation,
@@ -491,12 +493,13 @@ function selectRiverSources({
 
   candidateSources.sort((a, b) => b.score - a.score);
   const selectedSources = [];
+  const riverAmountFactor = sliderFactor(params.riverAmount ?? 56, 0.78);
   const targetSources = clamp(
-    Math.round((candidateSources.length / 1500) * 5.8),
-    4,
-    18
+    Math.round((candidateSources.length / 1500) * (1.4 + riverAmountFactor * 15.5)),
+    1,
+    40
   );
-  const minSourceSpacing = 10;
+  const minSourceSpacing = Math.max(4, Math.round(12 - riverAmountFactor * 7));
 
   for (const candidate of candidateSources) {
     if (selectedSources.length >= targetSources) {

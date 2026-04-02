@@ -1,12 +1,13 @@
-import { PARAM_LABELS } from "../config.js?v=20260402b";
+import { PARAM_LABELS } from "../config.js?v=20260402c";
 
-const RANGE_KEYS = ["mapSize", "mountainousness", "cityDensity", "lakeAmount", "lakeSize", "coastComplexity", "edgeDetail"];
+const RANGE_KEYS = ["mapSize", "mountainousness", "cityDensity", "riverAmount", "lakeAmount", "lakeSize", "coastComplexity", "edgeDetail"];
 
 export function hydrateForm(params) {
   document.querySelector("#seed").value = params.seed;
   document.querySelector("#mapSize").value = params.mapSize;
   document.querySelector("#mountainousness").value = params.mountainousness;
   document.querySelector("#cityDensity").value = params.cityDensity;
+  document.querySelector("#riverAmount").value = params.riverAmount;
   document.querySelector("#lakeAmount").value = params.lakeAmount;
   document.querySelector("#lakeSize").value = params.lakeSize;
   document.querySelector("#coastComplexity").value = params.coastComplexity;
@@ -20,6 +21,7 @@ export function getFormValues(form) {
     mapSize: Number(data.get("mapSize")),
     mountainousness: Number(data.get("mountainousness")),
     cityDensity: Number(data.get("cityDensity")),
+    riverAmount: Number(data.get("riverAmount")),
     lakeAmount: Number(data.get("lakeAmount")),
     lakeSize: Number(data.get("lakeSize")),
     coastComplexity: Number(data.get("coastComplexity")),

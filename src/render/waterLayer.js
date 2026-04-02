@@ -1,11 +1,8 @@
 import { BIOME_KEYS } from "../config.js";
 import { clamp, coordsOf } from "../utils.js";
 import { hashSeed, nextHash } from "./hash.js";
-import { WATER_DARK } from "./constants.js";
-
 export function drawRivers(ctx, geometry, viewport) {
   const rivers = geometry?.rivers ?? [];
-  ctx.strokeStyle = WATER_DARK;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
@@ -15,18 +12,36 @@ export function drawRivers(ctx, geometry, viewport) {
       continue;
     }
 
+    ctx.strokeStyle = "#8aa0a8";
     ctx.lineWidth = clamp(1.1 + river.width * 0.55 + river.cellCount / 42, 1, 4.6);
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let index = 1; index < points.length - 1; index += 1) {
-      const midpointX = (points[index].x + points[index + 1].x) * 0.5;
-      const midpointY = (points[index].y + points[index + 1].y) * 0.5;
-      ctx.quadraticCurveTo(points[index].x, points[index].y, midpointX, midpointY);
+    strokeRiverPath(ctx, points);
+
+    for (const branch of river.deltaBranches ?? []) {
+      const branchPoints = branch.points.map((point) =>
+        viewport.worldToCanvas(point.x - 0.5, point.y - 0.5)
+      );
+      if (branchPoints.length < 2) {
+        continue;
+      }
+
+      ctx.strokeStyle = "#8aa0a8";
+      ctx.lineWidth = clamp(0.9 + branch.width * 0.52 + river.cellCount / 70, 0.85, 3.2);
+      strokeRiverPath(ctx, branchPoints);
     }
-    const last = points[points.length - 1];
-    ctx.lineTo(last.x, last.y);
-    ctx.stroke();
   }
+}
+
+function strokeRiverPath(ctx, points) {
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const midpointX = (points[index].x + points[index + 1].x) * 0.5;
+    const midpointY = (points[index].y + points[index + 1].y) * 0.5;
+    ctx.quadraticCurveTo(points[index].x, points[index].y, midpointX, midpointY);
+  }
+  const last = points[points.length - 1];
+  ctx.lineTo(last.x, last.y);
+  ctx.stroke();
 }
 
 export function drawLakeWaves(ctx, hydrology, geometry, viewport, width) {

@@ -45,8 +45,7 @@ export function inspectWorldAt(world, worldX, worldY) {
     const region = mountainRegions[mountainRegionId];
     return {
       title: region.name,
-      subtitle: "Bergsområde",
-      detail: "Bergsformation"
+      subtitle: "Bergsområde"
     };
   }
 
@@ -55,8 +54,7 @@ export function inspectWorldAt(world, worldX, worldY) {
     const region = biomeRegions[biomeRegionId];
     return {
       title: region.name,
-      subtitle: region.biomeLabel,
-      detail: "Biomregion"
+      subtitle: region.biomeLabel
     };
   }
 

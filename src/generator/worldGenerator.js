@@ -2,7 +2,7 @@ import { createNameGenerator } from "../naming.js?v=20260402d";
 import { createRng } from "../random.js";
 import { generateCities } from "./cities.js?v=20260402a";
 import { generateClimate } from "./climate.js?v=20260331k";
-import { compileGeometry } from "./compileGeometry.js?v=20260402g";
+import { compileGeometry } from "./compileGeometry.js?v=20260402j";
 import { buildFeatureCatalog } from "./features.js";
 import { generateHydrology } from "./hydrology.js?v=20260401k";
 import { buildWorldNetwork } from "./network.js?v=20260401i";
@@ -22,6 +22,7 @@ export function normalizeParams(input) {
     mapSize: Number(input.mapSize ?? 58),
     mountainousness: Number(input.mountainousness ?? 54),
     cityDensity: Number(input.cityDensity ?? 42),
+    riverAmount: Number(input.riverAmount ?? 56),
     lakeAmount: Number(input.lakeAmount ?? legacyWater),
     lakeSize: Number(input.lakeSize ?? legacyWater),
     coastComplexity: Number(input.coastComplexity ?? 62),

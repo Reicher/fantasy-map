@@ -6,6 +6,7 @@ export function drawLabels(ctx, world, viewport, options = {}) {
 
   if (showBiomeLabels) {
     drawLakeLabels(ctx, world, viewport, placedBoxes);
+    drawMountainLabels(ctx, world, viewport, placedBoxes);
     drawBiomeLabels(ctx, world, viewport, placedBoxes);
   }
 
@@ -74,9 +75,41 @@ function drawBiomeLabels(ctx, world, viewport, placedBoxes) {
     }
 
     placedBoxes.push(placement.box);
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = "rgba(244, 235, 214, 0.8)";
-    ctx.fillStyle = "rgba(82, 63, 39, 0.78)";
+    ctx.lineWidth = 4.2;
+    ctx.strokeStyle = "rgba(244, 235, 214, 0.84)";
+    ctx.fillStyle = "rgba(74, 58, 37, 0.8)";
+    ctx.strokeText(label, placement.point.x, placement.point.y);
+    ctx.fillText(label, placement.point.x, placement.point.y);
+  }
+
+  ctx.restore();
+}
+
+function drawMountainLabels(ctx, world, viewport, placedBoxes) {
+  const regions = [...(world.geometry.labels.mountainRegions ?? [])]
+    .filter((region) => region.size >= 30)
+    .sort((a, b) => b.size - a.size)
+    .slice(0, 10);
+
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  for (const region of regions) {
+    const fontSize = Math.max(14, Math.min(22, 12 + Math.sqrt(region.size) * 0.42));
+    const label = region.name;
+
+    ctx.font = `600 ${fontSize}px Baskerville, "Palatino Linotype", Georgia, serif`;
+    const anchors = region.candidates?.length ? region.candidates : [region.anchor];
+    const placement = findLabelPlacement(ctx, viewport, anchors, label, fontSize, placedBoxes);
+    if (!placement) {
+      continue;
+    }
+
+    placedBoxes.push(placement.box);
+    ctx.lineWidth = 4.6;
+    ctx.strokeStyle = "rgba(244, 235, 218, 0.88)";
+    ctx.fillStyle = "rgba(88, 78, 68, 0.88)";
     ctx.strokeText(label, placement.point.x, placement.point.y);
     ctx.fillText(label, placement.point.x, placement.point.y);
   }

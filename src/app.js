@@ -1,9 +1,9 @@
-import { DEFAULT_PARAMS, RENDER_HEIGHT, RENDER_WIDTH } from "./config.js?v=20260402b";
-import { generateWorld, normalizeParams } from "./generator/worldGenerator.js?v=20260402k";
+import { DEFAULT_PARAMS, RENDER_HEIGHT, RENDER_WIDTH } from "./config.js?v=20260402c";
+import { generateWorld, normalizeParams } from "./generator/worldGenerator.js?v=20260402n";
 import { advanceTravel, beginTravel, createPlayState, getValidTargetIds } from "./game/travel.js?v=20260401b";
 import { describePlayView } from "./game/playViewText.js?v=20260402b";
 import { inspectWorldAt } from "./inspector.js?v=20260402d";
-import { renderWorld } from "./render/renderer.js?v=20260402s";
+import { renderWorld } from "./render/renderer.js?v=20260402u";
 import {
   clampEditorCamera,
   createEditorCamera,
@@ -18,7 +18,7 @@ import {
   randomSeed,
   setSeedValue,
   updateLabels
-} from "./ui/controls.js?v=20260402b";
+} from "./ui/controls.js?v=20260402c";
 import { clearHover, showHoverHit } from "./ui/hoverPanel.js?v=20260401ac";
 import { updateStats } from "./ui/statsPanel.js";
 import { attachEditorController } from "./ui/editorController.js?v=20260401a";

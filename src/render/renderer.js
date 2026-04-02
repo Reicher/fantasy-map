@@ -1,12 +1,12 @@
 import { drawPaper, drawOcean, drawFrame } from "./backgroundLayer.js?v=20260401e";
 import { drawCities, drawPlayerMarker } from "./citiesLayer.js?v=20260401a";
 import { drawForests } from "./forestLayer.js?v=20260402g";
-import { drawLabels } from "./labelsLayer.js?v=20260402g";
+import { drawLabels } from "./labelsLayer.js?v=20260402h";
 import { drawMountains } from "./mountainsLayer.js?v=20260402b";
 import { drawRoads } from "./roadsLayer.js?v=20260401c";
 import { drawBiomeBorders, drawTerrainRaster, drawTerrainTextures, drawShorelines } from "./terrainLayer.js?v=20260402d";
 import { createViewport } from "./viewport.js?v=20260331l";
-import { drawLakeWaves, drawOceanWaves, drawRivers } from "./waterLayer.js?v=20260402e";
+import { drawLakeWaves, drawOceanWaves, drawRivers } from "./waterLayer.js?v=20260402i";
 
 export { createViewport } from "./viewport.js?v=20260331l";
 
