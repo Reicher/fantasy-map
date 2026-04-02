@@ -1,4 +1,5 @@
 import { floodFillRegions } from "./grid.js";
+import { coordsOf, forEachNeighbor, indexOf } from "../utils.js";
 import { isSnowCell } from "./surfaceModel.js";
 
 export function buildSurfaceGeometry(world) {
@@ -9,14 +10,14 @@ export function buildSurfaceGeometry(world) {
     id: region.id,
     biome: region.biome,
     size: region.size,
-    loops: traceExactLoops(region.cells, width),
+    loops: traceRenderLoops(region.cells, width, 1),
     stats: summarizeCells(region.cells, world)
   }));
 
   const lakes = hydrology.lakes.map((lake) => ({
     id: lake.id,
     size: lake.cells.length,
-    loops: traceExactLoops(lake.cells, width)
+    loops: traceRenderLoops(lake.cells, width, 2)
   }));
 
   const snowMask = new Uint8Array(size);
@@ -38,12 +39,15 @@ export function buildSurfaceGeometry(world) {
     }
   }
 
+  collapseDiagonalMaskSingletons(width, height, snowMask, 2);
+  simplifyTinyMaskPatches(width, height, snowMask, 4, 2);
+
   const snowRegions = floodFillRegions(width, height, (index) => snowMask[index] === 1, true)
     .filter((cells) => cells.length > 0)
     .map((cells, id) => ({
       id,
       size: cells.length,
-      loops: traceExactLoops(cells, width)
+      loops: traceRenderLoops(cells, width, 1)
     }));
 
   const landCells = [];
@@ -53,7 +57,7 @@ export function buildSurfaceGeometry(world) {
     }
   }
 
-  const landLoops = traceExactLoops(landCells, width);
+  const landLoops = traceRenderLoops(landCells, width, 2);
   const positiveCoastlines = landLoops.filter((loop) => signedArea(loop) > 0);
 
   return {
@@ -62,6 +66,11 @@ export function buildSurfaceGeometry(world) {
     snowRegions,
     coastlineLoops: positiveCoastlines.length > 0 ? positiveCoastlines : landLoops
   };
+}
+
+function traceRenderLoops(cells, width, smoothingIterations = 1) {
+  const exactLoops = traceExactLoops(cells, width);
+  return exactLoops.map((loop) => smoothLoop(loop, smoothingIterations));
 }
 
 function summarizeCells(cells, world) {
@@ -158,6 +167,99 @@ export function traceExactLoops(cells, width) {
   }
 
   return loops;
+}
+
+function smoothLoop(loop, iterations = 1) {
+  let current = loop;
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    if (current.length < 3) {
+      return current;
+    }
+    current = chaikinSmoothClosedLoop(current, 0.24);
+  }
+  return current;
+}
+
+function chaikinSmoothClosedLoop(loop, cornerWeight = 0.24) {
+  if (loop.length < 3) {
+    return loop;
+  }
+
+  const smoothed = [];
+  for (let index = 0; index < loop.length; index += 1) {
+    const current = loop[index];
+    const next = loop[(index + 1) % loop.length];
+    smoothed.push(lerpPoint(current, next, cornerWeight));
+    smoothed.push(lerpPoint(current, next, 1 - cornerWeight));
+  }
+  return smoothed;
+}
+
+function lerpPoint(a, b, t) {
+  return {
+    x: a.x + (b.x - a.x) * t,
+    y: a.y + (b.y - a.y) * t
+  };
+}
+
+function collapseDiagonalMaskSingletons(width, height, mask, passes = 1) {
+  const orthogonalOffsets = [
+    [0, -1],
+    [1, 0],
+    [0, 1],
+    [-1, 0]
+  ];
+
+  for (let pass = 0; pass < passes; pass += 1) {
+    const toClear = [];
+
+    for (let index = 0; index < mask.length; index += 1) {
+      if (mask[index] !== 1) {
+        continue;
+      }
+
+      const [x, y] = coordsOf(index, width);
+      let sameOrthogonal = 0;
+      for (const [dx, dy] of orthogonalOffsets) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+          continue;
+        }
+        if (mask[indexOf(nx, ny, width)] === 1) {
+          sameOrthogonal += 1;
+        }
+      }
+
+      if (sameOrthogonal === 0) {
+        toClear.push(index);
+      }
+    }
+
+    if (toClear.length === 0) {
+      break;
+    }
+
+    for (const index of toClear) {
+      mask[index] = 0;
+    }
+  }
+}
+
+function simplifyTinyMaskPatches(width, height, mask, maxSize = 4, passes = 1) {
+  for (let pass = 0; pass < passes; pass += 1) {
+    const groups = floodFillRegions(width, height, (index) => mask[index] === 1, true);
+    const changed = groups.filter((cells) => cells.length <= maxSize);
+    if (changed.length === 0) {
+      break;
+    }
+
+    for (const cells of changed) {
+      for (const cell of cells) {
+        mask[cell] = 0;
+      }
+    }
+  }
 }
 
 function addEdge(edges, edgesByStartKey, from, to, dir) {

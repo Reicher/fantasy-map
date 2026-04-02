@@ -1,9 +1,9 @@
-import { DEFAULT_PARAMS, RENDER_HEIGHT, RENDER_WIDTH } from "./config.js?v=20260402c";
-import { generateWorld, normalizeParams } from "./generator/worldGenerator.js?v=20260402n";
+import { DEFAULT_PARAMS, RENDER_HEIGHT, RENDER_WIDTH } from "./config.js?v=20260402d";
+import { generateWorld, normalizeParams } from "./generator/worldGenerator.js?v=20260402t";
 import { advanceTravel, beginTravel, createPlayState, getValidTargetIds } from "./game/travel.js?v=20260401b";
 import { describePlayView } from "./game/playViewText.js?v=20260402b";
-import { inspectWorldAt } from "./inspector.js?v=20260402d";
-import { renderWorld } from "./render/renderer.js?v=20260402u";
+import { inspectWorldAt } from "./inspector.js?v=20260402g";
+import { renderWorld } from "./render/renderer.js?v=20260402ak";
 import {
   clampEditorCamera,
   createEditorCamera,
@@ -18,10 +18,10 @@ import {
   randomSeed,
   setSeedValue,
   updateLabels
-} from "./ui/controls.js?v=20260402c";
+} from "./ui/controls.js?v=20260402d";
 import { clearHover, showHoverHit } from "./ui/hoverPanel.js?v=20260401ac";
 import { updateStats } from "./ui/statsPanel.js";
-import { attachEditorController } from "./ui/editorController.js?v=20260401a";
+import { attachEditorController } from "./ui/editorController.js?v=20260401b";
 import { createPlayController } from "./ui/playController.js?v=20260401b";
 
 const refs = {
@@ -40,6 +40,7 @@ const refs = {
   toggleBiomeLabelsButton: document.querySelector("#toggle-biome-labels"),
   toggleCityLabelsButton: document.querySelector("#toggle-city-labels"),
   toggleSnowButton: document.querySelector("#toggle-snow"),
+  toggleMonochromeButton: document.querySelector("#toggle-monochrome"),
   resetViewButton: document.querySelector("#reset-view"),
   zoomLevelNode: document.querySelector("#zoom-level"),
   randomSeedButton: document.querySelector("#random-seed"),
@@ -62,7 +63,8 @@ const state = {
   renderOptions: {
     showBiomeLabels: true,
     showCityLabels: false,
-    showSnow: true
+    showSnow: true,
+    showMonochrome: false
   },
   cameraState: { zoom: 1, centerX: 150, centerY: 110 },
   dragState: null,
@@ -132,6 +134,13 @@ refs.toggleCityLabelsButton.addEventListener("click", () => {
 
 refs.toggleSnowButton.addEventListener("click", () => {
   state.renderOptions.showSnow = !state.renderOptions.showSnow;
+  syncLabelButtons();
+  rerenderCurrentWorld();
+  renderPlayWorld();
+});
+
+refs.toggleMonochromeButton.addEventListener("click", () => {
+  state.renderOptions.showMonochrome = !state.renderOptions.showMonochrome;
   syncLabelButtons();
   rerenderCurrentWorld();
   renderPlayWorld();
@@ -248,6 +257,7 @@ function syncLabelButtons() {
   refs.toggleBiomeLabelsButton.dataset.active = state.renderOptions.showBiomeLabels ? "true" : "false";
   refs.toggleCityLabelsButton.dataset.active = state.renderOptions.showCityLabels ? "true" : "false";
   refs.toggleSnowButton.dataset.active = state.renderOptions.showSnow ? "true" : "false";
+  refs.toggleMonochromeButton.dataset.active = state.renderOptions.showMonochrome ? "true" : "false";
 }
 
 function syncModeUi() {

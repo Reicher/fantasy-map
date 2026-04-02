@@ -1,4 +1,5 @@
 import { BIOME_KEYS } from "../config.js";
+import { isFrozenLake } from "../generator/surfaceModel.js?v=20260402b";
 import { clamp, coordsOf } from "../utils.js";
 import { hashSeed, nextHash } from "./hash.js";
 export function drawRivers(ctx, geometry, viewport) {
@@ -7,44 +8,205 @@ export function drawRivers(ctx, geometry, viewport) {
   ctx.lineJoin = "round";
 
   for (const river of rivers) {
-    const points = river.points.map((point) => viewport.worldToCanvas(point.x - 0.5, point.y - 0.5));
+    const points = buildRiverRenderPoints(river.points, viewport, `river:${river.id}`, river.width);
     if (points.length < 2) {
       continue;
     }
 
-    ctx.strokeStyle = "#8aa0a8";
-    ctx.lineWidth = clamp(1.1 + river.width * 0.55 + river.cellCount / 42, 1, 4.6);
-    strokeRiverPath(ctx, points);
+    const lineWidth = clamp(1.2 + river.width * 0.6 + river.cellCount / 40, 1.2, 5.2);
+    ctx.strokeStyle = "rgba(138, 160, 168, 0.98)";
+    ctx.lineWidth = lineWidth;
+    strokeRiverPath(ctx, points, Math.max(8, lineWidth * 2.8));
 
     for (const branch of river.deltaBranches ?? []) {
-      const branchPoints = branch.points.map((point) =>
-        viewport.worldToCanvas(point.x - 0.5, point.y - 0.5)
+      const branchPoints = buildRiverRenderPoints(
+        branch.points,
+        viewport,
+        `river:${river.id}:branch`,
+        branch.width
       );
       if (branchPoints.length < 2) {
         continue;
       }
 
-      ctx.strokeStyle = "#8aa0a8";
-      ctx.lineWidth = clamp(0.9 + branch.width * 0.52 + river.cellCount / 70, 0.85, 3.2);
-      strokeRiverPath(ctx, branchPoints);
+      const branchWidth = clamp(1 + branch.width * 0.56 + river.cellCount / 68, 0.95, 3.4);
+      ctx.strokeStyle = "rgba(138, 160, 168, 0.96)";
+      ctx.lineWidth = branchWidth;
+      strokeRiverPath(ctx, branchPoints, Math.max(6, branchWidth * 2.4));
     }
   }
 }
 
-function strokeRiverPath(ctx, points) {
+function strokeRiverPath(ctx, points, cornerRadius = 10) {
+  if (points.length < 2) {
+    return;
+  }
+
   ctx.beginPath();
   ctx.moveTo(points[0].x, points[0].y);
-  for (let index = 1; index < points.length - 1; index += 1) {
-    const midpointX = (points[index].x + points[index + 1].x) * 0.5;
-    const midpointY = (points[index].y + points[index + 1].y) * 0.5;
-    ctx.quadraticCurveTo(points[index].x, points[index].y, midpointX, midpointY);
+
+  if (points.length === 2) {
+    ctx.lineTo(points[1].x, points[1].y);
+    ctx.stroke();
+    return;
   }
+
+  let previousCornerEnd = points[0];
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const next = points[index + 1];
+    const incomingLength = Math.hypot(current.x - previous.x, current.y - previous.y);
+    const outgoingLength = Math.hypot(next.x - current.x, next.y - current.y);
+    if (incomingLength < 0.001 || outgoingLength < 0.001) {
+      continue;
+    }
+
+    const radius = Math.min(cornerRadius, incomingLength * 0.45, outgoingLength * 0.45);
+    const cornerStart = pointTowards(current, previous, radius);
+    const cornerEnd = pointTowards(current, next, radius);
+
+    if (distanceBetween(previousCornerEnd, cornerStart) > 0.01) {
+      ctx.lineTo(cornerStart.x, cornerStart.y);
+    }
+    ctx.quadraticCurveTo(current.x, current.y, cornerEnd.x, cornerEnd.y);
+    previousCornerEnd = cornerEnd;
+  }
+
   const last = points[points.length - 1];
-  ctx.lineTo(last.x, last.y);
+  if (distanceBetween(previousCornerEnd, last) > 0.01) {
+    ctx.lineTo(last.x, last.y);
+  }
   ctx.stroke();
 }
 
-export function drawLakeWaves(ctx, hydrology, geometry, viewport, width) {
+function buildRiverRenderPoints(worldPoints, viewport, seedKey, width = 1) {
+  const normalized = worldPoints.map((point) => ({ x: point.x - 0.5, y: point.y - 0.5 }));
+  const simplified = simplifyRiverRenderPoints(dedupeRiverPoints(normalized));
+  const meandered = meanderRiverPoints(simplified, seedKey, width);
+  return meandered.map((point) => viewport.worldToCanvas(point.x, point.y));
+}
+
+function dedupeRiverPoints(points) {
+  const deduped = [points[0]];
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = deduped[deduped.length - 1];
+    const current = points[index];
+    if (Math.hypot(current.x - previous.x, current.y - previous.y) < 0.02) {
+      continue;
+    }
+    deduped.push(current);
+  }
+  return deduped;
+}
+
+function simplifyRiverRenderPoints(points) {
+  if (points.length <= 2) {
+    return points;
+  }
+
+  const simplified = [points[0]];
+  let lastDirection = null;
+
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const dx = current.x - previous.x;
+    const dy = current.y - previous.y;
+    const length = Math.hypot(dx, dy);
+    if (length < 0.001) {
+      continue;
+    }
+
+    const direction = {
+      x: Math.round((dx / length) * 100) / 100,
+      y: Math.round((dy / length) * 100) / 100
+    };
+
+    if (!lastDirection) {
+      lastDirection = direction;
+      continue;
+    }
+
+    const changed =
+      Math.abs(direction.x - lastDirection.x) > 0.08 ||
+      Math.abs(direction.y - lastDirection.y) > 0.08;
+    if (changed) {
+      simplified.push(previous);
+      lastDirection = direction;
+    }
+  }
+
+  simplified.push(points[points.length - 1]);
+  return dedupeRiverPoints(simplified);
+}
+
+function meanderRiverPoints(points, seedKey, width) {
+  if (points.length <= 2) {
+    return points;
+  }
+
+  const meandered = [points[0]];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.hypot(dx, dy);
+    if (length < 0.75) {
+      meandered.push(end);
+      continue;
+    }
+
+    const nx = -dy / length;
+    const ny = dx / length;
+    let state = hashSeed(
+      `${seedKey}:${index}:${Math.round(start.x * 100)}:${Math.round(start.y * 100)}`
+    );
+    state = nextHash(state);
+    const sign = state % 2 === 0 ? 1 : -1;
+    state = nextHash(state);
+    const bend = 0.65 + ((state % 1000) / 1000) * 0.5;
+    state = nextHash(state);
+    const wobble = 0.85 + ((state % 1000) / 1000) * 0.4;
+
+    const amplitude = Math.min(0.62, Math.max(0.11, length * 0.085, width * 0.07)) * bend;
+    const subdivisions = Math.max(2, Math.min(6, Math.round(length / 0.85)));
+
+    for (let step = 1; step < subdivisions; step += 1) {
+      const t = step / subdivisions;
+      const baseX = start.x + dx * t;
+      const baseY = start.y + dy * t;
+      const envelope = Math.sin(t * Math.PI);
+      const wave = Math.sin(t * Math.PI * (1 + (subdivisions > 3 ? 1 : 0))) * wobble;
+      const offset = amplitude * envelope * wave * sign;
+      meandered.push({
+        x: baseX + nx * offset,
+        y: baseY + ny * offset
+      });
+    }
+
+    meandered.push(end);
+  }
+
+  return dedupeRiverPoints(meandered);
+}
+
+function pointTowards(from, to, distance) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy) || 1;
+  return {
+    x: from.x + (dx / length) * distance,
+    y: from.y + (dy / length) * distance
+  };
+}
+
+function distanceBetween(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+export function drawLakeWaves(ctx, hydrology, climate, terrain, geometry, viewport, width) {
   const lakeGeometryById = new Map((geometry.lakes ?? []).map((lake) => [lake.id, lake]));
 
   for (const lake of hydrology.lakes) {
@@ -57,11 +219,14 @@ export function drawLakeWaves(ctx, hydrology, geometry, viewport, width) {
       continue;
     }
 
+    if (isFrozenLake(climate, terrain, lake)) {
+      continue;
+    }
+
     let state = hashSeed(`lake:${lake.id}:${lake.cells.length}`);
     ctx.save();
     ctx.lineWidth = 1.2;
     ctx.lineCap = "round";
-    clipLoops(ctx, lakeGeometry.loops, viewport);
 
     for (const cell of lake.cells) {
       state = nextHash(state);
@@ -95,7 +260,6 @@ export function drawOceanWaves(ctx, terrain, climate, geometry, viewport) {
   ctx.save();
   ctx.lineWidth = 1.2;
   ctx.lineCap = "round";
-  clipOceanArea(ctx, geometry, viewport);
 
   for (let y = startY; y <= endY; y += spacing) {
     for (let x = startX; x <= endX; x += spacing) {
@@ -167,39 +331,4 @@ function drawLakeWaveMark(ctx, x, y, length, amplitude) {
     );
     ctx.stroke();
   }
-}
-
-function clipLoops(ctx, loops, viewport) {
-  if (!loops.length) {
-    return;
-  }
-
-  ctx.beginPath();
-  for (const loop of loops) {
-    traceLoop(ctx, loop, viewport);
-  }
-  ctx.clip("evenodd");
-}
-
-function clipOceanArea(ctx, geometry, viewport) {
-  ctx.beginPath();
-  ctx.rect(viewport.margin, viewport.margin, viewport.innerWidth, viewport.innerHeight);
-  for (const loop of geometry.coastlineLoops ?? []) {
-    traceLoop(ctx, loop, viewport);
-  }
-  ctx.clip("evenodd");
-}
-
-function traceLoop(ctx, loop, viewport) {
-  if (!loop.length) {
-    return;
-  }
-
-  const first = viewport.worldToCanvas(loop[0].x - 0.5, loop[0].y - 0.5);
-  ctx.moveTo(first.x, first.y);
-  for (let index = 1; index < loop.length; index += 1) {
-    const point = viewport.worldToCanvas(loop[index].x - 0.5, loop[index].y - 0.5);
-    ctx.lineTo(point.x, point.y);
-  }
-  ctx.closePath();
 }

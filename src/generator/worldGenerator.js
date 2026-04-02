@@ -4,12 +4,12 @@ import { generateCities } from "./cities.js?v=20260402a";
 import { generateClimate } from "./climate.js?v=20260331k";
 import { compileGeometry } from "./compileGeometry.js?v=20260402j";
 import { buildFeatureCatalog } from "./features.js";
-import { generateHydrology } from "./hydrology.js?v=20260401k";
+import { generateHydrology } from "./hydrology.js?v=20260402b";
 import { buildWorldNetwork } from "./network.js?v=20260401i";
 import { applyFeatureNames } from "./nameFeatures.js";
-import { buildRegions } from "./regions.js";
+import { buildRegions } from "./regions.js?v=20260402c";
 import { generateRoads } from "./roads.js?v=20260401q";
-import { buildSurfaceGeometry } from "./surface.js?v=20260401b";
+import { buildSurfaceGeometry } from "./surface.js?v=20260402b";
 import { generateTerrain } from "./terrain.js?v=20260401i";
 import { buildTravelGraph } from "./travelGraph.js?v=20260401a";
 import { buildWorldStats } from "./worldStats.js?v=20260402c";
@@ -26,7 +26,8 @@ export function normalizeParams(input) {
     lakeAmount: Number(input.lakeAmount ?? legacyWater),
     lakeSize: Number(input.lakeSize ?? legacyWater),
     coastComplexity: Number(input.coastComplexity ?? 62),
-    edgeDetail: rawEdgeDetail <= 100 ? 180 + (rawEdgeDetail / 100) * 340 : rawEdgeDetail
+    edgeDetail: rawEdgeDetail <= 100 ? 180 + (rawEdgeDetail / 100) * 340 : rawEdgeDetail,
+    minBiomeSize: Number(input.minBiomeSize ?? 4)
   };
 }
 
@@ -36,7 +37,7 @@ export function generateWorld(inputParams) {
   const hydrology = generateHydrology(terrain, params);
   const climate = generateClimate(terrain, hydrology, params);
   const names = createNameGenerator(params.seed);
-  const regions = buildRegions(terrain, climate, hydrology);
+  const regions = buildRegions(terrain, climate, hydrology, params);
   const named = applyFeatureNames(terrain, hydrology, regions, names);
 
   const world = {

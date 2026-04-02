@@ -12,7 +12,8 @@ export const DEFAULT_PARAMS = {
   lakeAmount: 56,
   lakeSize: 52,
   coastComplexity: 62,
-  edgeDetail: 300
+  edgeDetail: 300,
+  minBiomeSize: 4
 };
 
 function bandLabel(value, bands) {
@@ -32,7 +33,8 @@ export const PARAM_LABELS = {
   lakeAmount: (value) => `${value}%`,
   lakeSize: (value) => `${value}%`,
   coastComplexity: (value) => `${value}%`,
-  edgeDetail: (value) => `${Math.round(value)} x ${Math.round(value * (MAP_HEIGHT / MAP_WIDTH))}`
+  edgeDetail: (value) => `${Math.round(value)} x ${Math.round(value * (MAP_HEIGHT / MAP_WIDTH))}`,
+  minBiomeSize: (value) => `${Math.round(value)} celler`
 };
 
 export const BIOME_KEYS = {

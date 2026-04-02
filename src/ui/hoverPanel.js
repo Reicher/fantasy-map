@@ -2,10 +2,10 @@ export function clearHover(tooltip) {
   tooltip.hidden = true;
 }
 
-export function showHoverHit(hit, tooltip, canvasX, canvasY) {
+export function showHoverHit(hit, tooltip, clientX, clientY) {
   tooltip.hidden = false;
-  tooltip.style.left = `${canvasX}px`;
-  tooltip.style.top = `${canvasY}px`;
+  tooltip.style.left = `${clientX}px`;
+  tooltip.style.top = `${clientY}px`;
   tooltip.innerHTML = renderHoverHtml(hit);
 }
 

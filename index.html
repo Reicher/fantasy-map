@@ -124,6 +124,21 @@
             />
           </div>
 
+          <div class="field">
+            <div class="field-header">
+              <span class="field-label">Minsta biomstorlek</span>
+              <span id="minBiomeSize-value" class="field-value"></span>
+            </div>
+            <input
+              id="minBiomeSize"
+              name="minBiomeSize"
+              type="range"
+              min="0"
+              max="20"
+              step="1"
+            />
+          </div>
+
           <div class="button-row">
             <button id="generate" type="submit" class="primary-button">Generera karta</button>
             <button id="reset" type="button" class="ghost-button">Återställ</button>
@@ -144,6 +159,7 @@
               <button id="toggle-biome-labels" type="button" class="ghost-button toggle-button">Kartnamn</button>
               <button id="toggle-city-labels" type="button" class="ghost-button toggle-button">Städer</button>
               <button id="toggle-snow" type="button" class="ghost-button toggle-button">Snö</button>
+              <button id="toggle-monochrome" type="button" class="ghost-button toggle-button">Svartvitt</button>
               <span id="zoom-level" class="zoom-chip">100%</span>
               <button id="reset-view" type="button" class="ghost-button">Återställ vy</button>
               <button id="save-image" type="button" class="ghost-button">Spara PNG</button>
@@ -174,6 +190,6 @@
       </div>
     </section>
 
-    <script type="module" src="./src/app.js?v=20260402z"></script>
+    <script type="module" src="./src/app.js?v=20260402au"></script>
   </body>
 </html>

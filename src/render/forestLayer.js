@@ -5,6 +5,7 @@ import { glyphNoise } from "./hash.js";
 
 export function drawForests(ctx, world, viewport) {
   const regionFeatureById = new Map(world.features.biomeRegions.map((region) => [region.id, region]));
+  const roadSegments = buildRoadSegments(world.geometry?.roads ?? []);
 
   for (const region of world.geometry.biomes) {
     const style = getVegetationStyle(region.biome);
@@ -17,13 +18,11 @@ export function drawForests(ctx, world, viewport) {
       continue;
     }
 
-    const glyphs = collectForestGlyphs(feature.cells, region, style, world, viewport);
+    const glyphs = collectForestGlyphs(feature.cells, region, style, world, viewport, roadSegments);
     if (glyphs.length === 0) {
       continue;
     }
 
-    ctx.save();
-    clipLoops(ctx, region.loops, viewport);
     glyphs.sort((a, b) => a.y - b.y);
     for (const glyph of glyphs) {
       switch (style.type) {
@@ -38,7 +37,6 @@ export function drawForests(ctx, world, viewport) {
           break;
       }
     }
-    ctx.restore();
   }
 }
 
@@ -68,38 +66,38 @@ function getVegetationStyle(biomeKey) {
       return {
         type: "tree",
         density: 0.04,
-        minSpacing: 12.5,
-        minSize: 4.4,
-        sizeRange: 2.2,
-        fill: "rgba(96, 92, 76, 0.58)",
-        stroke: "rgba(72, 62, 48, 0.7)"
+        minSpacing: 13.5,
+        minSize: 7.4,
+        sizeRange: 3.2,
+        fill: "rgba(92, 94, 80, 0.68)",
+        stroke: "rgba(68, 60, 47, 0.82)"
       };
     case BIOME_KEYS.FOREST:
       return {
         type: "tree",
         density: 0.34,
-        minSpacing: 5.4,
-        minSize: 4.8,
-        sizeRange: 2.8,
-        fill: "rgba(86, 96, 70, 0.64)",
-        stroke: "rgba(60, 66, 46, 0.76)"
+        minSpacing: 6,
+        minSize: 8.2,
+        sizeRange: 4.2,
+        fill: "rgba(80, 97, 66, 0.74)",
+        stroke: "rgba(54, 66, 41, 0.86)"
       };
     case BIOME_KEYS.RAINFOREST:
       return {
         type: "tree",
         density: 0.52,
-        minSpacing: 4.1,
-        minSize: 4.9,
-        sizeRange: 3.2,
-        fill: "rgba(68, 87, 56, 0.7)",
-        stroke: "rgba(47, 60, 37, 0.8)"
+        minSpacing: 4.8,
+        minSize: 8.8,
+        sizeRange: 4.8,
+        fill: "rgba(65, 87, 53, 0.8)",
+        stroke: "rgba(42, 58, 34, 0.9)"
       };
     default:
       return null;
   }
 }
 
-function collectForestGlyphs(cells, region, style, world, viewport) {
+function collectForestGlyphs(cells, region, style, world, viewport, roadSegments) {
   const glyphs = [];
   const symbolScale = getVegetationZoomScale(viewport);
   const spacingPx = style.minSpacing * Math.max(1, viewport.zoom * 0.92);
@@ -117,6 +115,10 @@ function collectForestGlyphs(cells, region, style, world, viewport) {
     const seed = cell * 97 + region.id * 131;
     const chance = glyphNoise(seed);
     if (chance > style.density) {
+      continue;
+    }
+
+    if (isNearRoad(x + 0.5, y + 0.5, roadSegments, style.type === "tree" ? 1.2 : 0.9)) {
       continue;
     }
 
@@ -157,43 +159,96 @@ function getVegetationZoomScale(viewport) {
   return Math.max(1, Math.min(4.2, viewport.zoom));
 }
 
+function buildRoadSegments(roads) {
+  const segments = [];
+  for (const road of roads) {
+    if (road.type !== "road" || !road.points || road.points.length < 2) {
+      continue;
+    }
+    for (let index = 0; index < road.points.length - 1; index += 1) {
+      segments.push({
+        a: road.points[index],
+        b: road.points[index + 1]
+      });
+    }
+  }
+  return segments;
+}
+
+function isNearRoad(x, y, segments, threshold) {
+  const thresholdSq = threshold * threshold;
+  for (const segment of segments) {
+    if (distanceToSegmentSquared(x, y, segment.a, segment.b) <= thresholdSq) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function distanceToSegmentSquared(px, py, a, b) {
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const apx = px - a.x;
+  const apy = py - a.y;
+  const abLengthSq = abx * abx + aby * aby;
+  if (abLengthSq <= 0.0001) {
+    const dx = px - a.x;
+    const dy = py - a.y;
+    return dx * dx + dy * dy;
+  }
+
+  const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLengthSq));
+  const nearestX = a.x + abx * t;
+  const nearestY = a.y + aby * t;
+  const dx = px - nearestX;
+  const dy = py - nearestY;
+  return dx * dx + dy * dy;
+}
+
 function drawTreeGlyph(ctx, glyph, style) {
   const height = glyph.size;
-  const width = height * (0.7 + glyph.canopy * 0.22);
-  const trunkHeight = height * 0.22;
-  const peakX = glyph.x + width * glyph.lean * 0.35;
-  const peakY = glyph.y - height * 0.58;
-  const midY = glyph.y - height * 0.16;
-  const leftX = glyph.x - width * 0.52;
-  const rightX = glyph.x + width * 0.52;
+  const crownHeight = height * (0.72 + glyph.canopy * 0.08);
+  const crownWidth = height * (0.52 + glyph.canopy * 0.14);
+  const trunkHeight = height * 0.3;
+  const trunkTopY = glyph.y - trunkHeight;
+  const crownBaseY = trunkTopY + crownHeight * 0.18;
+  const peakX = glyph.x + crownWidth * glyph.lean * 0.28;
+  const peakY = trunkTopY - crownHeight * 0.86;
+  const leftBaseX = glyph.x - crownWidth * (0.44 + glyph.accent * 0.06);
+  const rightBaseX = glyph.x + crownWidth * (0.42 + glyph.canopy * 0.08);
+  const leftShoulderX = glyph.x - crownWidth * (0.2 + glyph.canopy * 0.08);
+  const rightShoulderX = glyph.x + crownWidth * (0.19 + glyph.accent * 0.08);
+  const trunkLeanX = glyph.x + crownWidth * glyph.lean * 0.12;
+  const trunkBottomY = glyph.y + height * 0.06;
 
   ctx.save();
   ctx.globalAlpha *= glyph.alpha;
   ctx.fillStyle = glyph.snowSurface ? "rgba(242, 240, 234, 0.9)" : style.fill;
   ctx.strokeStyle = glyph.snowSurface ? "rgba(128, 122, 111, 0.72)" : style.stroke;
-  ctx.lineWidth = 0.8;
+  ctx.lineWidth = 1.1;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
 
+  ctx.strokeStyle = glyph.snowSurface ? "rgba(156, 148, 136, 0.86)" : "rgba(84, 60, 35, 0.84)";
+  ctx.lineWidth = Math.max(1, height * 0.09);
   ctx.beginPath();
-  ctx.moveTo(glyph.x, glyph.y + trunkHeight * 0.1);
-  ctx.lineTo(peakX, peakY);
-  ctx.lineTo(glyph.x + width * 0.24, midY);
-  ctx.lineTo(rightX, glyph.y + trunkHeight * 0.12);
-  ctx.lineTo(glyph.x + width * 0.1, glyph.y - height * 0.02);
-  ctx.lineTo(glyph.x, glyph.y + trunkHeight * 0.28);
-  ctx.lineTo(glyph.x - width * 0.1, glyph.y - height * 0.02);
-  ctx.lineTo(leftX, glyph.y + trunkHeight * 0.12);
-  ctx.lineTo(glyph.x - width * 0.24, midY);
-  ctx.closePath();
-  ctx.fill();
+  ctx.moveTo(trunkLeanX, trunkBottomY);
+  ctx.lineTo(trunkLeanX, trunkTopY + crownHeight * 0.08);
   ctx.stroke();
 
-  ctx.strokeStyle = glyph.snowSurface ? "rgba(150, 144, 134, 0.46)" : "rgba(76, 57, 35, 0.46)";
-  ctx.lineWidth = 0.7;
+  ctx.fillStyle = glyph.snowSurface ? "rgba(242, 240, 234, 0.94)" : style.fill;
+  ctx.strokeStyle = glyph.snowSurface ? "rgba(128, 122, 111, 0.72)" : style.stroke;
+  ctx.lineWidth = 0.95;
   ctx.beginPath();
-  ctx.moveTo(glyph.x, glyph.y + trunkHeight * 0.28);
-  ctx.lineTo(glyph.x, glyph.y + trunkHeight * 0.64);
+  ctx.moveTo(leftBaseX, crownBaseY);
+  ctx.lineTo(leftShoulderX, trunkTopY - crownHeight * 0.12);
+  ctx.lineTo(peakX, peakY);
+  ctx.lineTo(rightShoulderX, trunkTopY - crownHeight * 0.1);
+  ctx.lineTo(rightBaseX, crownBaseY);
+  ctx.lineTo(trunkLeanX + crownWidth * 0.08, trunkTopY + crownHeight * 0.1);
+  ctx.lineTo(trunkLeanX - crownWidth * 0.08, trunkTopY + crownHeight * 0.1);
+  ctx.closePath();
+  ctx.fill();
   ctx.stroke();
   ctx.restore();
 }
@@ -264,38 +319,4 @@ function drawCactusGlyph(ctx, glyph, style) {
   }
 
   ctx.restore();
-}
-
-function clipLoops(ctx, loops, viewport) {
-  if (!loops.length) {
-    return false;
-  }
-
-  ctx.beginPath();
-  for (const loop of loops) {
-    traceLoop(ctx, loop, viewport);
-  }
-  ctx.clip("evenodd");
-  return true;
-}
-
-function traceLoop(ctx, loop, viewport) {
-  if (!loop.length) {
-    return;
-  }
-
-  const first = edgePoint(viewport, loop[0].x, loop[0].y);
-  ctx.moveTo(first.x, first.y);
-  for (let index = 1; index < loop.length; index += 1) {
-    const point = edgePoint(viewport, loop[index].x, loop[index].y);
-    ctx.lineTo(point.x, point.y);
-  }
-  ctx.closePath();
-}
-
-function edgePoint(viewport, x, y) {
-  return {
-    x: viewport.margin + (x - viewport.leftWorld) * viewport.scaleX,
-    y: viewport.margin + (y - viewport.topWorld) * viewport.scaleY
-  };
 }

@@ -51,14 +51,18 @@ export function attachEditorController({
     }
 
     const position = state.currentViewport.canvasToWorld(canvasX, canvasY);
-    const hit = inspectWorldAt(state.currentWorld, position.x, position.y);
+    const hit = inspectWorldAt(state.currentWorld, position.x, position.y, {
+      canvasX,
+      canvasY,
+      viewport: state.currentViewport
+    });
 
     if (!hit) {
       clearHover(tooltip);
       return;
     }
 
-    showHoverHit(hit, tooltip, canvasX, canvasY);
+    showHoverHit(hit, tooltip, event.clientX, event.clientY);
   });
 
   canvas.addEventListener("pointerleave", () => {

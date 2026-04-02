@@ -7,9 +7,10 @@ export function drawMountains(ctx, terrain, climate, regions, geometry, viewport
   const showSnow = options.showSnow !== false;
   const glyphs = [];
   const zoomScale = getMountainZoomScale(viewport);
+  const glyphHits = [];
+  const roadSegments = buildRoadSegments(geometry?.roads ?? []);
 
   for (const region of regions.mountainRegions) {
-    const regionStyle = getMountainRegionStyle(region.id);
     const displayCells = region.cells.filter((cell) => climate.biome[cell] === BIOME_KEYS.MOUNTAIN);
     const cells = (displayCells.length >= 4
       ? displayCells
@@ -22,60 +23,68 @@ export function drawMountains(ctx, terrain, climate, regions, geometry, viewport
 
     const bounds = getCellBounds(cells, terrain.width);
     const aspect = Math.max(bounds.width, bounds.height) / Math.max(1, Math.min(bounds.width, bounds.height));
+    const regionStyle = getMountainRegionStyle(region.id, aspect);
     const targetAnchors = clamp(
-      Math.round(cells.length / (aspect > 2.1 ? 11 : aspect > 1.5 ? 14 : 17)),
+      Math.round(cells.length / regionStyle.anchorDivisor),
       2,
-      Math.max(3, Math.round(region.size / 10))
+      Math.max(4, Math.round(Math.sqrt(region.size) * 1.4))
     );
-    const anchorSpacing = regionStyle.anchorSpacing * (aspect > 2.1 ? 0.66 : aspect > 1.5 ? 0.78 : 0.92);
-    const anchors = buildMountainAnchors(cells, terrain, climate, viewport, targetAnchors, anchorSpacing);
-    const ridgeScale = aspect > 2.4 ? 0.76 : aspect > 1.7 ? 0.88 : 1;
-    const ridgeSpread = aspect > 2.4 ? 0.9 : aspect > 1.7 ? 0.96 : 1;
-    const ridgeDensityBoost = aspect > 2.4 ? 0.08 : aspect > 1.7 ? 0.03 : -0.04;
+    const anchors = buildMountainAnchors(
+      cells,
+      terrain,
+      climate,
+      targetAnchors,
+      regionStyle.anchorSpacingWorld,
+      roadSegments
+    );
 
-    anchors.forEach((anchor, index) => {
-      const cluster = buildMountainCluster(
-        anchor,
+    for (let index = 0; index < anchors.length; index += 1) {
+      const glyph = buildMountainGlyph(
+        anchors[index],
         region.id,
         index,
         regionStyle,
+        viewport,
         showSnow,
-        zoomScale * ridgeScale,
-        ridgeSpread,
-        ridgeDensityBoost
-      )
-        .map((glyph) => fitMountainGlyphToLand(glyph, terrain, climate, viewport))
-        .filter(Boolean);
-      glyphs.push(...cluster);
-    });
+        zoomScale
+      );
+      const fitted = fitMountainGlyphToLand(glyph, terrain, climate, viewport);
+      if (fitted) {
+        glyphs.push(fitted);
+      }
+    }
   }
 
   glyphs.sort((a, b) => a.y - b.y);
   for (const glyph of glyphs) {
     drawMountainGlyph(ctx, glyph);
+    glyphHits.push(getMountainGlyphHit(glyph, viewport));
   }
+
+  return glyphHits;
 }
 
-function buildMountainAnchors(cells, terrain, climate, viewport, targetAnchors, anchorSpacing) {
+function buildMountainAnchors(cells, terrain, climate, targetAnchors, anchorSpacingWorld, roadSegments) {
   if (cells.length === 0) {
     return [];
   }
 
-  const candidates = cells
-    .slice(0, Math.min(cells.length, Math.max(targetAnchors * 14, 48)))
-    .map((cell) => {
+  const candidates = cells.map((cell) => {
       const [x, y] = coordsOf(cell, terrain.width);
-      const pixel = viewport.worldToCanvas(x, y);
       return {
-        x: pixel.x,
-        y: pixel.y,
+        cellX: x,
+        cellY: y,
         value: terrain.mountainField[cell],
         elevation: terrain.elevation[cell],
         biome: climate.biome[cell],
         temperature: climate.temperature[cell],
         cell
       };
-    });
+    }).filter((candidate) => !isNearRoad(candidate.cellX + 0.5, candidate.cellY + 0.5, roadSegments, 1.65));
+
+  if (candidates.length === 0) {
+    return [];
+  }
 
   const anchors = [candidates[0]];
 
@@ -90,11 +99,14 @@ function buildMountainAnchors(cells, terrain, climate, viewport, targetAnchors, 
 
       let minDistance = Infinity;
       for (const anchor of anchors) {
-        minDistance = Math.min(minDistance, Math.hypot(anchor.x - candidate.x, anchor.y - candidate.y));
+        minDistance = Math.min(
+          minDistance,
+          Math.hypot(anchor.cellX - candidate.cellX, anchor.cellY - candidate.cellY)
+        );
       }
 
-      const spacingPenalty = minDistance < anchorSpacing ? (anchorSpacing - minDistance) * 0.85 : 0;
-      const score = minDistance + candidate.value * 18 - spacingPenalty;
+      const spacingPenalty = minDistance < anchorSpacingWorld ? (anchorSpacingWorld - minDistance) * 1.2 : 0;
+      const score = minDistance * 1.45 + candidate.value * 2.1 - spacingPenalty;
       if (score > bestScore) {
         best = candidate;
         bestScore = score;
@@ -111,97 +123,125 @@ function buildMountainAnchors(cells, terrain, climate, viewport, targetAnchors, 
   return anchors;
 }
 
-function buildMountainCluster(anchor, regionId, anchorIndex, regionStyle, showSnow, sizeScale = 1, spreadScale = 1, densityBoost = 0) {
-  const clusterNoise = glyphNoise(anchor.cell + regionId * 131 + anchorIndex * 17);
-  const clusterWidth = (8 + anchor.value * 9.5 + clusterNoise * 3.8) * regionStyle.clusterWidth * sizeScale;
-  const clusterHeight = (3.8 + anchor.value * 4.1 + clusterNoise * 1.2) * regionStyle.clusterHeight * sizeScale;
-  const glyphCount = Math.max(
-    1,
-    Math.min(4, Math.round(1 + anchor.value * 1.5 + clusterNoise * 0.55 + regionStyle.densityBias + densityBoost))
-  );
-  const glyphs = [];
+function buildMountainGlyph(anchor, regionId, anchorIndex, regionStyle, viewport, showSnow, zoomScale) {
+  const point = viewport.worldToCanvas(anchor.cellX, anchor.cellY);
+  const noiseA = glyphNoise(anchor.cell * 17 + anchorIndex * 97 + regionId * 313);
+  const noiseB = glyphNoise(anchor.cell * 31 + anchorIndex * 43 + regionId * 127);
+  const noiseC = glyphNoise(anchor.cell * 61 + anchorIndex * 59 + regionId * 211);
+  const noiseD = glyphNoise(anchor.cell * 83 + anchorIndex * 71 + regionId * 401);
+  const noiseE = glyphNoise(anchor.cell * 101 + anchorIndex * 29 + regionId * 157);
+  const noiseF = glyphNoise(anchor.cell * 131 + anchorIndex * 19 + regionId * 577);
+  const widthScale = 0.82 + noiseF * 0.58;
+  const heightScale = 0.8 + noiseC * 0.66;
 
-  for (let glyphIndex = 0; glyphIndex < glyphCount; glyphIndex += 1) {
-    const noiseA = glyphNoise(anchor.cell * 17 + glyphIndex * 97 + regionId * 313);
-    const noiseB = glyphNoise(anchor.cell * 31 + glyphIndex * 43 + regionId * 127);
-    const noiseC = glyphNoise(anchor.cell * 61 + glyphIndex * 59 + regionId * 211);
-    const noiseD = glyphNoise(anchor.cell * 83 + glyphIndex * 71 + regionId * 401);
-    const noiseE = glyphNoise(anchor.cell * 101 + glyphIndex * 29 + regionId * 157);
-    const row = Math.floor(glyphIndex / 2);
-    const fan = glyphIndex - (glyphCount - 1) * 0.5;
-    const archetype = glyphIndex % 3;
-    const x =
-      anchor.x +
-      fan * (4.3 + noiseA * 2.1) * regionStyle.spread * spreadScale +
-      (noiseA - 0.5) * clusterWidth * 0.26;
-    const y = anchor.y + row * (1.5 + noiseB * 0.7) + (noiseB - 0.5) * 0.9 - clusterHeight * 0.08;
-    const heightBias = (archetype === 0 ? 1.18 : archetype === 1 ? 0.68 : 0.94) * regionStyle.heightBias;
-    const widthBias = (archetype === 0 ? 0.96 : archetype === 1 ? 1.92 : 1.28) * regionStyle.widthBias;
-    const height =
-      (2.8 + anchor.value * 6.1 + noiseC * 4.4 + noiseE * 2.1 - row * 0.8 + Math.abs(fan) * 0.3) *
-      heightBias *
-      sizeScale;
-    const width =
-      (2.2 + anchor.value * 5.1 + noiseA * 6.2 + noiseD * 3.4 + Math.max(0, 1 - heightBias) * 2.2) *
-      widthBias *
-      sizeScale;
-    const lean = (noiseA - 0.5) * 0.34 + (noiseD - 0.5) * 0.1;
-    const snow = anchor.elevation > 0.8 && noiseC > 0.44;
-    glyphs.push({
-      x,
-      y,
-      height: Math.max(3.8, height),
-      width: Math.max(2.6, width),
-      lean,
-      snow,
-      snowSurface: isSnowCell(anchor.biome, anchor.elevation, anchor.value, anchor.temperature, showSnow),
-      noise: noiseB,
-      shoulder: noiseD,
-      body: noiseE
-    });
-  }
+  const height =
+    (4.6 + anchor.value * 4.8 + noiseC * 2.6 + noiseE * 1.1) *
+    regionStyle.heightBias *
+    heightScale *
+    zoomScale;
+  const width =
+    (5.2 + anchor.value * 5.8 + noiseA * 2.8 + noiseD * 1.6) *
+    regionStyle.widthBias *
+    widthScale *
+    zoomScale;
 
-  return glyphs;
+  return {
+    regionId,
+    x: point.x + (noiseA - 0.5) * regionStyle.positionJitter * zoomScale,
+    y: point.y + (noiseB - 0.5) * regionStyle.positionJitter * 0.7 * zoomScale,
+    height: Math.max(4.4, height),
+    width: Math.max(3.8, width),
+    lean: (noiseA - 0.5) * regionStyle.leanAmount + (noiseD - 0.5) * 0.06,
+    snow: anchor.elevation > 0.8 && noiseC > 0.44,
+    snowSurface: isSnowCell(anchor.biome, anchor.elevation, anchor.value, anchor.temperature, showSnow),
+    noise: noiseB,
+    shoulder: noiseD,
+    body: noiseE
+  };
 }
 
-function getMountainRegionStyle(regionId) {
+function getMountainRegionStyle(regionId, aspect = 1) {
   const profile = glyphNoise(regionId * 941 + 17);
   const shape = glyphNoise(regionId * 569 + 91);
   const spacing = glyphNoise(regionId * 223 + 47);
+  const narrowBoost = aspect > 2.2 ? 0.84 : aspect > 1.6 ? 0.92 : 1;
 
   if (profile < 0.34) {
     return {
-      anchorSpacing: 22 + spacing * 4,
-      clusterWidth: 1.2 + shape * 0.22,
-      clusterHeight: 0.78 + shape * 0.14,
-      widthBias: 1.22 + shape * 0.2,
-      heightBias: 0.78 + shape * 0.12,
-      spread: 1.08 + shape * 0.16,
-      densityBias: -0.15
+      anchorDivisor: (aspect > 2.2 ? 7.2 : aspect > 1.6 ? 8.5 : 10.5) / narrowBoost,
+      anchorSpacingWorld: (2.6 + spacing * 0.6) * narrowBoost,
+      widthBias: (1.28 + shape * 0.18) * narrowBoost,
+      heightBias: 0.82 + shape * 0.1,
+      leanAmount: 0.2,
+      positionJitter: 0.7 + shape * 0.4
     };
   }
 
   if (profile > 0.68) {
     return {
-      anchorSpacing: 23 + spacing * 5,
-      clusterWidth: 0.88 + shape * 0.16,
-      clusterHeight: 1.05 + shape * 0.22,
-      widthBias: 0.88 + shape * 0.16,
-      heightBias: 1.12 + shape * 0.24,
-      spread: 0.92 + shape * 0.08,
-      densityBias: 0
+      anchorDivisor: (aspect > 2.2 ? 8.4 : aspect > 1.6 ? 9.6 : 11.4) / narrowBoost,
+      anchorSpacingWorld: (2.8 + spacing * 0.55) * narrowBoost,
+      widthBias: (0.92 + shape * 0.12) * narrowBoost,
+      heightBias: 1.15 + shape * 0.18,
+      leanAmount: 0.28,
+      positionJitter: 0.55 + shape * 0.25
     };
   }
 
   return {
-    anchorSpacing: 21 + spacing * 4,
-    clusterWidth: 1 + shape * 0.14,
-    clusterHeight: 0.92 + shape * 0.12,
-    widthBias: 1.02 + shape * 0.16,
-    heightBias: 0.94 + shape * 0.16,
-    spread: 1 + shape * 0.1,
-    densityBias: -0.05
+    anchorDivisor: (aspect > 2.2 ? 7.8 : aspect > 1.6 ? 9 : 11) / narrowBoost,
+    anchorSpacingWorld: (2.7 + spacing * 0.5) * narrowBoost,
+    widthBias: (1.05 + shape * 0.14) * narrowBoost,
+    heightBias: 0.98 + shape * 0.14,
+    leanAmount: 0.24,
+    positionJitter: 0.62 + shape * 0.3
   };
+}
+
+function buildRoadSegments(roads) {
+  const segments = [];
+  for (const road of roads) {
+    if (road.type !== "road" || !road.points || road.points.length < 2) {
+      continue;
+    }
+    for (let index = 0; index < road.points.length - 1; index += 1) {
+      segments.push({
+        a: road.points[index],
+        b: road.points[index + 1]
+      });
+    }
+  }
+  return segments;
+}
+
+function isNearRoad(x, y, segments, threshold) {
+  const thresholdSq = threshold * threshold;
+  for (const segment of segments) {
+    if (distanceToSegmentSquared(x, y, segment.a, segment.b) <= thresholdSq) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function distanceToSegmentSquared(px, py, a, b) {
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const apx = px - a.x;
+  const apy = py - a.y;
+  const abLengthSq = abx * abx + aby * aby;
+  if (abLengthSq <= 0.0001) {
+    const dx = px - a.x;
+    const dy = py - a.y;
+    return dx * dx + dy * dy;
+  }
+
+  const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLengthSq));
+  const nearestX = a.x + abx * t;
+  const nearestY = a.y + aby * t;
+  const dx = px - nearestX;
+  const dy = py - nearestY;
+  return dx * dx + dy * dy;
 }
 
 function drawMountainGlyph(ctx, glyph) {
@@ -220,6 +260,8 @@ function drawMountainGlyph(ctx, glyph) {
     snow,
     shoulder
   } = getMountainGeometry(glyph);
+  const shoulderBias = (glyph.body - 0.5) * width * 0.14;
+  const ridgeDip = baseDipY - height * (0.05 + glyph.noise * 0.04);
   const fillGradient = ctx.createLinearGradient(x, peakY, x, baseY + height * 0.18);
   if (glyph.snowSurface) {
     fillGradient.addColorStop(0, "rgba(246, 244, 239, 0.98)");
@@ -234,9 +276,9 @@ function drawMountainGlyph(ctx, glyph) {
   ctx.fillStyle = fillGradient;
   ctx.beginPath();
   ctx.moveTo(leftX, leftFootY);
-  ctx.lineTo(peakX, peakY);
-  ctx.lineTo(rightX, rightFootY);
-  ctx.quadraticCurveTo(x + width * (shoulder - 0.5) * 0.28, baseDipY, leftX, leftFootY);
+  ctx.quadraticCurveTo(x - width * (0.12 + shoulder * 0.08), peakY + height * (0.16 + glyph.noise * 0.03), peakX, peakY);
+  ctx.quadraticCurveTo(x + width * (0.11 + (1 - shoulder) * 0.08), peakY + height * (0.19 + glyph.body * 0.04), rightX, rightFootY);
+  ctx.quadraticCurveTo(x + shoulderBias, ridgeDip, leftX, leftFootY);
   ctx.closePath();
   ctx.fill();
 
@@ -247,8 +289,8 @@ function drawMountainGlyph(ctx, glyph) {
 
   ctx.beginPath();
   ctx.moveTo(leftX, leftFootY);
-  ctx.lineTo(peakX, peakY);
-  ctx.lineTo(rightX, rightFootY);
+  ctx.quadraticCurveTo(x - width * (0.12 + shoulder * 0.08), peakY + height * (0.16 + glyph.noise * 0.03), peakX, peakY);
+  ctx.quadraticCurveTo(x + width * (0.11 + (1 - shoulder) * 0.08), peakY + height * (0.19 + glyph.body * 0.04), rightX, rightFootY);
   ctx.stroke();
 
   ctx.strokeStyle = glyph.snowSurface ? "rgba(186, 183, 177, 0.5)" : "rgba(116, 112, 108, 0.42)";
@@ -259,14 +301,62 @@ function drawMountainGlyph(ctx, glyph) {
   ctx.stroke();
 
   if (snow) {
-    ctx.fillStyle = "rgba(245, 241, 233, 0.95)";
-    ctx.beginPath();
-    ctx.moveTo(peakX, peakY + height * 0.05);
-    ctx.lineTo(peakX - width * 0.22, peakY + height * 0.26);
-    ctx.lineTo(peakX + width * 0.18, peakY + height * 0.24);
-    ctx.closePath();
-    ctx.fill();
+    drawMountainSnowCap(ctx, {
+      peakX,
+      peakY,
+      leftX,
+      rightX,
+      leftFootY,
+      rightFootY,
+      width,
+      height,
+      shoulder,
+      noise: glyph.noise,
+      body: glyph.body
+    });
   }
+}
+
+function drawMountainSnowCap(ctx, geometry) {
+  const {
+    peakX,
+    peakY,
+    leftX,
+    rightX,
+    leftFootY,
+    rightFootY,
+    width,
+    height,
+    shoulder,
+    noise,
+    body
+  } = geometry;
+
+  const leftT = 0.28 + shoulder * 0.1;
+  const rightT = 0.26 + (1 - shoulder) * 0.12;
+  const leftBase = pointOnSegment(
+    { x: peakX, y: peakY + height * 0.03 },
+    { x: leftX, y: leftFootY },
+    leftT
+  );
+  const rightBase = pointOnSegment(
+    { x: peakX, y: peakY + height * 0.03 },
+    { x: rightX, y: rightFootY },
+    rightT
+  );
+  const centerDipY = Math.max(leftBase.y, rightBase.y) - height * (0.035 + body * 0.01);
+  const centerDipX = peakX + (noise - 0.5) * width * 0.05;
+  const leftInset = width * 0.01;
+  const rightInset = width * 0.01;
+
+  ctx.fillStyle = "rgba(245, 241, 233, 0.95)";
+  ctx.beginPath();
+  ctx.moveTo(peakX, peakY + height * 0.05);
+  ctx.lineTo(leftBase.x + leftInset, leftBase.y);
+  ctx.lineTo(centerDipX, centerDipY);
+  ctx.lineTo(rightBase.x - rightInset, rightBase.y);
+  ctx.closePath();
+  ctx.fill();
 }
 
 function fitMountainGlyphToLand(glyph, terrain, climate, viewport) {
@@ -332,6 +422,18 @@ function getMountainGeometry(glyph) {
   };
 }
 
+function getMountainGlyphHit(glyph, viewport) {
+  const geometry = getMountainGeometry(glyph);
+  return {
+    regionId: glyph.regionId,
+    x: geometry.x,
+    y: geometry.baseY - glyph.height * 0.24,
+    radius: Math.max(6, Math.min(20, glyph.width * 0.4 + glyph.height * 0.16)),
+    worldX: viewport.canvasToWorld(geometry.x, geometry.baseY - glyph.height * 0.24).x,
+    worldY: viewport.canvasToWorld(geometry.x, geometry.baseY - glyph.height * 0.24).y
+  };
+}
+
 function getCellBounds(cells, width) {
   let minX = width;
   let maxX = 0;
@@ -354,4 +456,11 @@ function getCellBounds(cells, width) {
 
 function getMountainZoomScale(viewport) {
   return clamp(viewport.zoom, 1, 4.5);
+}
+
+function pointOnSegment(a, b, t) {
+  return {
+    x: a.x + (b.x - a.x) * t,
+    y: a.y + (b.y - a.y) * t
+  };
 }

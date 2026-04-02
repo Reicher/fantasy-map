@@ -3,11 +3,12 @@ import { BIOME_KEYS } from "../config.js";
 export function drawLabels(ctx, world, viewport, options = {}) {
   const { showBiomeLabels = false, showCityLabels = false } = options;
   const placedBoxes = [];
+  const regionLabelSettings = getRegionLabelSettings(viewport);
 
   if (showBiomeLabels) {
-    drawLakeLabels(ctx, world, viewport, placedBoxes);
-    drawMountainLabels(ctx, world, viewport, placedBoxes);
-    drawBiomeLabels(ctx, world, viewport, placedBoxes);
+    drawLakeLabels(ctx, world, viewport, placedBoxes, regionLabelSettings);
+    drawMountainLabels(ctx, world, viewport, placedBoxes, regionLabelSettings);
+    drawBiomeLabels(ctx, world, viewport, placedBoxes, regionLabelSettings);
   }
 
   if (showCityLabels) {
@@ -15,11 +16,11 @@ export function drawLabels(ctx, world, viewport, options = {}) {
   }
 }
 
-function drawLakeLabels(ctx, world, viewport, placedBoxes) {
+function drawLakeLabels(ctx, world, viewport, placedBoxes, settings) {
   const lakes = [...(world.geometry.labels.lakes ?? [])]
-    .filter((lake) => lake.size >= 28)
+    .filter((lake) => lake.size >= settings.lakes.minSize)
     .sort((a, b) => b.size - a.size)
-    .slice(0, 12);
+    .slice(0, settings.lakes.maxCount);
 
   ctx.save();
   ctx.textAlign = "center";
@@ -27,7 +28,7 @@ function drawLakeLabels(ctx, world, viewport, placedBoxes) {
 
   for (const lake of lakes) {
     const point = viewport.worldToCanvas(lake.anchor.x - 0.5, lake.anchor.y - 0.5);
-    const fontSize = Math.max(13, Math.min(22, 11 + Math.sqrt(lake.size) * 0.42));
+    const fontSize = Math.max(12, Math.min(22, 10.5 + Math.sqrt(lake.size) * 0.42));
     const label = lake.name;
 
     ctx.font = `italic ${fontSize}px Baskerville, "Palatino Linotype", Georgia, serif`;
@@ -53,21 +54,22 @@ function drawLakeLabels(ctx, world, viewport, placedBoxes) {
   ctx.restore();
 }
 
-function drawBiomeLabels(ctx, world, viewport, placedBoxes) {
+function drawBiomeLabels(ctx, world, viewport, placedBoxes, settings) {
   const regions = [...world.geometry.labels.biomeRegions]
-    .filter((region) => region.size >= 90 && region.biome !== BIOME_KEYS.MOUNTAIN)
+    .filter((region) => region.size >= settings.biomes.minSize && region.biome !== BIOME_KEYS.MOUNTAIN)
     .sort((a, b) => b.size - a.size)
-    .slice(0, 14);
+    .slice(0, settings.biomes.maxCount);
 
   ctx.save();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
   for (const region of regions) {
-    const fontSize = Math.max(14, Math.min(24, 12 + Math.sqrt(region.size) * 0.46));
+    const fontSize = Math.max(13, Math.min(24, 11.5 + Math.sqrt(region.size) * 0.46));
     const label = region.name;
+    const style = getBiomeLabelStyle(region.biome, fontSize);
 
-    ctx.font = `italic ${fontSize}px Baskerville, "Palatino Linotype", Georgia, serif`;
+    ctx.font = style.font;
     const anchors = region.candidates?.length ? region.candidates : [region.anchor];
     const placement = findLabelPlacement(ctx, viewport, anchors, label, fontSize, placedBoxes);
     if (!placement) {
@@ -75,9 +77,9 @@ function drawBiomeLabels(ctx, world, viewport, placedBoxes) {
     }
 
     placedBoxes.push(placement.box);
-    ctx.lineWidth = 4.2;
-    ctx.strokeStyle = "rgba(244, 235, 214, 0.84)";
-    ctx.fillStyle = "rgba(74, 58, 37, 0.8)";
+    ctx.lineWidth = style.lineWidth;
+    ctx.strokeStyle = style.strokeStyle;
+    ctx.fillStyle = style.fillStyle;
     ctx.strokeText(label, placement.point.x, placement.point.y);
     ctx.fillText(label, placement.point.x, placement.point.y);
   }
@@ -85,18 +87,18 @@ function drawBiomeLabels(ctx, world, viewport, placedBoxes) {
   ctx.restore();
 }
 
-function drawMountainLabels(ctx, world, viewport, placedBoxes) {
+function drawMountainLabels(ctx, world, viewport, placedBoxes, settings) {
   const regions = [...(world.geometry.labels.mountainRegions ?? [])]
-    .filter((region) => region.size >= 30)
+    .filter((region) => region.size >= settings.mountains.minSize)
     .sort((a, b) => b.size - a.size)
-    .slice(0, 10);
+    .slice(0, settings.mountains.maxCount);
 
   ctx.save();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
   for (const region of regions) {
-    const fontSize = Math.max(14, Math.min(22, 12 + Math.sqrt(region.size) * 0.42));
+    const fontSize = Math.max(13, Math.min(22, 11.5 + Math.sqrt(region.size) * 0.42));
     const label = region.name;
 
     ctx.font = `600 ${fontSize}px Baskerville, "Palatino Linotype", Georgia, serif`;
@@ -176,4 +178,72 @@ function intersectsPlacedBox(box, placedBoxes) {
       box.top < placed.bottom &&
       box.bottom > placed.top
   );
+}
+
+function getRegionLabelSettings(viewport) {
+  const zoom = Math.max(1, Math.min(3.2, viewport.zoom));
+  const zoomPower = Math.pow(zoom, 1.18);
+
+  return {
+    lakes: {
+      minSize: Math.max(22, Math.round(58 / zoomPower)),
+      maxCount: Math.max(5, Math.min(16, Math.round(3 + zoom * 4.2)))
+    },
+    mountains: {
+      minSize: Math.max(22, Math.round(74 / zoomPower)),
+      maxCount: Math.max(4, Math.min(12, Math.round(2 + zoom * 3.2)))
+    },
+    biomes: {
+      minSize: Math.max(70, Math.round(220 / zoomPower)),
+      maxCount: Math.max(6, Math.min(20, Math.round(4 + zoom * 4.5)))
+    }
+  };
+}
+
+function getBiomeLabelStyle(biome, fontSize) {
+  switch (biome) {
+    case BIOME_KEYS.FOREST:
+      return {
+        font: `italic ${fontSize}px "Palatino Linotype", Baskerville, Georgia, serif`,
+        fillStyle: "rgba(64, 79, 50, 0.84)",
+        strokeStyle: "rgba(244, 238, 224, 0.86)",
+        lineWidth: 4.1
+      };
+    case BIOME_KEYS.RAINFOREST:
+      return {
+        font: `600 italic ${fontSize}px "Palatino Linotype", Baskerville, Georgia, serif`,
+        fillStyle: "rgba(48, 66, 38, 0.88)",
+        strokeStyle: "rgba(244, 239, 226, 0.88)",
+        lineWidth: 4.2
+      };
+    case BIOME_KEYS.DESERT:
+      return {
+        font: `italic ${fontSize}px Baskerville, "Palatino Linotype", Georgia, serif`,
+        fillStyle: "rgba(124, 92, 50, 0.82)",
+        strokeStyle: "rgba(246, 236, 212, 0.82)",
+        lineWidth: 4
+      };
+    case BIOME_KEYS.TUNDRA:
+      return {
+        font: `italic ${fontSize}px Georgia, Baskerville, "Palatino Linotype", serif`,
+        fillStyle: "rgba(88, 90, 98, 0.82)",
+        strokeStyle: "rgba(245, 241, 233, 0.88)",
+        lineWidth: 4.15
+      };
+    case BIOME_KEYS.HIGHLANDS:
+      return {
+        font: `600 italic ${fontSize}px Baskerville, "Palatino Linotype", Georgia, serif`,
+        fillStyle: "rgba(92, 69, 49, 0.84)",
+        strokeStyle: "rgba(244, 235, 214, 0.84)",
+        lineWidth: 4.2
+      };
+    case BIOME_KEYS.PLAINS:
+    default:
+      return {
+        font: `italic ${fontSize}px Baskerville, "Palatino Linotype", Georgia, serif`,
+        fillStyle: "rgba(74, 58, 37, 0.8)",
+        strokeStyle: "rgba(244, 235, 214, 0.84)",
+        lineWidth: 4.2
+      };
+  }
 }

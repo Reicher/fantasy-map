@@ -8,34 +8,32 @@ export function drawRoads(ctx, geometry, viewport) {
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  for (const road of roads) {
+  for (let roadIndex = 0; roadIndex < roads.length; roadIndex += 1) {
+    const road = roads[roadIndex];
     const points = road.points.map((point) => viewport.worldToCanvas(point.x - 0.5, point.y - 0.5));
     if (points.length < 2) {
       continue;
     }
 
+    const wobblePoints = getRoadWobblePoints(points, roadIndex, road.type === "sea-route" ? 0.55 : 0.7);
+
     if (road.type === "sea-route") {
       ctx.setLineDash([]);
-      ctx.strokeStyle = "rgba(233, 244, 249, 0.72)";
-      ctx.lineWidth = 2.8;
-      strokeSmoothPath(ctx, points);
+      ctx.strokeStyle = "rgba(233, 244, 249, 0.62)";
+      ctx.lineWidth = 3.1;
+      strokeSmoothPath(ctx, wobblePoints);
 
       ctx.setLineDash([]);
       ctx.strokeStyle = "rgba(122, 176, 198, 0.96)";
       ctx.lineWidth = 1.55;
-      strokeSmoothPath(ctx, points);
+      strokeSmoothPath(ctx, wobblePoints);
       continue;
     }
 
-    ctx.setLineDash([]);
-    ctx.strokeStyle = "rgba(240, 231, 205, 0.72)";
-    ctx.lineWidth = 3.2;
-    strokeSmoothPath(ctx, points);
-
-    ctx.setLineDash([7, 5]);
-    ctx.strokeStyle = "rgba(90, 67, 39, 0.9)";
-    ctx.lineWidth = 1.5;
-    strokeSmoothPath(ctx, points);
+    ctx.setLineDash(getRoadDashPattern(roadIndex));
+    ctx.strokeStyle = "rgba(128, 70, 58, 0.72)";
+    ctx.lineWidth = 1.6;
+    strokeSmoothPath(ctx, wobblePoints);
   }
 
   ctx.restore();
@@ -52,4 +50,32 @@ function strokeSmoothPath(ctx, points) {
   const last = points[points.length - 1];
   ctx.lineTo(last.x, last.y);
   ctx.stroke();
+}
+
+function getRoadWobblePoints(points, roadIndex, wobble) {
+  return points.map((point, index) => {
+    const previous = points[Math.max(0, index - 1)];
+    const next = points[Math.min(points.length - 1, index + 1)];
+    const tangentX = next.x - previous.x;
+    const tangentY = next.y - previous.y;
+    const length = Math.hypot(tangentX, tangentY) || 1;
+    const normalX = -tangentY / length;
+    const normalY = tangentX / length;
+    const jitter = (roadNoise(roadIndex, index) - 0.5) * 2 * wobble;
+
+    return {
+      x: point.x + normalX * jitter,
+      y: point.y + normalY * jitter
+    };
+  });
+}
+
+function getRoadDashPattern(roadIndex) {
+  const noise = roadNoise(roadIndex, 91);
+  return [6.2 + noise * 2.8, 7.4 + roadNoise(roadIndex, 137) * 3.8];
+}
+
+function roadNoise(roadIndex, pointIndex) {
+  const value = Math.sin((roadIndex + 1) * 127.1 + pointIndex * 311.7) * 43758.5453123;
+  return value - Math.floor(value);
 }

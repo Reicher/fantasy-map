@@ -41,6 +41,8 @@ export function generateHydrology(terrain, params) {
   };
 
   registerNaturalLakes(context);
+  collapseDiagonalLakeSingletons(context, 2);
+  pruneTinyLakes(context, 5);
 
   const selectedSources = selectRiverSources({
     width,
@@ -80,6 +82,8 @@ export function generateHydrology(terrain, params) {
   }
 
   placeBasinLakes(context);
+  collapseDiagonalLakeSingletons(context, 2);
+  pruneTinyLakes(context, 5);
 
   return {
     oceanDistance,
@@ -137,6 +141,98 @@ function registerNaturalLakes(context) {
       cells,
       source: "terrain-basin"
     });
+  }
+}
+
+function pruneTinyLakes(context, minCells = 5) {
+  const { isLand, inlandWaterMask, lakeIdByCell } = context;
+  const keptLakes = [];
+  lakeIdByCell.fill(-1);
+
+  for (const lake of context.lakes) {
+    if (lake.cells.length < minCells) {
+      if (lake.source === "terrain-basin") {
+        for (const cell of lake.cells) {
+          isLand[cell] = 1;
+          inlandWaterMask[cell] = 0;
+        }
+      }
+      continue;
+    }
+
+    const newId = keptLakes.length;
+    const nextLake = {
+      ...lake,
+      id: newId
+    };
+    keptLakes.push(nextLake);
+    for (const cell of nextLake.cells) {
+      lakeIdByCell[cell] = newId;
+    }
+  }
+
+  context.lakes.length = 0;
+  context.lakes.push(...keptLakes);
+}
+
+function collapseDiagonalLakeSingletons(context, passes = 1) {
+  const { width, isLand, inlandWaterMask, lakeIdByCell } = context;
+  const orthogonalOffsets = [
+    [0, -1],
+    [1, 0],
+    [0, 1],
+    [-1, 0]
+  ];
+
+  for (let pass = 0; pass < passes; pass += 1) {
+    let changed = false;
+
+    for (const lake of context.lakes) {
+      const cellSet = new Set(lake.cells);
+      const keptCells = [];
+      const removedCells = [];
+
+      for (const cell of lake.cells) {
+        const [x, y] = coordsOf(cell, width);
+        let sameOrthogonal = 0;
+
+        for (const [dx, dy] of orthogonalOffsets) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= context.width || ny >= context.height) {
+            continue;
+          }
+          if (cellSet.has(indexOf(nx, ny, width))) {
+            sameOrthogonal += 1;
+          }
+        }
+
+        if (sameOrthogonal === 0) {
+          removedCells.push(cell);
+        } else {
+          keptCells.push(cell);
+        }
+      }
+
+      if (removedCells.length === 0) {
+        continue;
+      }
+
+      changed = true;
+      lake.cells = keptCells;
+
+      for (const cell of removedCells) {
+        lakeIdByCell[cell] = -1;
+        if (lake.source === "terrain-basin") {
+          isLand[cell] = 1;
+          inlandWaterMask[cell] = 0;
+        }
+      }
+    }
+
+    if (!changed) {
+      break;
+    }
   }
 }
 

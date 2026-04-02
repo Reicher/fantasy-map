@@ -1,11 +1,17 @@
 import { BIOME_INFO, BIOME_KEYS } from "../config.js";
-import { centroidFromCells } from "../utils.js";
+import { centroidFromCells, coordsOf, forEachNeighbor, indexOf } from "../utils.js";
 import { expandRegionIds, floodFillByKey, floodFillRegions } from "./grid.js";
 
-export function buildRegions(terrain, climate, hydrology) {
+export function buildRegions(terrain, climate, hydrology, params = {}) {
   const { width, height, size, isLand, mountainField } = terrain;
   const { biome } = climate;
   const { lakeIdByCell } = hydrology;
+  const minBiomeSize = Math.max(0, Math.round(Number(params.minBiomeSize ?? 4)));
+
+  collapseDiagonalBiomeSingletons(width, height, isLand, lakeIdByCell, biome, 2);
+  if (minBiomeSize > 0) {
+    simplifyTinyBiomePatches(width, height, isLand, lakeIdByCell, biome, minBiomeSize, 2);
+  }
 
   const biomeRegionId = new Int32Array(size);
   biomeRegionId.fill(-1);
@@ -92,4 +98,139 @@ export function buildRegions(terrain, climate, hydrology) {
     mountainRegionId,
     mountainRegions
   };
+}
+
+function collapseDiagonalBiomeSingletons(width, height, isLand, lakeIdByCell, biome, passes = 1) {
+  const orthogonalOffsets = [
+    [0, -1],
+    [1, 0],
+    [0, 1],
+    [-1, 0]
+  ];
+
+  for (let pass = 0; pass < passes; pass += 1) {
+    const changes = [];
+
+    for (let index = 0; index < biome.length; index += 1) {
+      if (isLand[index] !== 1 || lakeIdByCell[index] >= 0) {
+        continue;
+      }
+
+      const currentBiome = biome[index];
+      const [x, y] = coordsOf(index, width);
+      let sameOrthogonalNeighbors = 0;
+      const neighborCounts = new Map();
+
+      for (const [dx, dy] of orthogonalOffsets) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+          continue;
+        }
+
+        const neighbor = indexOf(nx, ny, width);
+        if (isLand[neighbor] !== 1 || lakeIdByCell[neighbor] >= 0) {
+          continue;
+        }
+
+        const neighborBiome = biome[neighbor];
+        if (neighborBiome === currentBiome) {
+          sameOrthogonalNeighbors += 1;
+        } else {
+          neighborCounts.set(neighborBiome, (neighborCounts.get(neighborBiome) ?? 0) + 1);
+        }
+      }
+
+      if (sameOrthogonalNeighbors > 0 || neighborCounts.size === 0) {
+        continue;
+      }
+
+      let targetBiome = null;
+      let bestCount = -1;
+      for (const [neighborBiome, count] of neighborCounts.entries()) {
+        if (count > bestCount) {
+          targetBiome = neighborBiome;
+          bestCount = count;
+        }
+      }
+
+      if (targetBiome != null) {
+        changes.push({ index, biome: targetBiome });
+      }
+    }
+
+    if (changes.length === 0) {
+      break;
+    }
+
+    for (const change of changes) {
+      biome[change.index] = change.biome;
+    }
+  }
+}
+
+function simplifyTinyBiomePatches(width, height, isLand, lakeIdByCell, biome, maxRegionSize = 4, passes = 2) {
+  for (let pass = 0; pass < passes; pass += 1) {
+    const groups = floodFillByKey(
+      width,
+      height,
+      (index) => isLand[index] === 1 && lakeIdByCell[index] < 0,
+      (index) => biome[index],
+      true
+    );
+    const changes = [];
+
+    for (const group of groups) {
+      if (group.cells.length > maxRegionSize) {
+        continue;
+      }
+
+      const neighborCounts = new Map();
+      for (const cell of group.cells) {
+        const [x, y] = coordsOf(cell, width);
+        forEachNeighbor(width, height, x, y, true, (nx, ny) => {
+          const neighbor = indexOf(nx, ny, width);
+          if (!isLand[neighbor] || lakeIdByCell[neighbor] >= 0) {
+            return;
+          }
+
+          const neighborBiome = biome[neighbor];
+          if (neighborBiome === group.key) {
+            return;
+          }
+
+          neighborCounts.set(neighborBiome, (neighborCounts.get(neighborBiome) ?? 0) + 1);
+        });
+      }
+
+      if (neighborCounts.size === 0) {
+        continue;
+      }
+
+      let targetBiome = null;
+      let bestScore = -1;
+      for (const [neighborBiome, count] of neighborCounts.entries()) {
+        if (count > bestScore) {
+          targetBiome = neighborBiome;
+          bestScore = count;
+        }
+      }
+
+      if (targetBiome == null) {
+        continue;
+      }
+
+      changes.push({ cells: group.cells, biome: targetBiome });
+    }
+
+    if (changes.length === 0) {
+      break;
+    }
+
+    for (const change of changes) {
+      for (const cell of change.cells) {
+        biome[cell] = change.biome;
+      }
+    }
+  }
 }

@@ -279,7 +279,7 @@ canvas[data-dragging="true"] {
 }
 
 .tooltip {
-  position: absolute;
+  position: fixed;
   pointer-events: none;
   z-index: 2;
   min-width: 160px;
