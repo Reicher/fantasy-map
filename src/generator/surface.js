@@ -10,14 +10,14 @@ export function buildSurfaceGeometry(world) {
     id: region.id,
     biome: region.biome,
     size: region.size,
-    loops: traceRenderLoops(region.cells, width, 1),
+    loops: traceRenderLoops(region.cells, width, 1, 0.9),
     stats: summarizeCells(region.cells, world)
   }));
 
   const lakes = hydrology.lakes.map((lake) => ({
     id: lake.id,
     size: lake.cells.length,
-    loops: traceRenderLoops(lake.cells, width, 2)
+    loops: traceRenderLoops(lake.cells, width, 2, 0.9)
   }));
 
   const snowMask = new Uint8Array(size);
@@ -47,7 +47,7 @@ export function buildSurfaceGeometry(world) {
     .map((cells, id) => ({
       id,
       size: cells.length,
-      loops: traceRenderLoops(cells, width, 1)
+      loops: traceRenderLoops(cells, width, 1, 0.9)
     }));
 
   const landCells = [];
@@ -57,7 +57,7 @@ export function buildSurfaceGeometry(world) {
     }
   }
 
-  const landLoops = traceRenderLoops(landCells, width, 2);
+  const landLoops = traceRenderLoops(landCells, width, 2, 1.2);
   const positiveCoastlines = landLoops.filter((loop) => signedArea(loop) > 0);
 
   return {
@@ -68,9 +68,11 @@ export function buildSurfaceGeometry(world) {
   };
 }
 
-function traceRenderLoops(cells, width, smoothingIterations = 1) {
+function traceRenderLoops(cells, width, smoothingIterations = 1, minLoopArea = 0) {
   const exactLoops = traceExactLoops(cells, width);
-  return exactLoops.map((loop) => smoothLoop(loop, smoothingIterations));
+  return exactLoops
+    .map((loop) => smoothLoop(loop, smoothingIterations))
+    .filter((loop) => Math.abs(signedArea(loop)) >= minLoopArea);
 }
 
 function summarizeCells(cells, world) {

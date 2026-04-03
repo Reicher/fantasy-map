@@ -1,24 +1,28 @@
 import { BIOME_KEYS } from "../config.js";
 
 export function drawLabels(ctx, world, viewport, options = {}) {
-  const { showBiomeLabels = false, showCityLabels = false } = options;
+  const { showBiomeLabels = false, showCityLabels = false, discoveredCells = null } = options;
   const placedBoxes = [];
   const regionLabelSettings = getRegionLabelSettings(viewport);
 
   if (showBiomeLabels) {
-    drawLakeLabels(ctx, world, viewport, placedBoxes, regionLabelSettings);
-    drawMountainLabels(ctx, world, viewport, placedBoxes, regionLabelSettings);
-    drawBiomeLabels(ctx, world, viewport, placedBoxes, regionLabelSettings);
+    drawLakeLabels(ctx, world, viewport, placedBoxes, regionLabelSettings, discoveredCells);
+    drawMountainLabels(ctx, world, viewport, placedBoxes, regionLabelSettings, discoveredCells);
+    drawBiomeLabels(ctx, world, viewport, placedBoxes, regionLabelSettings, discoveredCells);
   }
 
   if (showCityLabels) {
-    drawCityLabels(ctx, world, viewport, placedBoxes);
+    drawCityLabels(ctx, world, viewport, placedBoxes, options.cityLabelIds ?? null);
   }
 }
 
-function drawLakeLabels(ctx, world, viewport, placedBoxes, settings) {
+function drawLakeLabels(ctx, world, viewport, placedBoxes, settings, discoveredCells) {
   const lakes = [...(world.geometry.labels.lakes ?? [])]
-    .filter((lake) => lake.size >= settings.lakes.minSize)
+    .filter(
+      (lake) =>
+        lake.size >= settings.lakes.minSize &&
+        isWorldPointDiscovered(world, discoveredCells, lake.anchor)
+    )
     .sort((a, b) => b.size - a.size)
     .slice(0, settings.lakes.maxCount);
 
@@ -54,9 +58,14 @@ function drawLakeLabels(ctx, world, viewport, placedBoxes, settings) {
   ctx.restore();
 }
 
-function drawBiomeLabels(ctx, world, viewport, placedBoxes, settings) {
+function drawBiomeLabels(ctx, world, viewport, placedBoxes, settings, discoveredCells) {
   const regions = [...world.geometry.labels.biomeRegions]
-    .filter((region) => region.size >= settings.biomes.minSize && region.biome !== BIOME_KEYS.MOUNTAIN)
+    .filter(
+      (region) =>
+        region.size >= settings.biomes.minSize &&
+        region.biome !== BIOME_KEYS.MOUNTAIN &&
+        hasDiscoveredLabelAnchor(world, discoveredCells, region)
+    )
     .sort((a, b) => b.size - a.size)
     .slice(0, settings.biomes.maxCount);
 
@@ -71,7 +80,16 @@ function drawBiomeLabels(ctx, world, viewport, placedBoxes, settings) {
 
     ctx.font = style.font;
     const anchors = region.candidates?.length ? region.candidates : [region.anchor];
-    const placement = findLabelPlacement(ctx, viewport, anchors, label, fontSize, placedBoxes);
+    const placement = findLabelPlacement(
+      ctx,
+      world,
+      viewport,
+      anchors,
+      label,
+      fontSize,
+      placedBoxes,
+      discoveredCells
+    );
     if (!placement) {
       continue;
     }
@@ -87,9 +105,13 @@ function drawBiomeLabels(ctx, world, viewport, placedBoxes, settings) {
   ctx.restore();
 }
 
-function drawMountainLabels(ctx, world, viewport, placedBoxes, settings) {
+function drawMountainLabels(ctx, world, viewport, placedBoxes, settings, discoveredCells) {
   const regions = [...(world.geometry.labels.mountainRegions ?? [])]
-    .filter((region) => region.size >= settings.mountains.minSize)
+    .filter(
+      (region) =>
+        region.size >= settings.mountains.minSize &&
+        hasDiscoveredLabelAnchor(world, discoveredCells, region)
+    )
     .sort((a, b) => b.size - a.size)
     .slice(0, settings.mountains.maxCount);
 
@@ -103,7 +125,16 @@ function drawMountainLabels(ctx, world, viewport, placedBoxes, settings) {
 
     ctx.font = `600 ${fontSize}px Baskerville, "Palatino Linotype", Georgia, serif`;
     const anchors = region.candidates?.length ? region.candidates : [region.anchor];
-    const placement = findLabelPlacement(ctx, viewport, anchors, label, fontSize, placedBoxes);
+    const placement = findLabelPlacement(
+      ctx,
+      world,
+      viewport,
+      anchors,
+      label,
+      fontSize,
+      placedBoxes,
+      discoveredCells
+    );
     if (!placement) {
       continue;
     }
@@ -119,10 +150,13 @@ function drawMountainLabels(ctx, world, viewport, placedBoxes, settings) {
   ctx.restore();
 }
 
-function findLabelPlacement(ctx, viewport, anchors, label, fontSize, placedBoxes) {
+function findLabelPlacement(ctx, world, viewport, anchors, label, fontSize, placedBoxes, discoveredCells) {
   const textWidth = ctx.measureText(label).width;
 
   for (const anchor of anchors) {
+    if (!isWorldPointDiscovered(world, discoveredCells, anchor)) {
+      continue;
+    }
     const point = viewport.worldToCanvas(anchor.x - 0.5, anchor.y - 0.5);
     const box = {
       left: point.x - textWidth * 0.58,
@@ -138,13 +172,38 @@ function findLabelPlacement(ctx, viewport, anchors, label, fontSize, placedBoxes
   return null;
 }
 
-function drawCityLabels(ctx, world, viewport, placedBoxes) {
+function hasDiscoveredLabelAnchor(world, discoveredCells, region) {
+  if (!discoveredCells) {
+    return true;
+  }
+
+  const anchors = region.candidates?.length ? region.candidates : [region.anchor];
+  return anchors.some((anchor) => isWorldPointDiscovered(world, discoveredCells, anchor));
+}
+
+function isWorldPointDiscovered(world, discoveredCells, point) {
+  if (!discoveredCells || !point) {
+    return true;
+  }
+
+  const x = Math.max(0, Math.min(world.terrain.width - 1, Math.floor(point.x)));
+  const y = Math.max(0, Math.min(world.terrain.height - 1, Math.floor(point.y)));
+  return Boolean(discoveredCells[y * world.terrain.width + x]);
+}
+
+function drawCityLabels(ctx, world, viewport, placedBoxes, visibleCityIds = null) {
+  const allowedIds = visibleCityIds ? new Set(visibleCityIds) : null;
+
   ctx.save();
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.font = '15px Baskerville, "Palatino Linotype", Georgia, serif';
 
   for (const city of world.geometry.labels.cities) {
+    if (allowedIds && !allowedIds.has(city.id)) {
+      continue;
+    }
+
     const point = viewport.worldToCanvas(city.x - 0.5, city.y - 0.5);
     const labelX = point.x + 8;
     const labelY = point.y - 8;

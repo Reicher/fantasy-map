@@ -13,7 +13,7 @@ export function drawRivers(ctx, geometry, viewport) {
       continue;
     }
 
-    const lineWidth = clamp(1.2 + river.width * 0.6 + river.cellCount / 40, 1.2, 5.2);
+    const lineWidth = clamp(1.7 + river.width * 0.82 + river.cellCount / 34, 1.7, 6.4);
     ctx.strokeStyle = "rgba(138, 160, 168, 0.98)";
     ctx.lineWidth = lineWidth;
     strokeRiverPath(ctx, points, Math.max(8, lineWidth * 2.8));
@@ -29,7 +29,7 @@ export function drawRivers(ctx, geometry, viewport) {
         continue;
       }
 
-      const branchWidth = clamp(1 + branch.width * 0.56 + river.cellCount / 68, 0.95, 3.4);
+      const branchWidth = clamp(1.3 + branch.width * 0.68 + river.cellCount / 58, 1.2, 4.2);
       ctx.strokeStyle = "rgba(138, 160, 168, 0.96)";
       ctx.lineWidth = branchWidth;
       strokeRiverPath(ctx, branchPoints, Math.max(6, branchWidth * 2.4));

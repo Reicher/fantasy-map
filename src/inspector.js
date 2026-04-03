@@ -6,7 +6,7 @@ export function inspectWorldAt(world, worldX, worldY, renderContext = null) {
   const x = clamp(Math.floor(worldX), 0, world.terrain.width - 1);
   const y = clamp(Math.floor(worldY), 0, world.terrain.height - 1);
   const index = y * world.terrain.width + x;
-  const { cities, lakes, mountainRegions, biomeRegions, indices } = world.features;
+  const { cities, lakes, biomeRegions, indices } = world.features;
 
   let nearestCity = null;
   for (const city of cities) {
@@ -45,15 +45,6 @@ export function inspectWorldAt(world, worldX, worldY, renderContext = null) {
   if (glyphMountainRegion) {
     return {
       title: glyphMountainRegion.name,
-      subtitle: "Bergsområde"
-    };
-  }
-
-  const mountainRegionId = indices.mountainRegionId[index];
-  if (mountainRegionId >= 0) {
-    const region = mountainRegions[mountainRegionId];
-    return {
-      title: region.name,
       subtitle: "Bergsområde"
     };
   }

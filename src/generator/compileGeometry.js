@@ -89,17 +89,22 @@ function compileLabelGeometry(world) {
     )
   }));
 
-  const cities = world.features.cities.map((city) => ({
-    id: city.id,
-    name: city.name,
-    x: city.x + 0.5,
-    y: city.y + 0.5
+  const pointsOfInterest = world.features.pointsOfInterest.map((poi) => ({
+    id: poi.id,
+    kind: poi.kind ?? "city",
+    marker: poi.marker ?? "dot",
+    name: poi.name,
+    x: poi.x + 0.5,
+    y: poi.y + 0.5
   }));
+
+  const cities = pointsOfInterest.filter((poi) => poi.kind === "city");
 
   return {
     biomeRegions,
     mountainRegions,
     lakes,
+    pointsOfInterest,
     cities
   };
 }

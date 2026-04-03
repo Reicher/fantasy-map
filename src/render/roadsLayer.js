@@ -30,9 +30,14 @@ export function drawRoads(ctx, geometry, viewport) {
       continue;
     }
 
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "rgba(145, 92, 76, 0.26)";
+    ctx.lineWidth = 2.35;
+    strokeSmoothPath(ctx, wobblePoints);
+
     ctx.setLineDash(getRoadDashPattern(roadIndex));
-    ctx.strokeStyle = "rgba(128, 70, 58, 0.72)";
-    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = "rgba(122, 61, 53, 0.86)";
+    ctx.lineWidth = 1.75;
     strokeSmoothPath(ctx, wobblePoints);
   }
 
@@ -72,7 +77,7 @@ function getRoadWobblePoints(points, roadIndex, wobble) {
 
 function getRoadDashPattern(roadIndex) {
   const noise = roadNoise(roadIndex, 91);
-  return [6.2 + noise * 2.8, 7.4 + roadNoise(roadIndex, 137) * 3.8];
+  return [6.8 + noise * 2.6, 8.2 + roadNoise(roadIndex, 137) * 3.5];
 }
 
 function roadNoise(roadIndex, pointIndex) {

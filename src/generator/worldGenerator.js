@@ -2,32 +2,33 @@ import { createNameGenerator } from "../naming.js?v=20260402d";
 import { createRng } from "../random.js";
 import { generateCities } from "./cities.js?v=20260402a";
 import { generateClimate } from "./climate.js?v=20260331k";
-import { compileGeometry } from "./compileGeometry.js?v=20260402j";
-import { buildFeatureCatalog } from "./features.js";
+import { compileGeometry } from "./compileGeometry.js?v=20260403a";
+import { buildFeatureCatalog } from "./features.js?v=20260403a";
 import { generateHydrology } from "./hydrology.js?v=20260402b";
 import { buildWorldNetwork } from "./network.js?v=20260401i";
 import { applyFeatureNames } from "./nameFeatures.js";
 import { buildRegions } from "./regions.js?v=20260402c";
 import { generateRoads } from "./roads.js?v=20260401q";
-import { buildSurfaceGeometry } from "./surface.js?v=20260402b";
+import { buildSurfaceGeometry } from "./surface.js?v=20260403b";
 import { generateTerrain } from "./terrain.js?v=20260401i";
 import { buildTravelGraph } from "./travelGraph.js?v=20260401a";
 import { buildWorldStats } from "./worldStats.js?v=20260402c";
 
 export function normalizeParams(input) {
-  const legacyWater = Number(input.waterRichness ?? 56);
-  const rawEdgeDetail = Number(input.edgeDetail ?? 300);
+  const legacyWater = asNumber(input.waterRichness, 56);
   return {
-    seed: String(input.seed ?? "saltwind-01"),
-    mapSize: Number(input.mapSize ?? 58),
-    mountainousness: Number(input.mountainousness ?? 54),
-    cityDensity: Number(input.cityDensity ?? 42),
-    riverAmount: Number(input.riverAmount ?? 56),
-    lakeAmount: Number(input.lakeAmount ?? legacyWater),
-    lakeSize: Number(input.lakeSize ?? legacyWater),
-    coastComplexity: Number(input.coastComplexity ?? 62),
-    edgeDetail: rawEdgeDetail <= 100 ? 180 + (rawEdgeDetail / 100) * 340 : rawEdgeDetail,
-    minBiomeSize: Number(input.minBiomeSize ?? 4)
+    seed: String(input.seed ?? "saltwind-01").trim() || "saltwind-01",
+    mapSize: clamp(asNumber(input.mapSize, 58), 10, 100),
+    mountainousness: clamp(asNumber(input.mountainousness, 54), 0, 100),
+    cityDensity: clamp(asNumber(input.cityDensity, 42), 0, 100),
+    riverAmount: clamp(asNumber(input.riverAmount, 56), 0, 100),
+    lakeAmount: clamp(asNumber(input.lakeAmount, legacyWater), 0, 100),
+    lakeSize: clamp(asNumber(input.lakeSize, legacyWater), 0, 100),
+    coastComplexity: clamp(asNumber(input.coastComplexity, 62), 0, 100),
+    edgeDetail: clamp(asNumber(input.edgeDetail, 300), 180, 520),
+    minBiomeSize: clamp(asNumber(input.minBiomeSize, 8), 0, 20),
+    renderScale: clamp(asNumber(input.renderScale, 125), 50, 250),
+    fogVisionRadius: clamp(asNumber(input.fogVisionRadius, 18), 6, 40)
   };
 }
 
@@ -77,4 +78,13 @@ function selectPlayerStart(cities, seed) {
     x: city.x,
     y: city.y
   };
+}
+
+function asNumber(value, fallback) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }

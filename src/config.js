@@ -13,17 +13,10 @@ export const DEFAULT_PARAMS = {
   lakeSize: 52,
   coastComplexity: 62,
   edgeDetail: 300,
-  minBiomeSize: 4
+  minBiomeSize: 8,
+  renderScale: 125,
+  fogVisionRadius: 18
 };
-
-function bandLabel(value, bands) {
-  for (const band of bands) {
-    if (value <= band.max) {
-      return band.label;
-    }
-  }
-  return bands[bands.length - 1].label;
-}
 
 export const PARAM_LABELS = {
   mapSize: (value) => `${value}%`,
@@ -34,7 +27,9 @@ export const PARAM_LABELS = {
   lakeSize: (value) => `${value}%`,
   coastComplexity: (value) => `${value}%`,
   edgeDetail: (value) => `${Math.round(value)} x ${Math.round(value * (MAP_HEIGHT / MAP_WIDTH))}`,
-  minBiomeSize: (value) => `${Math.round(value)} celler`
+  minBiomeSize: (value) => `${Math.round(value)} celler`,
+  renderScale: (value) => `${(Math.max(50, value) / 100).toFixed(value % 100 === 0 ? 0 : 2)}x`,
+  fogVisionRadius: (value) => `${Math.round(value)} celler`
 };
 
 export const BIOME_KEYS = {

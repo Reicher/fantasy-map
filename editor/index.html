@@ -5,14 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Isolerad fantasivärld</title>
     <script>
-      (() => {
-        const path = window.location.pathname.replace(/\/+$/, "") || "/";
-        document.documentElement.dataset.route =
-          path === "/editor" || path === "/editor/index.html" ? "editor" : "play";
-      })();
+      document.documentElement.dataset.route = "editor";
     </script>
     <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="%23e6d7b6"/><path d="M6 22 L13 10 L20 22 M12 17 L16 12 L23 22" fill="none" stroke="%23543f27" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' />
-    <link rel="stylesheet" href="./styles.css?v=20260403ak" />
+    <link rel="stylesheet" href="../styles.css?v=20260403ak" />
   </head>
   <body>
     <div id="editor-shell" class="app-shell">
@@ -259,6 +255,6 @@
       </div>
     </section>
 
-    <script type="module" src="./src/app.js?v=20260403by"></script>
+    <script type="module" src="../src/app.js?v=20260403by"></script>
   </body>
 </html>

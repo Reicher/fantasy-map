@@ -1,6 +1,18 @@
-import { PARAM_LABELS } from "../config.js?v=20260402d";
+import { PARAM_LABELS } from "../config.js?v=20260403d";
 
-const RANGE_KEYS = ["mapSize", "mountainousness", "cityDensity", "riverAmount", "lakeAmount", "lakeSize", "coastComplexity", "edgeDetail", "minBiomeSize"];
+const RANGE_KEYS = [
+  "mapSize",
+  "mountainousness",
+  "cityDensity",
+  "riverAmount",
+  "lakeAmount",
+  "lakeSize",
+  "coastComplexity",
+  "edgeDetail",
+  "minBiomeSize",
+  "renderScale",
+  "fogVisionRadius"
+];
 
 export function hydrateForm(params) {
   document.querySelector("#seed").value = params.seed;
@@ -13,6 +25,8 @@ export function hydrateForm(params) {
   document.querySelector("#coastComplexity").value = params.coastComplexity;
   document.querySelector("#edgeDetail").value = params.edgeDetail;
   document.querySelector("#minBiomeSize").value = params.minBiomeSize;
+  document.querySelector("#renderScale").value = params.renderScale;
+  document.querySelector("#fogVisionRadius").value = params.fogVisionRadius;
 }
 
 export function getFormValues(form) {
@@ -27,7 +41,9 @@ export function getFormValues(form) {
     lakeSize: Number(data.get("lakeSize")),
     coastComplexity: Number(data.get("coastComplexity")),
     edgeDetail: Number(data.get("edgeDetail")),
-    minBiomeSize: Number(data.get("minBiomeSize"))
+    minBiomeSize: Number(data.get("minBiomeSize")),
+    renderScale: Number(data.get("renderScale")),
+    fogVisionRadius: Number(data.get("fogVisionRadius"))
   };
 }
 

@@ -1,31 +1,36 @@
 export function drawCities(ctx, cities, viewport, options = {}) {
-  const validCityIds = new Set(options.validCityIds ?? []);
-  const hoveredCityId = options.hoveredCityId ?? null;
-  const pressedCityId = options.pressedCityId ?? null;
-  const symbolScale = getCityZoomScale(viewport);
+  const pointsOfInterest = cities.map((city) => ({
+    ...city,
+    kind: city.kind ?? "city",
+    marker: city.marker ?? "dot"
+  }));
+  drawPointsOfInterest(ctx, pointsOfInterest, viewport, options);
+}
 
-  for (const city of cities) {
-    const point = viewport.worldToCanvas(city.x, city.y);
+export function drawPointsOfInterest(ctx, pointsOfInterest, viewport, options = {}) {
+  const validIds = new Set(options.validCityIds ?? options.validPoiIds ?? []);
+  const visibleIds = new Set(options.visibleCityIds ?? options.visiblePoiIds ?? options.validCityIds ?? options.validPoiIds ?? []);
+  const hoveredId = options.hoveredCityId ?? options.hoveredPoiId ?? null;
+  const pressedId = options.pressedCityId ?? options.pressedPoiId ?? null;
+  const onlyValid = options.onlyValid === true;
+  const symbolScale = getPoiZoomScale(viewport);
 
-    if (validCityIds.has(city.id)) {
-      ctx.beginPath();
-      ctx.fillStyle =
-        city.id === pressedCityId
-          ? "rgba(214, 156, 68, 0.95)"
-          : city.id === hoveredCityId
-            ? "rgba(233, 191, 108, 0.88)"
-            : "rgba(247, 237, 206, 0.74)";
-      ctx.arc(
-        point.x,
-        point.y,
-        (city.id === hoveredCityId || city.id === pressedCityId ? 8.5 : 6.7) * symbolScale,
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
+  for (const poi of pointsOfInterest) {
+    if (onlyValid && !visibleIds.has(poi.id)) {
+      continue;
     }
 
-    drawCityGlyph(ctx, point.x, point.y, symbolScale);
+    const point = viewport.worldToCanvas(poi.x, poi.y);
+
+    if (validIds.has(poi.id)) {
+      drawPoiTargetHalo(ctx, point.x, point.y, symbolScale, poi.id === hoveredId, poi.id === pressedId);
+    }
+
+    drawPoiGlyph(ctx, poi, point.x, point.y, symbolScale, {
+      highlighted: validIds.has(poi.id),
+      hovered: poi.id === hoveredId,
+      pressed: poi.id === pressedId
+    });
   }
 }
 
@@ -47,42 +52,57 @@ export function drawPlayerMarker(ctx, playerStart, viewport) {
   ctx.fill();
 }
 
-function drawCityGlyph(ctx, x, y, scale = 1) {
+function drawPoiTargetHalo(ctx, x, y, scale, hovered, pressed) {
   ctx.save();
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
-
-  ctx.fillStyle = "#f4ebd6";
-  ctx.strokeStyle = "#3a2d1d";
-  ctx.lineWidth = Math.max(0.9, 1 * scale);
-
   ctx.beginPath();
-  ctx.moveTo(x - 4.4 * scale, y + 2.6 * scale);
-  ctx.lineTo(x - 4.4 * scale, y - 0.8 * scale);
-  ctx.lineTo(x, y - 4.6 * scale);
-  ctx.lineTo(x + 4.4 * scale, y - 0.8 * scale);
-  ctx.lineTo(x + 4.4 * scale, y + 2.6 * scale);
-  ctx.closePath();
+  ctx.fillStyle = pressed
+    ? "rgba(206, 135, 89, 0.18)"
+    : hovered
+      ? "rgba(214, 154, 108, 0.16)"
+      : "rgba(171, 104, 81, 0.12)";
+  ctx.arc(x, y, (hovered || pressed ? 8.8 : 7.2) * scale, 0, Math.PI * 2);
   ctx.fill();
-  ctx.stroke();
+  ctx.restore();
+}
+
+function drawPoiGlyph(ctx, poi, x, y, scale, state) {
+  switch (poi.marker) {
+    case "dot":
+    default:
+      drawPoiDot(ctx, x, y, scale, state);
+      break;
+  }
+}
+
+function drawPoiDot(ctx, x, y, scale, state) {
+  const outerRadius = (state.hovered || state.pressed ? 4.5 : 3.9) * scale;
+  const innerRadius = (state.hovered || state.pressed ? 2.15 : 1.85) * scale;
+
+  ctx.save();
 
   ctx.beginPath();
-  ctx.moveTo(x - 1.1 * scale, y + 2.6 * scale);
-  ctx.lineTo(x - 1.1 * scale, y + 0.4 * scale);
-  ctx.lineTo(x + 1.1 * scale, y + 0.4 * scale);
-  ctx.lineTo(x + 1.1 * scale, y + 2.6 * scale);
-  ctx.stroke();
+  ctx.fillStyle = "rgba(247, 239, 218, 0.96)";
+  ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
+  ctx.fill();
 
   ctx.beginPath();
-  ctx.moveTo(x - 2.8 * scale, y - 0.2 * scale);
-  ctx.lineTo(x - 2.8 * scale, y - 4.8 * scale);
-  ctx.lineTo(x - 1.9 * scale, y - 4.8 * scale);
-  ctx.lineTo(x - 1.9 * scale, y - 0.7 * scale);
+  ctx.fillStyle = state.pressed
+    ? "rgba(121, 48, 39, 0.98)"
+    : state.hovered
+      ? "rgba(104, 47, 39, 0.96)"
+      : "rgba(72, 43, 31, 0.94)";
+  ctx.arc(x, y, innerRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.strokeStyle = "rgba(70, 48, 33, 0.9)";
+  ctx.lineWidth = Math.max(0.9, 1.05 * scale);
+  ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
   ctx.stroke();
 
   ctx.restore();
 }
 
-function getCityZoomScale(viewport) {
+function getPoiZoomScale(viewport) {
   return Math.max(1, Math.min(3.6, viewport.zoom));
 }

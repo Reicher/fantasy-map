@@ -1,15 +1,23 @@
-import { createViewport } from "../render/renderer.js?v=20260401ad";
+import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
+import { createViewport } from "../render/renderer.js?v=20260403aq";
 import { findPlayableCityAtWorldPoint } from "../game/playQueries.js?v=20260401a";
 
 export function createPlayController({
   playCanvas,
+  tooltip,
   state,
+  profiler,
   renderPlayWorld,
   createPlayCamera,
   beginTravel,
   advanceTravel,
-  getValidTargetIds
+  getValidTargetIds,
+  inspectWorldAt,
+  clearHover,
+  showHoverHit
 }) {
+  let lastRenderedAt = 0;
+
   playCanvas.addEventListener("pointermove", (event) => {
     if (
       state.currentMode !== "play" ||
@@ -18,6 +26,39 @@ export function createPlayController({
       state.playState.viewMode !== "map"
     ) {
       return;
+    }
+
+    const rect = playCanvas.getBoundingClientRect();
+    const canvasX = ((event.clientX - rect.left) / rect.width) * RENDER_WIDTH;
+    const canvasY = ((event.clientY - rect.top) / rect.height) * RENDER_HEIGHT;
+    const viewport = createViewport(state.currentWorld, createPlayCamera());
+    const worldPoint = viewport.canvasToWorld(canvasX, canvasY);
+    const hoveredCityId = state.playState.travel ? null : findPlayableCityAtEvent(event);
+
+    if (hoveredCityId != null) {
+      const city = state.currentWorld.cities[hoveredCityId];
+      showHoverHit(
+        {
+          title: city?.name ?? "Okänd plats",
+          subtitle: "Resmål"
+        },
+        tooltip,
+        event.clientX,
+        event.clientY
+      );
+    } else if (state.playMapOptions?.showHoverInspector) {
+      const hit = inspectWorldAt(state.currentWorld, worldPoint.x, worldPoint.y, {
+        canvasX,
+        canvasY,
+        viewport
+      });
+      if (hit) {
+        showHoverHit(hit, tooltip, event.clientX, event.clientY);
+      } else {
+        clearHover(tooltip);
+      }
+    } else {
+      clearHover(tooltip);
     }
 
     if (state.playState.travel) {
@@ -33,7 +74,6 @@ export function createPlayController({
       return;
     }
 
-    const hoveredCityId = findPlayableCityAtEvent(event);
     if (hoveredCityId === state.playState.hoveredCityId) {
       return;
     }
@@ -93,7 +133,10 @@ export function createPlayController({
     };
 
     if (shouldTravel) {
-      state.playState = beginTravel(state.playState, targetCityId);
+      state.playState = {
+        ...beginTravel(state.playState, targetCityId),
+        viewMode: "journey"
+      };
       ensureAnimation();
       playCanvas.style.cursor = "default";
     }
@@ -107,6 +150,7 @@ export function createPlayController({
     }
 
     playCanvas.style.cursor = "default";
+    clearHover(tooltip);
     state.playState = {
       ...state.playState,
       hoveredCityId: null,
@@ -127,8 +171,8 @@ export function createPlayController({
     }
 
     const rect = playCanvas.getBoundingClientRect();
-    const canvasX = ((event.clientX - rect.left) / rect.width) * playCanvas.width;
-    const canvasY = ((event.clientY - rect.top) / rect.height) * playCanvas.height;
+    const canvasX = ((event.clientX - rect.left) / rect.width) * RENDER_WIDTH;
+    const canvasY = ((event.clientY - rect.top) / rect.height) * RENDER_HEIGHT;
     const viewport = createViewport(state.currentWorld, createPlayCamera());
     const worldPoint = viewport.canvasToWorld(canvasX, canvasY);
     return findPlayableCityAtWorldPoint(
@@ -141,24 +185,48 @@ export function createPlayController({
   }
 
   function ensureAnimation() {
-    if (state.playAnimationFrame != null || !state.playState?.travel) {
+    const shouldAnimate = state.currentMode === "play" && (state.playState?.travel || state.playState?.viewMode === "journey");
+    if (state.playAnimationFrame != null || !shouldAnimate) {
       return;
     }
 
     state.lastTravelTick = performance.now();
     const step = (timestamp) => {
       state.playAnimationFrame = null;
-      if (state.currentMode !== "play" || !state.playState?.travel) {
+      const shouldKeepAnimating =
+        state.currentMode === "play" && (state.playState?.travel || state.playState?.viewMode === "journey");
+      if (!shouldKeepAnimating) {
         return;
       }
 
+      profiler.frame(timestamp);
+
       const delta = timestamp - state.lastTravelTick;
       state.lastTravelTick = timestamp;
-      state.playState = advanceTravel(state.playState, state.currentWorld, delta);
-      renderPlayWorld();
+      if (state.playState?.travel) {
+        state.playState = profiler.measure("advance-travel", () =>
+          advanceTravel(state.playState, state.currentWorld, delta)
+        );
+        profiler.count("travel-ticks");
+      }
+      profiler.setSnapshot({
+        viewMode: state.playState?.viewMode ?? "unknown",
+        traveling: state.playState?.travel ? "yes" : "no"
+      });
+      const isJourney = state.playState?.viewMode === "journey";
+      const shouldRenderMapFrame =
+        !isJourney && (timestamp - lastRenderedAt >= 66 || !state.playState.travel);
 
-      if (state.playState.travel) {
+      if (isJourney || shouldRenderMapFrame) {
+        renderPlayWorld();
+        lastRenderedAt = timestamp;
+      }
+
+      if (state.playState.travel || isJourney) {
         state.playAnimationFrame = requestAnimationFrame(step);
+      } else if (!isJourney) {
+        renderPlayWorld();
+        lastRenderedAt = timestamp;
       }
     };
 
@@ -170,5 +238,6 @@ export function createPlayController({
       cancelAnimationFrame(state.playAnimationFrame);
       state.playAnimationFrame = null;
     }
+    lastRenderedAt = 0;
   }
 }

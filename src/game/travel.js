@@ -5,6 +5,8 @@ export function createPlayState(world) {
   const currentCity = currentCityId == null ? null : world.cities[currentCityId];
   const lastRegionId =
     currentCity && currentCity.cell != null ? regionIdAtCell(world, currentCity.cell) : null;
+  const discoveredCells = new Uint8Array(world.terrain.width * world.terrain.height);
+  revealAroundPosition(world, discoveredCells, currentCity ? { x: currentCity.x, y: currentCity.y } : null);
 
   return {
     graph: world.travelGraph,
@@ -14,7 +16,9 @@ export function createPlayState(world) {
     lastRegionId,
     hoveredCityId: null,
     pressedCityId: null,
-    travel: null
+    travel: null,
+    discoveredCells,
+    fogDirty: true
   };
 }
 
@@ -64,16 +68,22 @@ export function advanceTravel(playState, world, deltaMs) {
   const sample = samplePath(playState.travel.points, playState.travel.segmentLengths, nextProgress);
   const sampledRegionId = regionIdAtPosition(world, sample.point);
   const lastRegionId = sampledRegionId ?? playState.lastRegionId ?? null;
+  const discoveredCells = playState.discoveredCells ?? new Uint8Array(world.terrain.width * world.terrain.height);
+  const revealed = revealAroundPosition(world, discoveredCells, sample.point);
 
   if (nextProgress >= playState.travel.totalLength - 0.0001) {
     const city = world.cities[playState.travel.targetCityId];
+    const finalPosition = city ? { x: city.x, y: city.y } : sample.point;
+    const finalReveal = revealAroundPosition(world, discoveredCells, finalPosition);
     return {
       ...playState,
       currentCityId: playState.travel.targetCityId,
-      position: city ? { x: city.x, y: city.y } : sample.point,
+      position: finalPosition,
       lastRegionId:
         city && city.cell != null ? regionIdAtCell(world, city.cell) ?? lastRegionId : lastRegionId,
-      travel: null
+      travel: null,
+      discoveredCells,
+      fogDirty: playState.fogDirty || revealed || finalReveal
     };
   }
 
@@ -81,6 +91,8 @@ export function advanceTravel(playState, world, deltaMs) {
     ...playState,
     position: sample.point,
     lastRegionId,
+    discoveredCells,
+    fogDirty: playState.fogDirty || revealed,
     travel: {
       ...playState.travel,
       progress: nextProgress
@@ -181,4 +193,37 @@ function regionIdAtCell(world, cell) {
 
   const regionId = world.features.indices.biomeRegionId[cell];
   return regionId == null || regionId < 0 ? null : regionId;
+}
+
+function revealAroundPosition(world, discoveredCells, position) {
+  if (!world || !discoveredCells || !position) {
+    return false;
+  }
+
+  const baseRadius = Math.max(1, Number(world.params?.fogVisionRadius ?? 18));
+  const radius = Math.max(1, Math.round(baseRadius * 1.5));
+  const radiusSq = (radius + 0.35) * (radius + 0.35);
+  const minX = Math.max(0, Math.floor(position.x - radius));
+  const maxX = Math.min(world.terrain.width - 1, Math.ceil(position.x + radius));
+  const minY = Math.max(0, Math.floor(position.y - radius));
+  const maxY = Math.min(world.terrain.height - 1, Math.ceil(position.y + radius));
+  let changed = false;
+
+  for (let y = minY; y <= maxY; y += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      const dx = x + 0.5 - position.x;
+      const dy = y + 0.5 - position.y;
+      if (dx * dx + dy * dy > radiusSq) {
+        continue;
+      }
+      const index = y * world.terrain.width + x;
+      if (discoveredCells[index]) {
+        continue;
+      }
+      discoveredCells[index] = 1;
+      changed = true;
+    }
+  }
+
+  return changed;
 }

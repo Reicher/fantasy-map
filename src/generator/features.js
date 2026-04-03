@@ -1,5 +1,12 @@
 export function buildFeatureCatalog(world) {
-  const cities = world.cities.map((city) => toPointFeature(city));
+  const pointsOfInterest = world.cities.map((city) =>
+    toPointFeature({
+      ...city,
+      kind: "city",
+      marker: "dot"
+    })
+  );
+  const cities = pointsOfInterest;
   const lakes = world.hydrology.lakes.map((lake) => toAreaFeature(lake));
   const rivers = world.hydrology.rivers.map((river) => toLinearFeature(river));
   const biomeRegions = world.regions.biomeRegions.map((region) => toAreaFeature(region));
@@ -7,6 +14,7 @@ export function buildFeatureCatalog(world) {
   const roads = world.roads.roads.map((road) => toLinearFeature(road));
 
   return {
+    pointsOfInterest,
     cities,
     lakes,
     rivers,

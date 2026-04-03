@@ -1,3 +1,5 @@
+import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
+
 export function attachEditorController({
   canvas,
   tooltip,
@@ -18,8 +20,8 @@ export function attachEditorController({
 
     const rect = canvas.getBoundingClientRect();
     state.dragState = {
-      startX: ((event.clientX - rect.left) / rect.width) * canvas.width,
-      startY: ((event.clientY - rect.top) / rect.height) * canvas.height,
+      startX: ((event.clientX - rect.left) / rect.width) * RENDER_WIDTH,
+      startY: ((event.clientY - rect.top) / rect.height) * RENDER_HEIGHT,
       centerX: state.cameraState.centerX,
       centerY: state.cameraState.centerY
     };
@@ -33,8 +35,8 @@ export function attachEditorController({
     }
 
     const rect = canvas.getBoundingClientRect();
-    const canvasX = ((event.clientX - rect.left) / rect.width) * canvas.width;
-    const canvasY = ((event.clientY - rect.top) / rect.height) * canvas.height;
+    const canvasX = ((event.clientX - rect.left) / rect.width) * RENDER_WIDTH;
+    const canvasY = ((event.clientY - rect.top) / rect.height) * RENDER_HEIGHT;
 
     if (state.dragState) {
       const dx = canvasX - state.dragState.startX;
@@ -94,8 +96,8 @@ export function attachEditorController({
 
       event.preventDefault();
       const rect = canvas.getBoundingClientRect();
-      const canvasX = ((event.clientX - rect.left) / rect.width) * canvas.width;
-      const canvasY = ((event.clientY - rect.top) / rect.height) * canvas.height;
+      const canvasX = ((event.clientX - rect.left) / rect.width) * RENDER_WIDTH;
+      const canvasY = ((event.clientY - rect.top) / rect.height) * RENDER_HEIGHT;
       const worldPoint = state.currentViewport.canvasToWorld(canvasX, canvasY);
       const zoomFactor = event.deltaY < 0 ? 1.16 : 1 / 1.16;
       const zoom = clampNumber(state.cameraState.zoom * zoomFactor, 1, 4.5);

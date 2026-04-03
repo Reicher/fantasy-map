@@ -3,9 +3,11 @@ import { isSnowCell } from "../generator/surfaceModel.js?v=20260401a";
 import { coordsOf } from "../utils.js";
 import { glyphNoise } from "./hash.js";
 
-export function drawForests(ctx, world, viewport) {
+export function collectForestRenderGlyphs(world, viewport, options = {}) {
+  const showSnow = options.showSnow !== false;
   const regionFeatureById = new Map(world.features.biomeRegions.map((region) => [region.id, region]));
-  const roadSegments = buildRoadSegments(world.geometry?.roads ?? []);
+  const roadSegments = buildCanvasRoadSegments(world.geometry?.roads ?? [], viewport);
+  const entries = [];
 
   for (const region of world.geometry.biomes) {
     const style = getVegetationStyle(region.biome);
@@ -18,25 +20,28 @@ export function drawForests(ctx, world, viewport) {
       continue;
     }
 
-    const glyphs = collectForestGlyphs(feature.cells, region, style, world, viewport, roadSegments);
+    const glyphs = collectForestGlyphs(feature.cells, region, style, world, viewport, roadSegments, showSnow);
     if (glyphs.length === 0) {
       continue;
     }
 
-    glyphs.sort((a, b) => a.y - b.y);
     for (const glyph of glyphs) {
-      switch (style.type) {
-        case "tuft":
-          drawTuftGlyph(ctx, glyph, style);
-          break;
-        case "cactus":
-          drawCactusGlyph(ctx, glyph, style);
-          break;
-        default:
-          drawTreeGlyph(ctx, glyph, style);
-          break;
-      }
+      entries.push({
+        glyph,
+        style,
+        footY: getForestGlyphFootY(glyph, style.type)
+      });
     }
+  }
+
+  return entries;
+}
+
+export function drawForests(ctx, world, viewport, options = {}) {
+  const entries = collectForestRenderGlyphs(world, viewport, options);
+  entries.sort((a, b) => a.footY - b.footY);
+  for (const entry of entries) {
+    drawForestEntry(ctx, entry);
   }
 }
 
@@ -45,8 +50,8 @@ function getVegetationStyle(biomeKey) {
     case BIOME_KEYS.PLAINS:
       return {
         type: "tuft",
-        density: 0.085,
-        minSpacing: 10.5,
+        density: 0.052,
+        minSpacing: 12.2,
         minSize: 2.4,
         sizeRange: 1.5,
         fill: "rgba(126, 116, 76, 0.42)",
@@ -55,8 +60,8 @@ function getVegetationStyle(biomeKey) {
     case BIOME_KEYS.DESERT:
       return {
         type: "cactus",
-        density: 0.018,
-        minSpacing: 15.5,
+        density: 0.01,
+        minSpacing: 17.5,
         minSize: 4,
         sizeRange: 2.4,
         fill: "rgba(104, 116, 82, 0.58)",
@@ -65,8 +70,8 @@ function getVegetationStyle(biomeKey) {
     case BIOME_KEYS.HIGHLANDS:
       return {
         type: "tree",
-        density: 0.04,
-        minSpacing: 13.5,
+        density: 0.022,
+        minSpacing: 15.5,
         minSize: 7.4,
         sizeRange: 3.2,
         fill: "rgba(92, 94, 80, 0.68)",
@@ -75,8 +80,8 @@ function getVegetationStyle(biomeKey) {
     case BIOME_KEYS.FOREST:
       return {
         type: "tree",
-        density: 0.34,
-        minSpacing: 6,
+        density: 0.19,
+        minSpacing: 7.1,
         minSize: 8.2,
         sizeRange: 4.2,
         fill: "rgba(80, 97, 66, 0.74)",
@@ -85,8 +90,8 @@ function getVegetationStyle(biomeKey) {
     case BIOME_KEYS.RAINFOREST:
       return {
         type: "tree",
-        density: 0.52,
-        minSpacing: 4.8,
+        density: 0.29,
+        minSpacing: 5.8,
         minSize: 8.8,
         sizeRange: 4.8,
         fill: "rgba(65, 87, 53, 0.8)",
@@ -97,7 +102,7 @@ function getVegetationStyle(biomeKey) {
   }
 }
 
-function collectForestGlyphs(cells, region, style, world, viewport, roadSegments) {
+function collectForestGlyphs(cells, region, style, world, viewport, roadSegments, showSnow) {
   const glyphs = [];
   const symbolScale = getVegetationZoomScale(viewport);
   const spacingPx = style.minSpacing * Math.max(1, viewport.zoom * 0.92);
@@ -118,11 +123,14 @@ function collectForestGlyphs(cells, region, style, world, viewport, roadSegments
       continue;
     }
 
-    if (isNearRoad(x + 0.5, y + 0.5, roadSegments, style.type === "tree" ? 1.2 : 0.9)) {
+    if (shouldSuppressBiomeGlyphNearMountains(world, x, y, style.type, region.biome)) {
       continue;
     }
 
     const point = viewport.worldToCanvas(x, y);
+    if (isNearRoad(point.x, point.y, roadSegments, style.type === "tree" ? 6.5 : 4.2)) {
+      continue;
+    }
     if (glyphs.some((glyph) => Math.hypot(glyph.x - point.x, glyph.y - point.y) < spacingPx)) {
       continue;
     }
@@ -134,7 +142,7 @@ function collectForestGlyphs(cells, region, style, world, viewport, roadSegments
     const canopyNoise = glyphNoise(seed + 79);
     const accentNoise = glyphNoise(seed + 113);
 
-    glyphs.push({
+    const glyph = {
       x: point.x + (jitterA - 0.5) * viewport.scaleX * 0.5,
       y: point.y + (jitterB - 0.5) * viewport.scaleY * 0.5,
       size: (style.minSize + sizeNoise * style.sizeRange) * symbolScale,
@@ -147,9 +155,15 @@ function collectForestGlyphs(cells, region, style, world, viewport, roadSegments
         world.terrain.elevation[cell],
         world.terrain.mountainField[cell],
         world.climate.temperature[cell],
-        true
+        showSnow
       )
-    });
+    };
+
+    if (treeGlyphNearRoad(glyph, style.type, roadSegments)) {
+      continue;
+    }
+
+    glyphs.push(glyph);
   }
 
   return glyphs;
@@ -159,7 +173,87 @@ function getVegetationZoomScale(viewport) {
   return Math.max(1, Math.min(4.2, viewport.zoom));
 }
 
-function buildRoadSegments(roads) {
+function shouldSuppressBiomeGlyphNearMountains(world, x, y, type, biomeKey) {
+  switch (type) {
+    case "tree":
+      return shouldSuppressTreeNearMountains(world, x, y, biomeKey);
+    case "cactus":
+      return isNearMountainBand(world, x, y, 2, 0.22);
+    case "tuft":
+      return isNearMountainBand(world, x, y, 2, 0.24);
+    default:
+      return false;
+  }
+}
+
+function shouldSuppressTreeNearMountains(world, x, y, biomeKey) {
+  const stats =
+    biomeKey === BIOME_KEYS.FOREST || biomeKey === BIOME_KEYS.RAINFOREST
+      ? getMountainBandStats(world, x, y, 2, 0.28)
+      : getMountainBandStats(world, x, y, 2, 0.22);
+
+  if (biomeKey === BIOME_KEYS.FOREST || biomeKey === BIOME_KEYS.RAINFOREST) {
+    return stats.max >= 0.42 && stats.count >= 4;
+  }
+
+  return stats.max >= 0.28 && stats.count >= 3;
+}
+
+function isNearMountainBand(world, x, y, radius, threshold) {
+  return getMountainBandStats(world, x, y, radius, threshold).count > 0;
+}
+
+function getMountainBandStats(world, x, y, radius, threshold) {
+  const { terrain } = world;
+  const { width, height, mountainField } = terrain;
+  const minX = Math.max(0, x - radius);
+  const maxX = Math.min(width - 1, x + radius);
+  const minY = Math.max(0, y - radius);
+  const maxY = Math.min(height - 1, y + radius);
+  let count = 0;
+  let max = 0;
+
+  for (let yy = minY; yy <= maxY; yy += 1) {
+    for (let xx = minX; xx <= maxX; xx += 1) {
+      const value = mountainField[yy * width + xx];
+      if (value >= threshold) {
+        count += 1;
+        if (value > max) {
+          max = value;
+        }
+      }
+    }
+  }
+
+  return { count, max };
+}
+
+function getForestGlyphFootY(glyph, type) {
+  if (type === "tuft") {
+    return glyph.y + glyph.size * 0.18;
+  }
+  if (type === "cactus") {
+    return glyph.y + glyph.size * 0.34;
+  }
+  return glyph.y + glyph.size * 0.06;
+}
+
+export function drawForestEntry(ctx, entry) {
+  const { glyph, style } = entry;
+  switch (style.type) {
+    case "tuft":
+      drawTuftGlyph(ctx, glyph, style);
+      break;
+    case "cactus":
+      drawCactusGlyph(ctx, glyph, style);
+      break;
+    default:
+      drawTreeGlyph(ctx, glyph, style);
+      break;
+  }
+}
+
+function buildCanvasRoadSegments(roads, viewport) {
   const segments = [];
   for (const road of roads) {
     if (road.type !== "road" || !road.points || road.points.length < 2) {
@@ -167,8 +261,8 @@ function buildRoadSegments(roads) {
     }
     for (let index = 0; index < road.points.length - 1; index += 1) {
       segments.push({
-        a: road.points[index],
-        b: road.points[index + 1]
+        a: viewport.worldToCanvas(road.points[index].x - 0.5, road.points[index].y - 0.5),
+        b: viewport.worldToCanvas(road.points[index + 1].x - 0.5, road.points[index + 1].y - 0.5)
       });
     }
   }
@@ -205,50 +299,52 @@ function distanceToSegmentSquared(px, py, a, b) {
   return dx * dx + dy * dy;
 }
 
+function treeGlyphNearRoad(glyph, type, roadSegments) {
+  const threshold = type === "tree" ? Math.max(6.8, glyph.size * 0.34) : Math.max(4.2, glyph.size * 0.28);
+  const probePoints = [
+    [glyph.x, glyph.y],
+    [glyph.x, glyph.y + glyph.size * 0.08]
+  ];
+
+  return probePoints.some(([x, y]) => isNearRoad(x, y, roadSegments, threshold));
+}
+
 function drawTreeGlyph(ctx, glyph, style) {
   const height = glyph.size;
-  const crownHeight = height * (0.72 + glyph.canopy * 0.08);
-  const crownWidth = height * (0.52 + glyph.canopy * 0.14);
-  const trunkHeight = height * 0.3;
-  const trunkTopY = glyph.y - trunkHeight;
-  const crownBaseY = trunkTopY + crownHeight * 0.18;
-  const peakX = glyph.x + crownWidth * glyph.lean * 0.28;
-  const peakY = trunkTopY - crownHeight * 0.86;
-  const leftBaseX = glyph.x - crownWidth * (0.44 + glyph.accent * 0.06);
-  const rightBaseX = glyph.x + crownWidth * (0.42 + glyph.canopy * 0.08);
-  const leftShoulderX = glyph.x - crownWidth * (0.2 + glyph.canopy * 0.08);
-  const rightShoulderX = glyph.x + crownWidth * (0.19 + glyph.accent * 0.08);
-  const trunkLeanX = glyph.x + crownWidth * glyph.lean * 0.12;
-  const trunkBottomY = glyph.y + height * 0.06;
+  const lineColor = glyph.snowSurface ? "rgba(214, 214, 214, 0.98)" : "rgba(18, 18, 18, 0.98)";
+  const trunkX = glyph.x + height * glyph.lean * 0.04;
+  const trunkTopY = glyph.y - height * 0.9;
+  const trunkBottomY = glyph.y + height * 0.08;
+  const tierCount = 3;
+  const crownBottomY = trunkTopY + height * 0.64;
+  const baseSpread = height * 0.34;
 
   ctx.save();
-  ctx.globalAlpha *= glyph.alpha;
-  ctx.fillStyle = glyph.snowSurface ? "rgba(242, 240, 234, 0.9)" : style.fill;
-  ctx.strokeStyle = glyph.snowSurface ? "rgba(128, 122, 111, 0.72)" : style.stroke;
-  ctx.lineWidth = 1.1;
-  ctx.lineJoin = "round";
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = Math.max(1.05, height * 0.092);
   ctx.lineCap = "round";
+  ctx.lineJoin = "round";
 
-  ctx.strokeStyle = glyph.snowSurface ? "rgba(156, 148, 136, 0.86)" : "rgba(84, 60, 35, 0.84)";
-  ctx.lineWidth = Math.max(1, height * 0.09);
   ctx.beginPath();
-  ctx.moveTo(trunkLeanX, trunkBottomY);
-  ctx.lineTo(trunkLeanX, trunkTopY + crownHeight * 0.08);
-  ctx.stroke();
+  ctx.moveTo(trunkX, trunkBottomY);
+  ctx.lineTo(trunkX, trunkTopY);
 
-  ctx.fillStyle = glyph.snowSurface ? "rgba(242, 240, 234, 0.94)" : style.fill;
-  ctx.strokeStyle = glyph.snowSurface ? "rgba(128, 122, 111, 0.72)" : style.stroke;
-  ctx.lineWidth = 0.95;
-  ctx.beginPath();
-  ctx.moveTo(leftBaseX, crownBaseY);
-  ctx.lineTo(leftShoulderX, trunkTopY - crownHeight * 0.12);
-  ctx.lineTo(peakX, peakY);
-  ctx.lineTo(rightShoulderX, trunkTopY - crownHeight * 0.1);
-  ctx.lineTo(rightBaseX, crownBaseY);
-  ctx.lineTo(trunkLeanX + crownWidth * 0.08, trunkTopY + crownHeight * 0.1);
-  ctx.lineTo(trunkLeanX - crownWidth * 0.08, trunkTopY + crownHeight * 0.1);
-  ctx.closePath();
-  ctx.fill();
+  for (let tierIndex = 0; tierIndex < tierCount; tierIndex += 1) {
+    const tierT = tierCount <= 1 ? 0 : tierIndex / (tierCount - 1);
+    const branchY = trunkTopY + (crownBottomY - trunkTopY) * tierT;
+    const branchSpread = baseSpread * (0.78 + tierT * 0.34);
+    const branchDrop = height * (0.22 + tierT * 0.09);
+    const leftTipX = trunkX - branchSpread;
+    const rightTipX = trunkX + branchSpread;
+    const tipY = Math.min(trunkBottomY - height * 0.02, branchY + branchDrop);
+
+    ctx.moveTo(trunkX, branchY);
+    ctx.lineTo(leftTipX, tipY);
+    ctx.moveTo(trunkX, branchY);
+    ctx.lineTo(rightTipX, tipY);
+  }
+
   ctx.stroke();
   ctx.restore();
 }

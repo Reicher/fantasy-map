@@ -5,7 +5,7 @@ export function describePlayView(world, playState) {
     return {
       title: "",
       subtitle: "",
-      detail: ""
+      biomeKey: null
     };
   }
 
@@ -14,11 +14,12 @@ export function describePlayView(world, playState) {
     const toCity = world.cities[playState.travel.targetCityId];
     const region =
       playState.travel.routeType === "sea-route" ? null : regionFromPlayState(world, playState);
+    const regionForBiome = travelRegionFromPlayState(world, playState, toCity);
 
     return {
       title: fromCity && toCity ? `${fromCity.name} till ${toCity.name}` : "På resa",
       subtitle: playState.travel.routeType === "sea-route" ? "På havet" : formatRegionLine(region),
-      detail: ""
+      biomeKey: regionForBiome?.biome ?? null
     };
   }
 
@@ -28,7 +29,7 @@ export function describePlayView(world, playState) {
   return {
     title: city?.name ?? "Okänd plats",
     subtitle: formatRegionLine(region) ?? "Okänd region",
-    detail: ""
+    biomeKey: region?.biome ?? null
   };
 }
 
@@ -53,6 +54,19 @@ function regionAtPosition(world, position) {
 function regionFromPlayState(world, playState) {
   if (playState?.lastRegionId != null && playState.lastRegionId >= 0) {
     return world.features.biomeRegions[playState.lastRegionId] ?? null;
+  }
+
+  return regionAtPosition(world, playState?.position);
+}
+
+function travelRegionFromPlayState(world, playState, fallbackCity) {
+  const lastRegion = regionFromPlayState(world, playState);
+  if (lastRegion) {
+    return lastRegion;
+  }
+
+  if (fallbackCity?.cell != null) {
+    return regionAtCell(world, fallbackCity.cell);
   }
 
   return regionAtPosition(world, playState?.position);
