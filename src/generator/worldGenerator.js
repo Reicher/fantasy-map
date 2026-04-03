@@ -8,7 +8,7 @@ import { generateHydrology } from "./hydrology.js?v=20260402b";
 import { buildWorldNetwork } from "./network.js?v=20260401i";
 import { applyFeatureNames } from "./nameFeatures.js";
 import { buildRegions } from "./regions.js?v=20260402c";
-import { generateRoads } from "./roads.js?v=20260401q";
+import { generateRoads } from "./roads.js?v=20260403c";
 import { buildSurfaceGeometry } from "./surface.js?v=20260403b";
 import { generateTerrain } from "./terrain.js?v=20260401i";
 import { buildTravelGraph } from "./travelGraph.js?v=20260401a";

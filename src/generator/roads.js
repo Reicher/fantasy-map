@@ -1,6 +1,6 @@
 import { BIOME_KEYS } from "../config.js";
 import { buildRoadNetwork } from "./network.js?v=20260401i";
-import { buildRoadPlanningState } from "./roadPlanning.js?v=20260401a";
+import { buildRoadPlanningState } from "./roadPlanning.js?v=20260403b";
 import { clamp, coordsOf, distance, forEachNeighbor, indexOf } from "../utils.js";
 
 const BIOME_TRAVEL_COST = {

@@ -1,5 +1,5 @@
 import { DEFAULT_PARAMS, RENDER_HEIGHT, RENDER_WIDTH } from "./config.js?v=20260403d";
-import { generateWorld, normalizeParams } from "./generator/worldGenerator.js?v=20260403d";
+import { generateWorld, normalizeParams } from "./generator/worldGenerator.js?v=20260403f";
 import { renderEditorWorld } from "./render/renderer.js?v=20260403aq";
 import {
   bindRangeLabels,
@@ -14,7 +14,7 @@ import {
   syncLabelButtons as applyLabelButtonState,
   syncModeUi as applyModeUi,
   syncViewUi as applyViewUi
-} from "./ui/appShell.js?v=20260403b";
+} from "./ui/appShell.js?v=20260403d";
 import { applyCanvasResolution } from "./ui/canvasResolution.js?v=20260403a";
 import { createPlayProfiler } from "./ui/playProfiler.js?v=20260403a";
 import { updateStats } from "./ui/statsPanel.js";
@@ -24,6 +24,7 @@ import { createPlaySession } from "./ui/playSession.js?v=20260403an";
 
 const refs = {
   editorShell: document.querySelector("#editor-shell"),
+  editorLoading: document.querySelector("#editor-loading"),
   playView: document.querySelector("#play-view"),
   playLoading: document.querySelector("#play-loading"),
   playTooltip: document.querySelector("#play-tooltip"),
@@ -68,6 +69,7 @@ const state = {
   currentWorld: null,
   currentViewport: null,
   playState: null,
+  editorLoading: initialMode === "editor",
   playLoading: initialMode === "play",
   isBootReady: false,
   currentRenderScale: DEFAULT_PARAMS.renderScale,
@@ -220,31 +222,38 @@ window.addEventListener("keydown", (event) => {
 function generateAndRender() {
   const params = normalizeParams(getFormValues(refs.form));
   state.currentRenderScale = params.renderScale;
-  if (state.currentMode === "play") {
-    state.playLoading = true;
-    syncModeUi();
-  }
   updateLabels();
-  playSession.stopAnimation();
-  playSession.resetJourney();
-  applyCanvasResolution(refs, params.renderScale);
-  state.currentWorld = generateWorld(params);
-  state.playState = playSession.createInitialPlayState(state.currentWorld);
-  state.cameraState = editorSession.createDefaultCamera();
-  if (state.currentMode === "editor") {
-    state.currentViewport = renderEditorWorld(refs.canvas, state.currentWorld, {
-      ...state.renderOptions,
-      cameraState: state.cameraState
-    });
-  } else {
-    state.currentViewport = null;
-  }
-  playSession.renderPlayWorld();
-  state.playLoading = false;
-  refs.titleNode.textContent = `seed ${state.currentWorld.params.seed}`;
-  updateStats(refs.statsContainer, state.currentWorld.stats);
-  syncViewUi();
+  state.editorLoading = state.currentMode === "editor";
+  state.playLoading = state.currentMode === "play";
   syncModeUi();
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      playSession.stopAnimation();
+      playSession.resetJourney();
+      applyCanvasResolution(refs, params.renderScale);
+      state.currentWorld = generateWorld(params);
+      state.playState = playSession.createInitialPlayState(state.currentWorld);
+      state.cameraState = editorSession.createDefaultCamera();
+      if (state.currentMode === "editor") {
+        state.currentViewport = renderEditorWorld(refs.canvas, state.currentWorld, {
+          ...state.renderOptions,
+          cameraState: state.cameraState
+        });
+      } else {
+        state.currentViewport = null;
+      }
+      playSession.renderPlayWorld();
+      refs.titleNode.textContent = `seed ${state.currentWorld.params.seed}`;
+      updateStats(refs.statsContainer, state.currentWorld.stats);
+      syncViewUi();
+      requestAnimationFrame(() => {
+        state.editorLoading = false;
+        state.playLoading = false;
+        syncModeUi();
+      });
+    });
+  });
 }
 
 function syncLabelButtons() {
@@ -258,7 +267,6 @@ function syncModeUi() {
   applyModeUi({
     refs,
     state,
-    applyCanvasResolution: (renderScale) => applyCanvasResolution(refs, renderScale),
     updatePlaySubView
   });
 }

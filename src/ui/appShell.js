@@ -10,14 +10,15 @@ export function syncLabelButtons({ refs, renderOptions }) {
   refs.toggleMonochromeButton.dataset.active = renderOptions.showMonochrome ? "true" : "false";
 }
 
-export function syncModeUi({ refs, state, applyCanvasResolution, updatePlaySubView }) {
+export function syncModeUi({ refs, state, updatePlaySubView }) {
   const isEditor = state.currentMode === "editor";
   refs.editorShell.hidden = !isEditor;
   refs.playView.hidden = isEditor;
+  const showEditorLoading = isEditor && state.editorLoading;
+  refs.editorLoading.hidden = !showEditorLoading;
+  refs.editorLoading.style.display = showEditorLoading ? "flex" : "none";
   refs.playLoading.hidden = !state.playLoading;
-  if (state.isBootReady) {
-    applyCanvasResolution(state.currentRenderScale);
-  }
+  refs.playLoading.style.display = state.playLoading ? "block" : "none";
   updatePlaySubView();
 }
 

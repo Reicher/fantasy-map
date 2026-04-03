@@ -360,6 +360,43 @@ canvas[data-dragging="true"] {
   pointer-events: none;
 }
 
+.editor-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 14;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    linear-gradient(180deg, rgba(242, 233, 214, 0.62), rgba(233, 220, 193, 0.72)),
+    rgba(231, 218, 191, 0.76);
+  pointer-events: none;
+}
+
+.editor-loading-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 24px;
+  border-radius: 18px;
+  background: rgba(248, 242, 229, 0.7);
+  border: 1px solid rgba(101, 80, 51, 0.16);
+  box-shadow: 0 12px 30px rgba(70, 50, 28, 0.1);
+}
+
+.editor-loading-title {
+  color: rgba(74, 53, 29, 0.96);
+  font-size: 0.94rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.editor-loading-subtitle {
+  color: rgba(96, 73, 44, 0.78);
+  font-size: 0.84rem;
+}
+
 .play-map-legend {
   position: absolute;
   top: 22px;
@@ -562,7 +599,7 @@ canvas[data-dragging="true"] {
 .play-player {
   position: absolute;
   left: 15%;
-  bottom: 22%;
+  bottom: 10%;
   width: 62px;
   height: 96px;
   z-index: 1;

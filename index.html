@@ -12,7 +12,7 @@
       })();
     </script>
     <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="%23e6d7b6"/><path d="M6 22 L13 10 L20 22 M12 17 L16 12 L23 22" fill="none" stroke="%23543f27" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' />
-    <link rel="stylesheet" href="./styles.css?v=20260403ak" />
+    <link rel="stylesheet" href="./styles.css?v=20260403ao" />
   </head>
   <body>
     <div id="editor-shell" class="app-shell">
@@ -205,6 +205,12 @@
             </div>
           </div>
           <div class="canvas-wrap">
+            <div id="editor-loading" class="editor-loading" hidden>
+              <div class="editor-loading-copy">
+                <div class="editor-loading-title">Genererar karta</div>
+                <div class="editor-loading-subtitle">Bygger terräng, vägar och etiketter...</div>
+              </div>
+            </div>
             <canvas id="map-canvas" width="1200" height="840" aria-label="Genererad fantasikarta"></canvas>
             <div id="tooltip" class="tooltip" hidden></div>
           </div>
@@ -259,6 +265,6 @@
       </div>
     </section>
 
-    <script type="module" src="./src/app.js?v=20260403by"></script>
+    <script type="module" src="./src/app.js?v=20260403cd"></script>
   </body>
 </html>
