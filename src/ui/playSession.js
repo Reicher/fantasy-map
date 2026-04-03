@@ -1,6 +1,6 @@
 import { advanceTravel, beginTravel, createPlayState, getValidTargetIds } from "../game/travel.js?v=20260401b";
 import { describePlayView } from "../game/playViewText.js?v=20260403a";
-import { createJourneyScene } from "../game/journeyScene.js?v=20260403ar";
+import { createJourneyScene } from "../game/journeyScene.js?v=20260403at";
 import { createViewport, renderPlayWorldDynamic, renderPlayWorldStatic } from "../render/renderer.js?v=20260403aq";
 import { inspectWorldAt } from "../inspector.js?v=20260402h";
 import { createPlayCamera as buildPlayCamera } from "./cameraState.js?v=20260401b";
@@ -21,6 +21,7 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     renderWidth: 0,
     renderHeight: 0
   };
+  let playModeTransitionId = 0;
 
   const journeyScene = createJourneyScene({
     track: refs.playGroundTrack,
@@ -180,9 +181,15 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     }
   }
 
-  function enterPlayMode() {
+  async function enterPlayMode() {
+    if (!state.currentWorld || !state.playState) {
+      return;
+    }
+
+    const transitionId = ++playModeTransitionId;
     state.currentMode = "play";
     state.playLoading = true;
+    state.editorLoading = false;
     state.dragState = null;
     if (state.playState) {
       state.playState = {
@@ -199,14 +206,29 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     lastMapLegendVisible = null;
     clearHover(refs.playTooltip);
     syncModeUi();
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        renderPlayWorld();
-        playController.ensureAnimation();
-        state.playLoading = false;
-        syncModeUi();
-      });
-    });
+
+    await waitForNextPaint(1);
+    if (transitionId !== playModeTransitionId) {
+      return;
+    }
+
+    renderPlayWorld();
+    playController.ensureAnimation();
+
+    await waitForNextPaint(1);
+    if (transitionId !== playModeTransitionId) {
+      return;
+    }
+
+    state.playLoading = false;
+    syncModeUi();
+
+    await waitForNextPaint(1);
+    if (transitionId !== playModeTransitionId) {
+      return;
+    }
+
+    renderPlayWorld();
   }
 
   function createPlayCamera() {
@@ -387,5 +409,19 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     }
 
     return Array.from(visibleIds);
+  }
+
+  function waitForNextPaint(frames = 1) {
+    return new Promise((resolve) => {
+      const step = () => {
+        if (frames <= 0) {
+          resolve();
+          return;
+        }
+        frames -= 1;
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
   }
 }

@@ -11,6 +11,7 @@ const FALLBACK_SCROLL_SPEED = 0.16;
 const ARRIVAL_MARKER_START_OFFSET = 84;
 const ARRIVAL_MARKER_TARGET_RATIO = 0.5;
 const ARRIVAL_MARKER_EXIT_OFFSET = 42;
+const DEPARTURE_MARKER_BOOTSTRAP_PROGRESS = 0.02;
 
 export function createJourneyScene({ track, seaTrack, player, poiMarker }) {
   const groundTrack = createJourneyGroundTrack(track);
@@ -90,8 +91,9 @@ export function createJourneyScene({ track, seaTrack, player, poiMarker }) {
       return;
     }
 
+    const isStartingTravel = state.lastTravelProgress == null;
     state.lastRouteType = playState.travel.routeType ?? null;
-    if (state.lastTravelProgress == null) {
+    if (isStartingTravel) {
       state.lastTravelProgress = playState.travel.progress ?? 0;
       state.lastTravelTimestamp = performance.now();
       state.travelGroundBiomeKey = isSeaTravel ? "ocean" : rawBiomeKey;
@@ -102,6 +104,15 @@ export function createJourneyScene({ track, seaTrack, player, poiMarker }) {
     const delta = consumeTravelDelta(playState.travel.progress ?? 0);
     const travelGroundBiomeKey = resolveGroundBiomeKey(rawBiomeKey, delta.distance);
     const activeTravelGroundBiomeKey = isSeaTravel ? "ocean" : travelGroundBiomeKey;
+
+    if (
+      !isSeaTravel &&
+      isStartingTravel &&
+      state.arrivalMarker.mode === "hidden" &&
+      (playState.travel.progress ?? 0) <= DEPARTURE_MARKER_BOOTSTRAP_PROGRESS
+    ) {
+      settleArrivalMarker(trackWidth, activeTravelGroundBiomeKey);
+    }
 
     if (isSeaTravel) {
       clearArrivalMarker();

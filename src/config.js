@@ -7,14 +7,14 @@ export const DEFAULT_PARAMS = {
   seed: "saltwind-01",
   mapSize: 58,
   mountainousness: 54,
-  cityDensity: 42,
+  cityDensity: 20,
   riverAmount: 56,
   lakeAmount: 56,
   lakeSize: 52,
   coastComplexity: 62,
   edgeDetail: 300,
-  minBiomeSize: 8,
-  renderScale: 125,
+  minBiomeSize: 15,
+  renderScale: 150,
   fogVisionRadius: 18
 };
 

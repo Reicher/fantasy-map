@@ -14,6 +14,8 @@ export function syncModeUi({ refs, state, updatePlaySubView }) {
   const isEditor = state.currentMode === "editor";
   refs.editorShell.hidden = !isEditor;
   refs.playView.hidden = isEditor;
+  refs.editorShell.style.display = isEditor ? "grid" : "none";
+  refs.playView.style.display = isEditor ? "none" : "block";
   const showEditorLoading = isEditor && state.editorLoading;
   refs.editorLoading.hidden = !showEditorLoading;
   refs.editorLoading.style.display = showEditorLoading ? "flex" : "none";

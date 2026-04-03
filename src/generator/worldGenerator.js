@@ -20,14 +20,14 @@ export function normalizeParams(input) {
     seed: String(input.seed ?? "saltwind-01").trim() || "saltwind-01",
     mapSize: clamp(asNumber(input.mapSize, 58), 10, 100),
     mountainousness: clamp(asNumber(input.mountainousness, 54), 0, 100),
-    cityDensity: clamp(asNumber(input.cityDensity, 42), 0, 100),
+    cityDensity: clamp(asNumber(input.cityDensity, 20), 0, 100),
     riverAmount: clamp(asNumber(input.riverAmount, 56), 0, 100),
     lakeAmount: clamp(asNumber(input.lakeAmount, legacyWater), 0, 100),
     lakeSize: clamp(asNumber(input.lakeSize, legacyWater), 0, 100),
     coastComplexity: clamp(asNumber(input.coastComplexity, 62), 0, 100),
     edgeDetail: clamp(asNumber(input.edgeDetail, 300), 180, 520),
-    minBiomeSize: clamp(asNumber(input.minBiomeSize, 8), 0, 20),
-    renderScale: clamp(asNumber(input.renderScale, 125), 50, 250),
+    minBiomeSize: clamp(asNumber(input.minBiomeSize, 15), 0, 20),
+    renderScale: clamp(asNumber(input.renderScale, 150), 50, 250),
     fogVisionRadius: clamp(asNumber(input.fogVisionRadius, 18), 6, 40)
   };
 }

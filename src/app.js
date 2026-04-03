@@ -14,13 +14,13 @@ import {
   syncLabelButtons as applyLabelButtonState,
   syncModeUi as applyModeUi,
   syncViewUi as applyViewUi
-} from "./ui/appShell.js?v=20260403d";
+} from "./ui/appShell.js?v=20260403e";
 import { applyCanvasResolution } from "./ui/canvasResolution.js?v=20260403a";
 import { createPlayProfiler } from "./ui/playProfiler.js?v=20260403a";
 import { updateStats } from "./ui/statsPanel.js";
 import { createEditorSession } from "./ui/editorSession.js?v=20260403a";
 import { clearHover } from "./ui/hoverPanel.js?v=20260403b";
-import { createPlaySession } from "./ui/playSession.js?v=20260403an";
+import { createPlaySession } from "./ui/playSession.js?v=20260403aq";
 
 const refs = {
   editorShell: document.querySelector("#editor-shell"),
@@ -89,6 +89,7 @@ const state = {
   pendingInteractiveRender: false,
   playAnimationFrame: null,
   lastTravelTick: 0,
+  generateRunId: 0,
   playProfiler: createPlayProfiler()
 };
 
@@ -219,41 +220,57 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
-function generateAndRender() {
+async function generateAndRender() {
+  const runId = ++state.generateRunId;
   const params = normalizeParams(getFormValues(refs.form));
   state.currentRenderScale = params.renderScale;
   updateLabels();
   state.editorLoading = state.currentMode === "editor";
   state.playLoading = state.currentMode === "play";
   syncModeUi();
+  await waitForNextPaint(1);
+  if (runId !== state.generateRunId) {
+    return;
+  }
 
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      playSession.stopAnimation();
-      playSession.resetJourney();
-      applyCanvasResolution(refs, params.renderScale);
-      state.currentWorld = generateWorld(params);
-      state.playState = playSession.createInitialPlayState(state.currentWorld);
-      state.cameraState = editorSession.createDefaultCamera();
-      if (state.currentMode === "editor") {
-        state.currentViewport = renderEditorWorld(refs.canvas, state.currentWorld, {
-          ...state.renderOptions,
-          cameraState: state.cameraState
-        });
-      } else {
-        state.currentViewport = null;
-      }
-      playSession.renderPlayWorld();
-      refs.titleNode.textContent = `seed ${state.currentWorld.params.seed}`;
-      updateStats(refs.statsContainer, state.currentWorld.stats);
-      syncViewUi();
-      requestAnimationFrame(() => {
-        state.editorLoading = false;
-        state.playLoading = false;
-        syncModeUi();
-      });
+  playSession.stopAnimation();
+  playSession.resetJourney();
+  applyCanvasResolution(refs, params.renderScale);
+  state.currentWorld = generateWorld(params);
+  state.playState = playSession.createInitialPlayState(state.currentWorld);
+  state.cameraState = editorSession.createDefaultCamera();
+  if (state.currentMode === "editor") {
+    state.currentViewport = renderEditorWorld(refs.canvas, state.currentWorld, {
+      ...state.renderOptions,
+      cameraState: state.cameraState
     });
-  });
+  } else {
+    state.currentViewport = null;
+  }
+  playSession.renderPlayWorld();
+  refs.titleNode.textContent = `seed ${state.currentWorld.params.seed}`;
+  updateStats(refs.statsContainer, state.currentWorld.stats);
+  syncViewUi();
+
+  await waitForNextPaint(1);
+  if (runId !== state.generateRunId) {
+    return;
+  }
+
+  state.editorLoading = false;
+  state.playLoading = false;
+  syncModeUi();
+
+  await waitForNextPaint(1);
+  if (runId !== state.generateRunId) {
+    return;
+  }
+
+  if (state.currentMode === "editor") {
+    editorSession.rerenderCurrentWorld();
+  } else {
+    playSession.renderPlayWorld();
+  }
 }
 
 function syncLabelButtons() {
@@ -316,4 +333,18 @@ function bootApp() {
   window.addEventListener("load", () => {
     requestAnimationFrame(start);
   }, { once: true });
+}
+
+function waitForNextPaint(frames = 1) {
+  return new Promise((resolve) => {
+    const step = () => {
+      if (frames <= 0) {
+        resolve();
+        return;
+      }
+      frames -= 1;
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
 }

@@ -1,6 +1,6 @@
 import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
 
-export function applyCanvasResolution(refs, renderScale = 125) {
+export function applyCanvasResolution(refs, renderScale = 150) {
   resizeCanvasForDisplay(refs.canvas, renderScale);
   resizeCanvasForDisplay(refs.playCanvas, renderScale);
 }
