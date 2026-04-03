@@ -14,7 +14,7 @@ import {
   syncLabelButtons as applyLabelButtonState,
   syncModeUi as applyModeUi,
   syncViewUi as applyViewUi
-} from "./ui/appShell.js?v=20260403e";
+} from "./ui/appShell.js?v=20260403f";
 import { applyCanvasResolution } from "./ui/canvasResolution.js?v=20260403a";
 import { createPlayProfiler } from "./ui/playProfiler.js?v=20260403a";
 import { updateStats } from "./ui/statsPanel.js";

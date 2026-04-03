@@ -1,6 +1,6 @@
 export function inferInitialMode(pathname = window.location.pathname) {
   const path = pathname.replace(/\/+$/, "") || "/";
-  return path === "/editor" || path === "/editor/index.html" ? "editor" : "play";
+  return path.endsWith("/editor") || path.endsWith("/editor/index.html") ? "editor" : "play";
 }
 
 export function syncLabelButtons({ refs, renderOptions }) {
