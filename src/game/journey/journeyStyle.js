@@ -1,385 +1,298 @@
 import { BIOME_INFO } from "../../config.js";
 
-export function buildDecorations(stripId, biomeKey, stripWidth, trackHeight) {
-  const nodes = [];
-  const spec = getDecorationSpec(biomeKey);
-  const activeHeight = Math.max(120, trackHeight * 0.9);
+// ---------------------------------------------------------------------------
+// Biome color helpers
+// ---------------------------------------------------------------------------
 
-  for (let slot = 0; slot < Math.max(1, Math.ceil(stripWidth / spec.stoneStride)); slot += 1) {
-    if (hash01(`${biomeKey}:${stripId}:stone-slot:${slot}:spawn`) > spec.stoneProbability) {
-      continue;
+export function getBiomeColor(biomeKey) {
+  const normalizedKey = normalizeBiomeKey(biomeKey);
+  return (
+    Object.values(BIOME_INFO).find((entry) => entry.key === normalizedKey)
+      ?.color ?? "#b9b27f"
+  );
+}
+
+export function getBiomeLayerColor(biomeKey, layerDepth) {
+  const hex = getBiomeColor(biomeKey);
+  const base = hexToRgb(hex);
+
+  switch (layerDepth) {
+    case "ground":
+      return rgbToCss(base);
+    case "foreground": {
+      const fg = mixRgb(base, [40, 32, 20], 0.28);
+      return rgbToCss(fg);
     }
-
-    const slotStart = slot * spec.stoneStride;
-    const x = Math.min(
-      Math.max(12, slotStart + 6 + hash01(`${biomeKey}:${stripId}:stone-slot:${slot}:x`) * (spec.stoneStride - 12)),
-      Math.max(12, stripWidth - 12)
-    );
-    const y = 10 + hash01(`${biomeKey}:${stripId}:stone-slot:${slot}:y`) * activeHeight;
-    const size = spec.stoneMin + hash01(`${biomeKey}:${stripId}:stone-slot:${slot}:size`) * spec.stoneRange;
-    const stone = document.createElement("span");
-    stone.className = "play-ground-stone";
-    stone.style.left = `${x.toFixed(1)}px`;
-    stone.style.bottom = `${y.toFixed(1)}px`;
-    stone.style.width = `${size.toFixed(1)}px`;
-    stone.style.height = `${Math.max(3.5, size * 0.7).toFixed(1)}px`;
-    stone.style.opacity = `${0.5 + hash01(`${biomeKey}:${stripId}:stone-slot:${slot}:alpha`) * 0.34}`;
-    stone.style.transform = `rotate(${(-18 + hash01(`${biomeKey}:${stripId}:stone-slot:${slot}:rot`) * 36).toFixed(1)}deg)`;
-    nodes.push(stone);
-  }
-
-  for (let slot = 0; slot < Math.max(1, Math.ceil(stripWidth / spec.plantStride)); slot += 1) {
-    if (hash01(`${biomeKey}:${stripId}:plant-slot:${slot}:spawn`) > spec.plantProbability) {
-      continue;
+    case "near1": {
+      const near1 = mixRgb(base, [50, 42, 28], 0.22);
+      return rgbToCss(near1);
     }
-
-    const slotStart = slot * spec.plantStride;
-    const x = Math.min(
-      Math.max(16, slotStart + 6 + hash01(`${biomeKey}:${stripId}:plant-slot:${slot}:x`) * (spec.plantStride - 12)),
-      Math.max(16, stripWidth - 16)
-    );
-    const y = 8 + hash01(`${biomeKey}:${stripId}:plant-slot:${slot}:y`) * activeHeight;
-    nodes.push(
-      createGroundPlant({
-        biomeKey,
-        stripId,
-        slot,
-        x,
-        y,
-        type: spec.plantType
-      })
-    );
+    case "near2": {
+      const near2 = mixRgb(base, [62, 55, 40], 0.3);
+      return rgbToCss(near2);
+    }
+    case "mid": {
+      const mid = mixRgb(base, [72, 66, 54], 0.38);
+      return rgbToCss(mid);
+    }
+    case "far": {
+      const far = mixRgb(base, [82, 76, 66], 0.46);
+      return rgbToCss(far);
+    }
+    default:
+      return rgbToCss(base);
   }
-
-  return nodes;
 }
 
-export function getStripColors(biomeKey) {
-  const normalizedBiomeKey = normalizeBiomeKey(biomeKey);
-  const baseHex =
-    Object.values(BIOME_INFO).find((entry) => entry.key === normalizedBiomeKey)?.color ?? "#b9b27f";
-  const base = hexToRgb(baseHex);
-  const light = mixRgb(base, [235, 225, 193], 0.22);
-  const deep = mixRgb(base, [92, 76, 51], 0.24);
-  const stone = mixRgb(base, [96, 83, 64], 0.44);
-  const tuft = mixRgb(base, [92, 90, 57], 0.36);
+// ---------------------------------------------------------------------------
+// Silhouette top-edge sampling
+// Returns a Float32Array of y-fractions (0=top of layer band, 1=bottom).
+// layerDepth: 'foreground' | 'near1' | 'near2' | 'mid' | 'far'
+// ---------------------------------------------------------------------------
 
-  return {
-    light: rgbToCss(light),
-    base: rgbToCss(base),
-    deep: rgbToCss(deep),
-    stone: rgbaToCss(stone, 0.58),
-    tuft: rgbaToCss(tuft, 0.62)
-  };
-}
-
-export function getBackdropColors(biomeKey, layerDepth = "near") {
-  const normalizedBiomeKey = normalizeBiomeKey(biomeKey);
-  const baseHex =
-    Object.values(BIOME_INFO).find((entry) => entry.key === normalizedBiomeKey)?.color ?? "#b9b27f";
-  const base = hexToRgb(baseHex);
-  const mixTarget = layerDepth === "far" ? [86, 82, 68] : [96, 89, 70];
-  const mixAmount = layerDepth === "far" ? 0.44 : 0.36;
-  const fill = mixRgb(base, mixTarget, mixAmount);
-
-  return {
-    fill: rgbToCss(fill)
-  };
-}
-
-export function buildBackdropShape({
+export function buildSilhouetteTopEdge(
   biomeKey,
-  stripWidth,
-  worldStart = 0,
-  entryY = null
-}) {
-  const normalizedBiomeKey = normalizeBiomeKey(biomeKey) ?? "plains";
-  const spec = getBackdropSpec(normalizedBiomeKey);
-  const points = ["0% 100%"];
-  const phaseOffset = hash01(`${normalizedBiomeKey}:phase`) * spec.primaryWavelength;
-  const secondaryPhase = hash01(`${normalizedBiomeKey}:phase:secondary`) * spec.secondaryWavelength;
-  const initialY =
-    entryY == null
-      ? sampleBackdropY(spec, phaseOffset, secondaryPhase, worldStart)
-      : entryY;
-  const blendWidth = Math.max(spec.sampleStep * 4, Math.min(140, stripWidth * 0.4));
-  points.push(`0% ${initialY.toFixed(3)}%`);
-
-  for (let x = spec.sampleStep; x <= stripWidth; x += spec.sampleStep) {
-    const clampedX = Math.min(stripWidth, x);
-    const xRatio = stripWidth <= 0 ? 1 : clampedX / stripWidth;
-    const globalX = worldStart + clampedX;
-    const targetY = sampleBackdropY(spec, phaseOffset, secondaryPhase, globalX);
-    const blendT = entryY == null || clampedX >= blendWidth ? 1 : smoothstep(clampedX / blendWidth);
-    const y = entryY == null ? targetY : initialY + (targetY - initialY) * blendT;
-    points.push(`${(xRatio * 100).toFixed(3)}% ${y.toFixed(3)}%`);
+  stripWidthPx,
+  worldOffsetPx,
+  layerDepth,
+) {
+  const spec = getSilhouetteSpec(
+    normalizeBiomeKey(biomeKey) ?? "plains",
+    layerDepth,
+  );
+  const samples = new Float32Array(Math.max(1, Math.ceil(stripWidthPx)));
+  for (let x = 0; x < samples.length; x++) {
+    samples[x] = sampleSilhouetteY(spec, worldOffsetPx + x);
   }
+  return samples;
+}
 
-  let exitY = initialY;
-  if (stripWidth > 0) {
-    const edgeTargetY = sampleBackdropY(spec, phaseOffset, secondaryPhase, worldStart + stripWidth);
-    const edgeBlendT = entryY == null || stripWidth >= blendWidth ? 1 : smoothstep(stripWidth / blendWidth);
-    exitY = entryY == null ? edgeTargetY : initialY + (edgeTargetY - initialY) * edgeBlendT;
-    points.push(`100% ${exitY.toFixed(3)}%`);
+// Build a canvas polygon from a top-edge array.
+// The polygon fills from layerBottomY up to the silhouette edge.
+export function buildSilhouettePolygon(
+  topEdgeSamples,
+  x0,
+  layerTopY,
+  layerBottomY,
+) {
+  const width = topEdgeSamples.length;
+  const layerHeight = Math.max(1, layerBottomY - layerTopY);
+  const points = [];
+  points.push([x0, layerBottomY]);
+  for (let x = 0; x < width; x++) {
+    const yFraction = topEdgeSamples[x];
+    const y = layerTopY + yFraction * layerHeight;
+    points.push([x0 + x, y]);
   }
+  points.push([x0 + width + 1, layerBottomY]);
+  return points;
+}
 
-  points.push("100% 100%");
+// ---------------------------------------------------------------------------
+// Silhouette specs
+// ---------------------------------------------------------------------------
+
+function getSilhouetteSpec(biomeKey, layerDepth) {
+  const depthFactor =
+    { foreground: 0, near1: 1, near2: 2, mid: 3, far: 4 }[layerDepth] ?? 1;
+  const p1 = hash01(`${biomeKey}:${layerDepth}:p1`) * 1000;
+  const p2 = hash01(`${biomeKey}:${layerDepth}:p2`) * 600;
+  const base = getBiomeBaseSpec(biomeKey);
+  const smoothing = 1 + depthFactor * 0.22;
   return {
-    clipPath: `polygon(${points.join(", ")})`,
-    exitY
+    baseY: base.baseY,
+    amplitude: base.amplitude / smoothing,
+    wavelength1: base.wavelength1 * smoothing,
+    wavelength2: base.wavelength2 * smoothing,
+    sharpness: base.sharpness,
+    phase1: p1,
+    phase2: p2,
   };
 }
+
+function getBiomeBaseSpec(biomeKey) {
+  switch (biomeKey) {
+    case "forest":
+      return {
+        baseY: 0.38,
+        amplitude: 0.18,
+        wavelength1: 120,
+        wavelength2: 54,
+        sharpness: 1.7,
+      };
+    case "rainforest":
+      return {
+        baseY: 0.34,
+        amplitude: 0.2,
+        wavelength1: 100,
+        wavelength2: 48,
+        sharpness: 1.6,
+      };
+    case "desert":
+      return {
+        baseY: 0.55,
+        amplitude: 0.1,
+        wavelength1: 280,
+        wavelength2: 140,
+        sharpness: 0.75,
+      };
+    case "mountain":
+      return {
+        baseY: 0.28,
+        amplitude: 0.26,
+        wavelength1: 160,
+        wavelength2: 68,
+        sharpness: 2.1,
+      };
+    case "highlands":
+      return {
+        baseY: 0.4,
+        amplitude: 0.2,
+        wavelength1: 180,
+        wavelength2: 80,
+        sharpness: 1.4,
+      };
+    case "tundra":
+      return {
+        baseY: 0.5,
+        amplitude: 0.12,
+        wavelength1: 220,
+        wavelength2: 100,
+        sharpness: 1.1,
+      };
+    case "plains":
+    default:
+      return {
+        baseY: 0.58,
+        amplitude: 0.08,
+        wavelength1: 260,
+        wavelength2: 120,
+        sharpness: 0.9,
+      };
+  }
+}
+
+function sampleSilhouetteY(spec, x) {
+  const wave1 =
+    0.5 + 0.5 * Math.sin(((x + spec.phase1) / spec.wavelength1) * Math.PI * 2);
+  const wave2 =
+    0.5 + 0.5 * Math.sin(((x + spec.phase2) / spec.wavelength2) * Math.PI * 2);
+  const shaped1 = Math.pow(Math.max(0, wave1), spec.sharpness);
+  const shaped2 = Math.pow(
+    Math.max(0, wave2),
+    Math.max(0.5, spec.sharpness * 0.6),
+  );
+  const raw = spec.baseY - spec.amplitude * (shaped1 * 0.7 + shaped2 * 0.3);
+  return Math.max(0, Math.min(1, raw));
+}
+
+// ---------------------------------------------------------------------------
+// POI marker – matches the map renderer dot style
+// ---------------------------------------------------------------------------
+
+export function drawPoiMarkerOnCanvas(
+  ctx,
+  x,
+  y,
+  outerRadius = 6,
+  innerRadius = 3,
+) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.fillStyle = "rgba(247, 239, 218, 0.96)";
+  ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.strokeStyle = "rgba(70, 48, 33, 0.9)";
+  ctx.lineWidth = Math.max(0.9, outerRadius * 0.18);
+  ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.fillStyle = "rgba(72, 43, 31, 0.94)";
+  ctx.arc(x, y, innerRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------------------
+// Player figure (canvas-drawn silhouette walking figure)
+// ---------------------------------------------------------------------------
+
+export function drawPlayerFigure(ctx, cx, groundY, frameIndex) {
+  const alt = (frameIndex ?? 0) % 2 === 1;
+  ctx.save();
+  ctx.fillStyle = "#16110b";
+
+  // head
+  ctx.beginPath();
+  ctx.arc(cx, groundY - 48, 7, 0, Math.PI * 2);
+  ctx.fill();
+
+  // torso
+  ctx.fillRect(cx - 3.5, groundY - 40, 7, 20);
+
+  // pack
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(cx - 12, groundY - 38, 9, 14, 4);
+  ctx.fill();
+  ctx.restore();
+
+  // arms
+  drawLimb(ctx, cx, groundY - 32, alt ? 0.5 : -0.3, 12, 3.5, 0.85);
+  drawLimb(ctx, cx, groundY - 32, alt ? -0.3 : 0.5, 12, 3.5, 1.0);
+
+  // legs
+  drawLimb(ctx, cx, groundY - 20, alt ? 0.7 : -0.5, 14, 4, 0.85);
+  drawLimb(ctx, cx, groundY - 20, alt ? -0.5 : 0.7, 14, 4, 1.0);
+
+  ctx.restore();
+}
+
+function drawLimb(ctx, px, py, angle, length, thickness, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(px, py);
+  ctx.rotate(angle);
+  ctx.fillRect(-thickness / 2, 0, thickness, length);
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
 
 export function normalizeBiomeKey(biomeKey) {
   if (typeof biomeKey === "number") {
     return BIOME_INFO[biomeKey]?.key ?? null;
   }
-
   return biomeKey ?? null;
 }
 
-function getDecorationSpec(biomeKey) {
-  switch (biomeKey) {
-    case "desert":
-      return {
-        stoneStride: 48,
-        stoneProbability: 0.22,
-        stoneMin: 3.5,
-        stoneRange: 3.5,
-        plantStride: 38,
-        plantProbability: 0.3,
-        plantType: "dune"
-      };
-    case "forest":
-      return {
-        stoneStride: 42,
-        stoneProbability: 0.18,
-        stoneMin: 4.5,
-        stoneRange: 4,
-        plantStride: 30,
-        plantProbability: 0.38,
-        plantType: "tuft"
-      };
-    case "rainforest":
-      return {
-        stoneStride: 46,
-        stoneProbability: 0.14,
-        stoneMin: 4,
-        stoneRange: 3.5,
-        plantStride: 28,
-        plantProbability: 0.42,
-        plantType: "shrub"
-      };
-    case "tundra":
-      return {
-        stoneStride: 34,
-        stoneProbability: 0.26,
-        stoneMin: 4.5,
-        stoneRange: 4.5,
-        plantStride: 34,
-        plantProbability: 0.24,
-        plantType: "scrub"
-      };
-    case "highlands":
-    case "mountain":
-      return {
-        stoneStride: 30,
-        stoneProbability: 0.34,
-        stoneMin: 5,
-        stoneRange: 5,
-        plantStride: 44,
-        plantProbability: 0.16,
-        plantType: "scrub"
-      };
-    default:
-      return {
-        stoneStride: 38,
-        stoneProbability: 0.2,
-        stoneMin: 4,
-        stoneRange: 4,
-        plantStride: 34,
-        plantProbability: 0.28,
-        plantType: "shrub"
-      };
-  }
-}
-
-function createGroundPlant({ biomeKey, stripId, slot, x, y, type }) {
-  switch (type) {
-    case "dune":
-      return createDune({ biomeKey, stripId, slot, x, y });
-    case "scrub":
-      return createShrub({ biomeKey, stripId, slot, x, y, className: "play-ground-scrub" });
-    case "shrub":
-      return createShrub({ biomeKey, stripId, slot, x, y, className: "play-ground-shrub" });
-    default:
-      return createTuft({ biomeKey, stripId, slot, x, y });
-  }
-}
-
-function createTuft({ biomeKey, stripId, slot, x, y }) {
-  const height = 10 + hash01(`${biomeKey}:${stripId}:plant-slot:${slot}:height`) * 9;
-  const tuft = document.createElement("span");
-  tuft.className = "play-ground-tuft";
-  tuft.style.left = `${x.toFixed(1)}px`;
-  tuft.style.bottom = `${y.toFixed(1)}px`;
-  tuft.style.height = `${height.toFixed(1)}px`;
-  tuft.style.width = `${(height * 1.02).toFixed(1)}px`;
-  tuft.style.opacity = `${0.56 + hash01(`${biomeKey}:${stripId}:plant-slot:${slot}:alpha`) * 0.24}`;
-
-  for (let bladeIndex = 0; bladeIndex < 3; bladeIndex += 1) {
-    const blade = document.createElement("span");
-    blade.className = "play-ground-blade";
-    blade.style.left = `${bladeIndex * 28 + hash01(`${biomeKey}:${stripId}:plant-slot:${slot}:blade:${bladeIndex}`) * 10}%`;
-    blade.style.height = `${68 + bladeIndex * 10}%`;
-    blade.style.transform = `rotate(${(-28 + bladeIndex * 28).toFixed(1)}deg)`;
-    tuft.append(blade);
-  }
-
-  return tuft;
-}
-
-function createShrub({ biomeKey, stripId, slot, x, y, className }) {
-  const size = 8 + hash01(`${biomeKey}:${stripId}:plant-slot:${slot}:size`) * 8;
-  const shrub = document.createElement("span");
-  shrub.className = className;
-  shrub.style.left = `${x.toFixed(1)}px`;
-  shrub.style.bottom = `${y.toFixed(1)}px`;
-  shrub.style.width = `${size.toFixed(1)}px`;
-  shrub.style.height = `${Math.max(6, size * 0.72).toFixed(1)}px`;
-  shrub.style.opacity = `${0.56 + hash01(`${biomeKey}:${stripId}:plant-slot:${slot}:alpha`) * 0.22}`;
-  return shrub;
-}
-
-function createDune({ biomeKey, stripId, slot, x, y }) {
-  const width = 12 + hash01(`${biomeKey}:${stripId}:plant-slot:${slot}:width`) * 14;
-  const height = Math.max(4, width * 0.24);
-  const dune = document.createElement("span");
-  dune.className = "play-ground-dune";
-  dune.style.left = `${x.toFixed(1)}px`;
-  dune.style.bottom = `${y.toFixed(1)}px`;
-  dune.style.width = `${width.toFixed(1)}px`;
-  dune.style.height = `${height.toFixed(1)}px`;
-  dune.style.opacity = `${0.46 + hash01(`${biomeKey}:${stripId}:plant-slot:${slot}:alpha`) * 0.18}`;
-  return dune;
-}
-
-function getBackdropSpec(biomeKey) {
-  switch (biomeKey) {
-    case "forest":
-      return {
-        baseY: 56,
-        sampleStep: 18,
-        primaryWavelength: 210,
-        secondaryWavelength: 118,
-        primaryAmplitude: 16,
-        secondaryAmplitude: 5,
-        primarySharpness: 1.5,
-        secondarySharpness: 1.2
-      };
-    case "rainforest":
-      return {
-        baseY: 54,
-        sampleStep: 16,
-        primaryWavelength: 188,
-        secondaryWavelength: 104,
-        primaryAmplitude: 18,
-        secondaryAmplitude: 6,
-        primarySharpness: 1.42,
-        secondarySharpness: 1.18
-      };
-    case "desert":
-      return {
-        baseY: 66,
-        sampleStep: 22,
-        primaryWavelength: 300,
-        secondaryWavelength: 168,
-        primaryAmplitude: 7,
-        secondaryAmplitude: 2.5,
-        primarySharpness: 1.9,
-        secondarySharpness: 1.4
-      };
-    case "highlands":
-    case "mountain":
-      return {
-        baseY: 60,
-        sampleStep: 18,
-        primaryWavelength: 224,
-        secondaryWavelength: 128,
-        primaryAmplitude: 22,
-        secondaryAmplitude: 6,
-        primarySharpness: 1.65,
-        secondarySharpness: 1.3
-      };
-    case "tundra":
-      return {
-        baseY: 64,
-        sampleStep: 20,
-        primaryWavelength: 244,
-        secondaryWavelength: 144,
-        primaryAmplitude: 10,
-        secondaryAmplitude: 3,
-        primarySharpness: 1.7,
-        secondarySharpness: 1.35
-      };
-    default:
-      return {
-        baseY: 68,
-        sampleStep: 22,
-        primaryWavelength: 276,
-        secondaryWavelength: 168,
-        primaryAmplitude: 9,
-        secondaryAmplitude: 2.5,
-        primarySharpness: 1.85,
-        secondarySharpness: 1.45
-      };
-  }
-}
-
-function sampleBackdropY(spec, phaseOffset, secondaryPhase, x) {
-  const primaryWave = 0.5 + 0.5 * Math.sin(((x + phaseOffset) / spec.primaryWavelength) * Math.PI * 2);
-  const secondaryWave = 0.5 + 0.5 * Math.sin(((x + secondaryPhase) / spec.secondaryWavelength) * Math.PI * 2);
-  const shapedPrimary = Math.pow(primaryWave, spec.primarySharpness);
-  const shapedSecondary = Math.pow(secondaryWave, spec.secondarySharpness);
-  return spec.baseY - spec.primaryAmplitude * shapedPrimary - spec.secondaryAmplitude * shapedSecondary;
-}
-
-function smoothstep(value) {
-  const t = clamp01(value);
-  return t * t * (3 - 2 * t);
-}
-
-function clamp01(value) {
-  return Math.max(0, Math.min(1, value));
-}
-
-function hexToRgb(hex) {
+export function hexToRgb(hex) {
   const value = hex.replace("#", "");
   return [
     Number.parseInt(value.slice(0, 2), 16),
     Number.parseInt(value.slice(2, 4), 16),
-    Number.parseInt(value.slice(4, 6), 16)
+    Number.parseInt(value.slice(4, 6), 16),
   ];
 }
 
-function mixRgb(base, target, amount) {
-  return base.map((channel, index) => Math.round(channel * (1 - amount) + target[index] * amount));
+export function mixRgb(base, target, amount) {
+  return base.map((channel, index) =>
+    Math.round(channel * (1 - amount) + target[index] * amount),
+  );
 }
 
-function rgbToCss(rgb) {
+export function rgbToCss(rgb) {
   return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
 }
 
-function rgbaToCss(rgb, alpha) {
-  return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`;
-}
-
-function hash01(text) {
+export function hash01(text) {
   let hash = 2166136261;
   for (let index = 0; index < text.length; index += 1) {
     hash ^= text.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
-
   return ((hash >>> 0) % 100000) / 100000;
 }

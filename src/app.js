@@ -40,11 +40,8 @@ const refs = {
   canvas: document.querySelector("#map-canvas"),
   playCanvas: document.querySelector("#play-canvas"),
   playJourneyPanel: document.querySelector("#play-journey-panel"),
+  playJourneyCanvas: document.querySelector("#play-journey-canvas"),
   playMapLegend: document.querySelector("#play-map-legend"),
-  playSeaTrack: document.querySelector("#play-sea-track"),
-  playGroundTrack: document.querySelector("#play-ground-track"),
-  playPoiMarker: document.querySelector("#play-poi-marker"),
-  playPlayer: document.querySelector("#play-player"),
   playToggleBiomeLabelsButton: document.querySelector(
     "#play-toggle-biome-labels",
   ),
@@ -95,6 +92,10 @@ refs.canvas.width = RENDER_WIDTH;
 refs.canvas.height = RENDER_HEIGHT;
 refs.playCanvas.width = RENDER_WIDTH;
 refs.playCanvas.height = RENDER_HEIGHT;
+if (refs.playJourneyCanvas) {
+  refs.playJourneyCanvas.width = RENDER_WIDTH;
+  refs.playJourneyCanvas.height = RENDER_HEIGHT;
+}
 
 const state = {
   currentMode: initialMode,

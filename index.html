@@ -8,17 +8,28 @@
       (() => {
         const path = window.location.pathname.replace(/\/+$/, "") || "/";
         document.documentElement.dataset.route =
-          path.endsWith("/editor") || path.endsWith("/editor/index.html") ? "editor" : "play";
+          path.endsWith("/editor") || path.endsWith("/editor/index.html")
+            ? "editor"
+            : "play";
       })();
     </script>
-    <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="%23e6d7b6"/><path d="M6 22 L13 10 L20 22 M12 17 L16 12 L23 22" fill="none" stroke="%23543f27" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' />
+    <link
+      rel="icon"
+      href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="%23e6d7b6"/><path d="M6 22 L13 10 L20 22 M12 17 L16 12 L23 22" fill="none" stroke="%23543f27" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    />
     <link rel="stylesheet" href="./styles.css?v=20260407a" />
   </head>
   <body>
     <div id="editor-shell" class="app-shell">
       <aside class="control-panel">
         <div class="mode-row">
-          <button id="enter-play" type="button" class="ghost-button mode-button">Spela</button>
+          <button
+            id="enter-play"
+            type="button"
+            class="ghost-button mode-button"
+          >
+            Spela
+          </button>
         </div>
 
         <form id="controls" class="controls">
@@ -37,7 +48,14 @@
               <span class="field-label">Kartstorlek</span>
               <span id="mapSize-value" class="field-value"></span>
             </div>
-            <input id="mapSize" name="mapSize" type="range" min="10" max="100" step="1" />
+            <input
+              id="mapSize"
+              name="mapSize"
+              type="range"
+              min="10"
+              max="100"
+              step="1"
+            />
           </div>
 
           <div class="field">
@@ -60,7 +78,14 @@
               <span class="field-label">Stadstäthet</span>
               <span id="cityDensity-value" class="field-value"></span>
             </div>
-            <input id="cityDensity" name="cityDensity" type="range" min="0" max="100" step="1" />
+            <input
+              id="cityDensity"
+              name="cityDensity"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+            />
           </div>
 
           <div class="field">
@@ -68,7 +93,14 @@
               <span class="field-label">Floder</span>
               <span id="riverAmount-value" class="field-value"></span>
             </div>
-            <input id="riverAmount" name="riverAmount" type="range" min="0" max="100" step="1" />
+            <input
+              id="riverAmount"
+              name="riverAmount"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+            />
           </div>
 
           <div class="field">
@@ -179,8 +211,12 @@
           </div>
 
           <div class="button-row">
-            <button id="generate" type="submit" class="primary-button">Generera karta</button>
-            <button id="reset" type="button" class="ghost-button">Återställ</button>
+            <button id="generate" type="submit" class="primary-button">
+              Generera karta
+            </button>
+            <button id="reset" type="button" class="ghost-button">
+              Återställ
+            </button>
           </div>
         </form>
 
@@ -196,19 +232,61 @@
             <span id="world-title" class="world-title"></span>
             <div class="map-actions">
               <div class="map-action-group map-action-group--toggles">
-                <button id="toggle-biome-labels" type="button" class="ghost-button toggle-button">Kartnamn</button>
-                <button id="toggle-city-labels" type="button" class="ghost-button toggle-button">Städer</button>
-                <button id="toggle-snow" type="button" class="ghost-button toggle-button">Snö</button>
-                <button id="toggle-monochrome" type="button" class="ghost-button toggle-button">Svartvitt</button>
+                <button
+                  id="toggle-biome-labels"
+                  type="button"
+                  class="ghost-button toggle-button"
+                >
+                  Kartnamn
+                </button>
+                <button
+                  id="toggle-city-labels"
+                  type="button"
+                  class="ghost-button toggle-button"
+                >
+                  Städer
+                </button>
+                <button
+                  id="toggle-snow"
+                  type="button"
+                  class="ghost-button toggle-button"
+                >
+                  Snö
+                </button>
+                <button
+                  id="toggle-monochrome"
+                  type="button"
+                  class="ghost-button toggle-button"
+                >
+                  Svartvitt
+                </button>
               </div>
               <div class="map-action-group map-action-group--view">
                 <div class="zoom-control" aria-label="Zoomkontroll">
-                  <button id="zoom-out" type="button" class="ghost-button zoom-step-button" aria-label="Zooma ut">−</button>
+                  <button
+                    id="zoom-out"
+                    type="button"
+                    class="ghost-button zoom-step-button"
+                    aria-label="Zooma ut"
+                  >
+                    −
+                  </button>
                   <span id="zoom-level" class="zoom-chip">100%</span>
-                  <button id="zoom-in" type="button" class="ghost-button zoom-step-button" aria-label="Zooma in">+</button>
+                  <button
+                    id="zoom-in"
+                    type="button"
+                    class="ghost-button zoom-step-button"
+                    aria-label="Zooma in"
+                  >
+                    +
+                  </button>
                 </div>
-                <button id="reset-view" type="button" class="ghost-button">Återställ vy</button>
-                <button id="save-image" type="button" class="ghost-button">Spara PNG</button>
+                <button id="reset-view" type="button" class="ghost-button">
+                  Återställ vy
+                </button>
+                <button id="save-image" type="button" class="ghost-button">
+                  Spara PNG
+                </button>
               </div>
             </div>
           </div>
@@ -216,10 +294,17 @@
             <div id="editor-loading" class="editor-loading" hidden>
               <div class="editor-loading-copy">
                 <div class="editor-loading-title">Genererar karta</div>
-                <div class="editor-loading-subtitle">Bygger terräng, vägar och etiketter...</div>
+                <div class="editor-loading-subtitle">
+                  Bygger terräng, vägar och etiketter...
+                </div>
               </div>
             </div>
-            <canvas id="map-canvas" width="1200" height="840" aria-label="Genererad fantasikarta"></canvas>
+            <canvas
+              id="map-canvas"
+              width="1200"
+              height="840"
+              aria-label="Genererad fantasikarta"
+            ></canvas>
             <div id="tooltip" class="tooltip" hidden></div>
           </div>
         </div>
@@ -233,43 +318,49 @@
         <div id="play-map-legend" class="play-map-legend" hidden>
           <div class="play-map-legend-title">Karta</div>
           <div class="play-map-legend-buttons">
-            <button id="play-toggle-biome-labels" type="button" class="ghost-button toggle-button">Kartnamn</button>
-            <button id="play-toggle-city-labels" type="button" class="ghost-button toggle-button">Stadsnamn</button>
-            <button id="play-toggle-hover" type="button" class="ghost-button toggle-button">Hoverinfo</button>
+            <button
+              id="play-toggle-biome-labels"
+              type="button"
+              class="ghost-button toggle-button"
+            >
+              Kartnamn
+            </button>
+            <button
+              id="play-toggle-city-labels"
+              type="button"
+              class="ghost-button toggle-button"
+            >
+              Stadsnamn
+            </button>
+            <button
+              id="play-toggle-hover"
+              type="button"
+              class="ghost-button toggle-button"
+            >
+              Hoverinfo
+            </button>
           </div>
         </div>
-        <canvas id="play-canvas" width="1200" height="840" aria-label="Spelvy"></canvas>
+        <canvas
+          id="play-canvas"
+          width="1200"
+          height="840"
+          aria-label="Spelvy"
+        ></canvas>
         <section id="play-journey-panel" class="play-journey-panel" hidden>
-          <div class="play-journey-scene" aria-hidden="true">
-            <div class="play-layer play-layer-sky"></div>
-            <div class="play-layer play-layer-sea">
-              <div id="play-sea-track" class="play-sea-track"></div>
-            </div>
-            <div id="play-ground-track" class="play-ground-track"></div>
-            <div id="play-poi-marker" class="play-poi-marker" hidden>
-              <span class="play-poi-marker-pin"></span>
-            </div>
-            <div id="play-player" class="play-player" data-moving="false" data-sea="false">
-              <div class="play-player-shadow"></div>
-              <div class="play-player-bob">
-                <div class="play-player-figure">
-                  <span class="play-player-leg play-player-leg--back"></span>
-                  <span class="play-player-leg play-player-leg--front"></span>
-                  <span class="play-player-arm play-player-arm--back"></span>
-                  <span class="play-player-torso"></span>
-                  <span class="play-player-arm play-player-arm--front"></span>
-                  <span class="play-player-head"></span>
-                  <span class="play-player-pack"></span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <canvas
+            id="play-journey-canvas"
+            class="play-journey-canvas"
+            aria-hidden="true"
+          ></canvas>
           <div class="play-journey-copy">
             <h1 id="play-journey-title" class="play-journey-title"></h1>
             <div id="play-journey-subtitle" class="play-journey-subtitle"></div>
           </div>
         </section>
-        <div class="play-mode-hint">Tryck M för att visa eller dölja kartan</div>
+        <div class="play-mode-hint">
+          Tryck M för att visa eller dölja kartan
+        </div>
       </div>
     </section>
 

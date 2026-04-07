@@ -18,9 +18,11 @@ const RANGE_KEYS = [
 ];
 
 export function hydrateForm(params) {
-  document.querySelector("#seed").value = params.seed;
+  const seedEl = document.querySelector("#seed");
+  if (seedEl) seedEl.value = params.seed;
   for (const key of RANGE_KEYS) {
-    document.querySelector(`#${key}`).value = params[key];
+    const el = document.querySelector(`#${key}`);
+    if (el) el.value = params[key];
   }
 }
 
@@ -47,7 +49,7 @@ export function getFormValues(form) {
 
 export function bindRangeLabels(onUpdate = updateLabels) {
   RANGE_KEYS.forEach((key) => {
-    document.querySelector(`#${key}`).addEventListener("input", onUpdate);
+    document.querySelector(`#${key}`)?.addEventListener("input", onUpdate);
   });
   onUpdate();
 }
@@ -64,7 +66,8 @@ export function updateLabels() {
 }
 
 export function setSeedValue(seed) {
-  document.querySelector("#seed").value = seed;
+  const el = document.querySelector("#seed");
+  if (el) el.value = seed;
 }
 
 export function randomSeed() {

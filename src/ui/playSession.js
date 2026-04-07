@@ -24,10 +24,7 @@ export function createPlaySession({ refs, state, syncModeUi }) {
   });
 
   const journeyScene = createJourneyScene({
-    track: refs.playGroundTrack,
-    seaTrack: refs.playSeaTrack,
-    player: refs.playPlayer,
-    poiMarker: refs.playPoiMarker,
+    canvas: refs.playJourneyCanvas,
   });
 
   const playController = createPlayController({

@@ -437,35 +437,11 @@
           aria-label="Spelvy"
         ></canvas>
         <section id="play-journey-panel" class="play-journey-panel" hidden>
-          <div class="play-journey-scene" aria-hidden="true">
-            <div class="play-layer play-layer-sky"></div>
-            <div class="play-layer play-layer-sea">
-              <div id="play-sea-track" class="play-sea-track"></div>
-            </div>
-            <div id="play-ground-track" class="play-ground-track"></div>
-            <div id="play-poi-marker" class="play-poi-marker" hidden>
-              <span class="play-poi-marker-pin"></span>
-            </div>
-            <div
-              id="play-player"
-              class="play-player"
-              data-moving="false"
-              data-sea="false"
-            >
-              <div class="play-player-shadow"></div>
-              <div class="play-player-bob">
-                <div class="play-player-figure">
-                  <span class="play-player-leg play-player-leg--back"></span>
-                  <span class="play-player-leg play-player-leg--front"></span>
-                  <span class="play-player-arm play-player-arm--back"></span>
-                  <span class="play-player-torso"></span>
-                  <span class="play-player-arm play-player-arm--front"></span>
-                  <span class="play-player-head"></span>
-                  <span class="play-player-pack"></span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <canvas
+            id="play-journey-canvas"
+            class="play-journey-canvas"
+            aria-hidden="true"
+          ></canvas>
           <div class="play-journey-copy">
             <h1 id="play-journey-title" class="play-journey-title"></h1>
             <div id="play-journey-subtitle" class="play-journey-subtitle"></div>
