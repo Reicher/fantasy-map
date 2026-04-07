@@ -11,10 +11,15 @@ export function attachEditorController({
   scheduleInteractiveRender,
   syncViewUi,
   clampCamera,
-  zoomCameraAroundPoint
+  zoomCameraAroundPoint,
+  getAdjacentEditorZoom,
 }) {
   canvas.addEventListener("pointerdown", (event) => {
-    if (state.currentMode !== "editor" || !state.currentViewport || event.button !== 0) {
+    if (
+      state.currentMode !== "editor" ||
+      !state.currentViewport ||
+      event.button !== 0
+    ) {
       return;
     }
 
@@ -23,14 +28,18 @@ export function attachEditorController({
       startX: ((event.clientX - rect.left) / rect.width) * RENDER_WIDTH,
       startY: ((event.clientY - rect.top) / rect.height) * RENDER_HEIGHT,
       centerX: state.cameraState.centerX,
-      centerY: state.cameraState.centerY
+      centerY: state.cameraState.centerY,
     };
     canvas.setPointerCapture(event.pointerId);
     canvas.dataset.dragging = "true";
   });
 
   canvas.addEventListener("pointermove", (event) => {
-    if (state.currentMode !== "editor" || !state.currentWorld || !state.currentViewport) {
+    if (
+      state.currentMode !== "editor" ||
+      !state.currentWorld ||
+      !state.currentViewport
+    ) {
       return;
     }
 
@@ -44,7 +53,7 @@ export function attachEditorController({
       state.cameraState = clampCamera({
         zoom: state.cameraState.zoom,
         centerX: state.dragState.centerX - dx / state.currentViewport.scaleX,
-        centerY: state.dragState.centerY - dy / state.currentViewport.scaleY
+        centerY: state.dragState.centerY - dy / state.currentViewport.scaleY,
       });
       syncViewUi();
       scheduleInteractiveRender();
@@ -56,7 +65,7 @@ export function attachEditorController({
     const hit = inspectWorldAt(state.currentWorld, position.x, position.y, {
       canvasX,
       canvasY,
-      viewport: state.currentViewport
+      viewport: state.currentViewport,
     });
 
     if (!hit) {
@@ -89,29 +98,9 @@ export function attachEditorController({
 
   canvas.addEventListener(
     "wheel",
-    (event) => {
-      if (state.currentMode !== "editor" || !state.currentWorld || !state.currentViewport) {
-        return;
-      }
-
-      event.preventDefault();
-      const rect = canvas.getBoundingClientRect();
-      const canvasX = ((event.clientX - rect.left) / rect.width) * RENDER_WIDTH;
-      const canvasY = ((event.clientY - rect.top) / rect.height) * RENDER_HEIGHT;
-      const worldPoint = state.currentViewport.canvasToWorld(canvasX, canvasY);
-      const zoomFactor = event.deltaY < 0 ? 1.16 : 1 / 1.16;
-      const zoom = clampNumber(state.cameraState.zoom * zoomFactor, 1, 4.5);
-      state.cameraState = clampCamera(
-        zoomCameraAroundPoint(worldPoint.x, worldPoint.y, canvasX, canvasY, zoom)
-      );
-      syncViewUi();
-      rerenderCurrentWorld();
-      clearHover(tooltip);
+    (_event) => {
+      // Mouse wheel is reserved for panning; zoom is handled by the toolbar buttons.
     },
-    { passive: false }
+    { passive: false },
   );
-}
-
-function clampNumber(value, min, max) {
-  return Math.max(min, Math.min(max, value));
 }

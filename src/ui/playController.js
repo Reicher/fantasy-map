@@ -1,5 +1,5 @@
 import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
-import { createViewport } from "../render/renderer.js?v=20260403aq";
+import { createViewport } from "../render/renderer.js?v=20260404a";
 import { findPlayableCityAtWorldPoint } from "../game/playQueries.js?v=20260401a";
 
 export function createPlayController({
@@ -133,8 +133,12 @@ export function createPlayController({
     };
 
     if (shouldTravel) {
+      const nextPlayState = beginTravel(state.playState, targetCityId, state.currentWorld);
+      if (nextPlayState?.travel?.biomeBandSegments) {
+        console.log("Travel biome bands", nextPlayState.travel.biomeBandSegments);
+      }
       state.playState = {
-        ...beginTravel(state.playState, targetCityId),
+        ...nextPlayState,
         viewMode: "journey"
       };
       ensureAnimation();

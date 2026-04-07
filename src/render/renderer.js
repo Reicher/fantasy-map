@@ -1,14 +1,35 @@
 import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
-import { drawPaper, drawOcean, drawFrame } from "./backgroundLayer.js?v=20260401e";
+import {
+  drawPaper,
+  drawOcean,
+  drawFrame,
+} from "./backgroundLayer.js?v=20260401e";
 import { drawCities, drawPlayerMarker } from "./citiesLayer.js?v=20260403c";
+import { drawTravelDebugOverlay } from "./debugLayer.js?v=20260404a";
 import { drawFogOfWar } from "./fogLayer.js?v=20260403h";
-import { collectForestRenderGlyphs, drawForestEntry } from "./forestLayer.js?v=20260403o";
+import {
+  collectForestRenderGlyphs,
+  drawForestEntry,
+} from "./forestLayer.js?v=20260403o";
 import { drawLabels } from "./labelsLayer.js?v=20260402l";
-import { collectMountainRenderGlyphs, drawMountainGlyph, getMountainFootY } from "./mountainsLayer.js?v=20260403h";
+import {
+  collectMountainRenderGlyphs,
+  drawMountainGlyph,
+  getMountainFootY,
+} from "./mountainsLayer.js?v=20260403h";
 import { drawRoads } from "./roadsLayer.js?v=20260403a";
-import { drawBiomeBorders, drawTerrainRaster, drawTerrainTextures, drawShorelines } from "./terrainLayer.js?v=20260402j";
+import {
+  drawBiomeBorders,
+  drawTerrainRaster,
+  drawTerrainTextures,
+  drawShorelines,
+} from "./terrainLayer.js?v=20260402j";
 import { createViewport } from "./viewport.js?v=20260331l";
-import { drawLakeWaves, drawOceanWaves, drawRivers } from "./waterLayer.js?v=20260403a";
+import {
+  drawLakeWaves,
+  drawOceanWaves,
+  drawRivers,
+} from "./waterLayer.js?v=20260403a";
 
 export { createViewport } from "./viewport.js?v=20260331l";
 
@@ -17,8 +38,8 @@ export function renderEditorWorld(canvas, world, options = {}) {
     showPaper: true,
     showTerrainTextures: true,
     showLabels: true,
-    showFrame: true,
-    showPlayerMarker: true
+    showFrame: false,
+    showPlayerMarker: true,
   });
 }
 
@@ -40,7 +61,7 @@ export function renderPlayWorldStatic(canvas, world, options = {}) {
     showBiomeBorders: true,
     showShorelines: true,
     showEnvironmentGlyphs: true,
-    showFogOfWar: false
+    showFogOfWar: false,
   });
 }
 
@@ -49,19 +70,14 @@ export function renderPlayWorldDynamic(canvas, world, options = {}) {
     showPlayerMarker: true,
     showCities: true,
     showLabels: true,
-    showFogOfWar: true
+    showFogOfWar: true,
   });
-}
-
-export function renderWorld(canvas, world, options = {}) {
-  return options.playMode === true
-    ? renderPlayWorldScene(canvas, world, options)
-    : renderEditorWorld(canvas, world, options);
 }
 
 function renderScene(canvas, world, options = {}, scene = {}) {
   const ctx = canvas.getContext("2d");
-  const viewport = options.viewport ?? createViewport(world, options.cameraState);
+  const viewport =
+    options.viewport ?? createViewport(world, options.cameraState);
   const { terrain, hydrology, climate, regions, cities, geometry } = world;
   const renderWidth = options.renderWidth ?? RENDER_WIDTH;
   const renderHeight = options.renderHeight ?? RENDER_HEIGHT;
@@ -79,7 +95,7 @@ function renderScene(canvas, world, options = {}, scene = {}) {
     showBiomeBorders = true,
     showShorelines = true,
     showEnvironmentGlyphs = true,
-    showFogOfWar = false
+    showFogOfWar = false,
   } = scene;
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -92,7 +108,12 @@ function renderScene(canvas, world, options = {}, scene = {}) {
   }
   ctx.save();
   ctx.beginPath();
-  ctx.rect(viewport.margin, viewport.margin, viewport.innerWidth, viewport.innerHeight);
+  ctx.rect(
+    viewport.margin,
+    viewport.margin,
+    viewport.innerWidth,
+    viewport.innerHeight,
+  );
   ctx.clip();
   drawOcean(ctx, renderWidth, renderHeight);
   drawTerrainRaster(ctx, world, viewport, options);
@@ -103,7 +124,15 @@ function renderScene(canvas, world, options = {}, scene = {}) {
     drawTerrainTextures(ctx, world, viewport, options);
   }
   if (showLakeWaves) {
-    drawLakeWaves(ctx, hydrology, climate, terrain, geometry, viewport, terrain.width);
+    drawLakeWaves(
+      ctx,
+      hydrology,
+      climate,
+      terrain,
+      geometry,
+      viewport,
+      terrain.width,
+    );
   }
   if (showBiomeBorders) {
     drawBiomeBorders(ctx, geometry, viewport);
@@ -114,10 +143,14 @@ function renderScene(canvas, world, options = {}, scene = {}) {
   drawRivers(ctx, geometry, viewport);
   let mountainGlyphHits = [];
   if (showEnvironmentGlyphs) {
-    const forestEntries = collectForestRenderGlyphs(world, viewport, options).map((entry) => ({
+    const forestEntries = collectForestRenderGlyphs(
+      world,
+      viewport,
+      options,
+    ).map((entry) => ({
       type: "forest",
       footY: entry.footY,
-      entry
+      entry,
     }));
     const { glyphs: mountainGlyphs, glyphHits } = collectMountainRenderGlyphs(
       terrain,
@@ -125,7 +158,7 @@ function renderScene(canvas, world, options = {}, scene = {}) {
       regions,
       geometry,
       viewport,
-      options
+      options,
     );
     mountainGlyphHits = glyphHits;
     const environmentEntries = [
@@ -133,8 +166,8 @@ function renderScene(canvas, world, options = {}, scene = {}) {
       ...mountainGlyphs.map((glyph) => ({
         type: "mountain",
         footY: getMountainFootY(glyph),
-        glyph
-      }))
+        glyph,
+      })),
     ].sort((a, b) => a.footY - b.footY);
     for (const item of environmentEntries) {
       if (item.type === "forest") {
@@ -165,13 +198,14 @@ function renderScene(canvas, world, options = {}, scene = {}) {
 
   return {
     ...viewport,
-    mountainGlyphHits
+    mountainGlyphHits,
   };
 }
 
 function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
   const ctx = canvas.getContext("2d");
-  const viewport = options.viewport ?? createViewport(world, options.cameraState);
+  const viewport =
+    options.viewport ?? createViewport(world, options.cameraState);
   const { cities } = world;
   const renderWidth = options.renderWidth ?? RENDER_WIDTH;
   const renderHeight = options.renderHeight ?? RENDER_HEIGHT;
@@ -181,7 +215,7 @@ function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
     showPlayerMarker = true,
     showCities = true,
     showLabels = false,
-    showFogOfWar = false
+    showFogOfWar = false,
   } = scene;
 
   ctx.save();
@@ -189,7 +223,12 @@ function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
   ctx.filter = options.showMonochrome ? "grayscale(1)" : "none";
   ctx.save();
   ctx.beginPath();
-  ctx.rect(viewport.margin, viewport.margin, viewport.innerWidth, viewport.innerHeight);
+  ctx.rect(
+    viewport.margin,
+    viewport.margin,
+    viewport.innerWidth,
+    viewport.innerHeight,
+  );
   ctx.clip();
   ctx.restore();
 
@@ -198,7 +237,12 @@ function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
   }
   ctx.save();
   ctx.beginPath();
-  ctx.rect(viewport.margin, viewport.margin, viewport.innerWidth, viewport.innerHeight);
+  ctx.rect(
+    viewport.margin,
+    viewport.margin,
+    viewport.innerWidth,
+    viewport.innerHeight,
+  );
   ctx.clip();
   if (showCities) {
     drawCities(ctx, cities, viewport, options.cityOverlay ?? {});
@@ -210,10 +254,13 @@ function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
   if (showPlayerMarker) {
     drawPlayerMarker(ctx, options.playerStart ?? null, viewport);
   }
+  if (options.travelDebug?.enabled) {
+    drawTravelDebugOverlay(ctx, viewport, options.travelDebug);
+  }
   ctx.restore();
 
   return {
     ...viewport,
-    mountainGlyphHits: []
+    mountainGlyphHits: [],
   };
 }

@@ -1,16 +1,26 @@
+export const EDITOR_ZOOM_LEVELS = [1, 2, 3];
+
 export function createEditorCamera(world) {
   return {
-    zoom: 1,
+    zoom: EDITOR_ZOOM_LEVELS[0],
     centerX: world?.terrain.width * 0.5 ?? 150,
-    centerY: world?.terrain.height * 0.5 ?? 110
+    centerY: world?.terrain.height * 0.5 ?? 110,
   };
 }
 
-export function createPlayCamera(world, playState) {
+export function createPlayCamera(world, playState, zoom = 1) {
   return {
-    zoom: 1.5,
-    centerX: playState?.position?.x ?? world?.playerStart?.x ?? world?.terrain.width * 0.5 ?? 150,
-    centerY: playState?.position?.y ?? world?.playerStart?.y ?? world?.terrain.height * 0.5 ?? 110
+    zoom,
+    centerX:
+      playState?.position?.x ??
+      world?.playerStart?.x ??
+      world?.terrain.width * 0.5 ??
+      150,
+    centerY:
+      playState?.position?.y ??
+      world?.playerStart?.y ??
+      world?.terrain.height * 0.5 ??
+      110,
   };
 }
 
@@ -19,7 +29,11 @@ export function clampEditorCamera(world, camera) {
     return camera;
   }
 
-  const zoom = clampNumber(camera.zoom, 1, 4.5);
+  const zoom = clampNumber(
+    camera.zoom,
+    EDITOR_ZOOM_LEVELS[0],
+    EDITOR_ZOOM_LEVELS[EDITOR_ZOOM_LEVELS.length - 1],
+  );
   const visibleWidth = world.terrain.width / zoom;
   const visibleHeight = world.terrain.height / zoom;
   const oceanPadX = Math.max(12, visibleWidth * 0.24);
@@ -30,17 +44,25 @@ export function clampEditorCamera(world, camera) {
     centerX: clampNumber(
       camera.centerX,
       visibleWidth * 0.5 - oceanPadX,
-      world.terrain.width - visibleWidth * 0.5 + oceanPadX
+      world.terrain.width - visibleWidth * 0.5 + oceanPadX,
     ),
     centerY: clampNumber(
       camera.centerY,
       visibleHeight * 0.5 - oceanPadY,
-      world.terrain.height - visibleHeight * 0.5 + oceanPadY
-    )
+      world.terrain.height - visibleHeight * 0.5 + oceanPadY,
+    ),
   };
 }
 
-export function zoomCameraAroundPoint(world, viewport, worldX, worldY, canvasX, canvasY, zoom) {
+export function zoomCameraAroundPoint(
+  world,
+  viewport,
+  worldX,
+  worldY,
+  canvasX,
+  canvasY,
+  zoom,
+) {
   const margin = viewport.margin;
   const innerWidth = viewport.innerWidth;
   const innerHeight = viewport.innerHeight;
@@ -54,7 +76,7 @@ export function zoomCameraAroundPoint(world, viewport, worldX, worldY, canvasX, 
   return {
     zoom,
     centerX: leftWorld + visibleWidth * 0.5,
-    centerY: topWorld + visibleHeight * 0.5
+    centerY: topWorld + visibleHeight * 0.5,
   };
 }
 
@@ -65,6 +87,35 @@ export function isDefaultEditorCamera(world, camera) {
     Math.abs(camera.centerX - defaultCamera.centerX) < 0.01 &&
     Math.abs(camera.centerY - defaultCamera.centerY) < 0.01
   );
+}
+
+export function getNearestEditorZoomIndex(zoom) {
+  let nearestIndex = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  EDITOR_ZOOM_LEVELS.forEach((level, index) => {
+    const distance = Math.abs(level - zoom);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  });
+
+  return nearestIndex;
+}
+
+export function getNearestEditorZoom(zoom) {
+  return EDITOR_ZOOM_LEVELS[getNearestEditorZoomIndex(zoom)];
+}
+
+export function getAdjacentEditorZoom(currentZoom, direction) {
+  const currentIndex = getNearestEditorZoomIndex(currentZoom);
+  const nextIndex = clampNumber(
+    currentIndex + Math.sign(direction || 0),
+    0,
+    EDITOR_ZOOM_LEVELS.length - 1,
+  );
+  return EDITOR_ZOOM_LEVELS[nextIndex];
 }
 
 function clampNumber(value, min, max) {

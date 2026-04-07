@@ -1,10 +1,10 @@
 import { createNameGenerator } from "../naming.js?v=20260402d";
 import { createRng } from "../random.js";
-import { generateCities } from "./cities.js?v=20260402a";
-import { generateClimate } from "./climate.js?v=20260331k";
+import { generateCities } from "./cities.js?v=20260407a";
+import { generateClimate } from "./climate.js?v=20260407a";
 import { compileGeometry } from "./compileGeometry.js?v=20260403a";
 import { buildFeatureCatalog } from "./features.js?v=20260403a";
-import { generateHydrology } from "./hydrology.js?v=20260402b";
+import { generateHydrology } from "./hydrology.js?v=20260407a";
 import { buildWorldNetwork } from "./network.js?v=20260401i";
 import { applyFeatureNames } from "./nameFeatures.js";
 import { buildRegions } from "./regions.js?v=20260402c";
@@ -28,7 +28,10 @@ export function normalizeParams(input) {
     edgeDetail: clamp(asNumber(input.edgeDetail, 300), 180, 520),
     minBiomeSize: clamp(asNumber(input.minBiomeSize, 15), 0, 20),
     renderScale: clamp(asNumber(input.renderScale, 150), 50, 250),
-    fogVisionRadius: clamp(asNumber(input.fogVisionRadius, 18), 6, 40)
+    fogVisionRadius: clamp(asNumber(input.fogVisionRadius, 18), 6, 40),
+    temperatureBias: clamp(asNumber(input.temperatureBias, 50), 0, 100),
+    moistureBias: clamp(asNumber(input.moistureBias, 50), 0, 100),
+    coastalBias: clamp(asNumber(input.coastalBias, 50), 0, 100),
   };
 }
 
@@ -46,7 +49,7 @@ export function generateWorld(inputParams) {
     terrain,
     hydrology: named.hydrology,
     climate,
-    regions: named.regions
+    regions: named.regions,
   };
 
   world.surface = buildSurfaceGeometry(world);
@@ -71,12 +74,14 @@ function selectPlayerStart(cities, seed) {
   const coastalCities = cities.filter((city) => city.coastal);
   const candidates = coastalCities.length > 0 ? coastalCities : cities;
   const rng = createRng(`${seed}::player-start`);
-  const city = rng.weighted(candidates, (candidate) => Math.max(1, candidate.score));
+  const city = rng.weighted(candidates, (candidate) =>
+    Math.max(1, candidate.score),
+  );
 
   return {
     cityId: city.id,
     x: city.x,
-    y: city.y
+    y: city.y,
   };
 }
 

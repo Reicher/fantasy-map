@@ -1,14 +1,35 @@
 import { fractalNoise2D } from "../noise.js";
 import { createRng } from "../random.js";
-import { clamp, coordsOf, distance, forEachNeighbor, indexOf } from "../utils.js";
+import {
+  clamp,
+  coordsOf,
+  distance,
+  forEachNeighbor,
+  indexOf,
+  sliderFactor,
+} from "../utils.js";
 import { collectConnectedCells, distanceField } from "./grid.js";
 
 export function generateHydrology(terrain, params) {
-  const { width, height, size, isLand, oceanMask, inlandWaterMask, elevation, mountainField, coastMask } = terrain;
+  const {
+    width,
+    height,
+    size,
+    isLand,
+    oceanMask,
+    inlandWaterMask,
+    elevation,
+    mountainField,
+    coastMask,
+  } = terrain;
   const lakeAmountFactor = sliderFactor(params.lakeAmount, 0.72);
   const lakeSizeFactor = sliderFactor(params.lakeSize, 0.68);
   const rng = createRng(`${params.seed}::hydrology`);
-  const { oceanSources, coastSources } = collectShoreSources(size, oceanMask, coastMask);
+  const { oceanSources, coastSources } = collectShoreSources(
+    size,
+    oceanMask,
+    coastMask,
+  );
   const oceanDistance = distanceField(width, height, oceanSources, false);
   const coastDistance = distanceField(width, height, coastSources, false);
   const baseRainfall = buildBaseRainfall(
@@ -18,7 +39,7 @@ export function generateHydrology(terrain, params) {
     isLand,
     oceanDistance,
     elevation,
-    mountainField
+    mountainField,
   );
   const state = createHydrologyState(size);
   const context = {
@@ -37,7 +58,7 @@ export function generateHydrology(terrain, params) {
     oceanDistance,
     coastDistance,
     baseRainfall,
-    ...state
+    ...state,
   };
 
   registerNaturalLakes(context);
@@ -55,7 +76,7 @@ export function generateHydrology(terrain, params) {
     mountainField,
     baseRainfall,
     oceanDistance,
-    coastDistance
+    coastDistance,
   });
 
   for (const source of selectedSources) {
@@ -69,11 +90,13 @@ export function generateHydrology(terrain, params) {
         cells: traced.cells,
         width: clamp(source.score * 1.3, 0.8, 2.8),
         sourceScore: source.score,
-        joinsRiver: traced.joinsRiver
+        joinsRiver: traced.joinsRiver,
       });
 
       traced.cells.forEach((cell, order) => {
-        context.riverStrength[cell] += source.score * (0.7 + order / Math.max(1, traced.cells.length) * 0.9);
+        context.riverStrength[cell] +=
+          source.score *
+          (0.7 + (order / Math.max(1, traced.cells.length)) * 0.9);
         if (context.riverCellOwner[cell] < 0) {
           context.riverCellOwner[cell] = id;
         }
@@ -88,13 +111,20 @@ export function generateHydrology(terrain, params) {
   return {
     oceanDistance,
     coastDistance,
-    waterDistance: buildWaterDistance(width, height, size, oceanSources, context.lakes, context.riverStrength),
+    waterDistance: buildWaterDistance(
+      width,
+      height,
+      size,
+      oceanSources,
+      context.lakes,
+      context.riverStrength,
+    ),
     baseRainfall,
     riverStrength: context.riverStrength,
     riverCellOwner: context.riverCellOwner,
     lakeIdByCell: context.lakeIdByCell,
     lakes: context.lakes,
-    rivers: context.rivers
+    rivers: context.rivers,
   };
 }
 
@@ -111,7 +141,7 @@ function createHydrologyState(size) {
     riverCellOwner,
     lakeIdByCell,
     lakes: [],
-    rivers: []
+    rivers: [],
   };
 }
 
@@ -124,7 +154,14 @@ function registerNaturalLakes(context) {
       continue;
     }
 
-    const cells = collectConnectedCells(width, height, start, (index) => inlandWaterMask[index] === 1, true, visited);
+    const cells = collectConnectedCells(
+      width,
+      height,
+      start,
+      (index) => inlandWaterMask[index] === 1,
+      true,
+      visited,
+    );
     if (cells.length < 1) {
       continue;
     }
@@ -139,7 +176,7 @@ function registerNaturalLakes(context) {
       anchor: start,
       outlet: null,
       cells,
-      source: "terrain-basin"
+      source: "terrain-basin",
     });
   }
 }
@@ -163,7 +200,7 @@ function pruneTinyLakes(context, minCells = 5) {
     const newId = keptLakes.length;
     const nextLake = {
       ...lake,
-      id: newId
+      id: newId,
     };
     keptLakes.push(nextLake);
     for (const cell of nextLake.cells) {
@@ -181,7 +218,7 @@ function collapseDiagonalLakeSingletons(context, passes = 1) {
     [0, -1],
     [1, 0],
     [0, 1],
-    [-1, 0]
+    [-1, 0],
   ];
 
   for (let pass = 0; pass < passes; pass += 1) {
@@ -236,6 +273,9 @@ function collapseDiagonalLakeSingletons(context, passes = 1) {
   }
 }
 
+// Maximum steps prevents infinite loops on flat or cyclic terrain (~1.5× the map diagonal)
+const MAX_RIVER_STEPS = 340;
+
 function traceRiver(context, sourceIndex, sourceScore) {
   let current = sourceIndex;
   let previous = -1;
@@ -243,7 +283,7 @@ function traceRiver(context, sourceIndex, sourceScore) {
   const cells = [];
   let joinsRiver = false;
 
-  for (let step = 0; step < 340; step += 1) {
+  for (let step = 0; step < MAX_RIVER_STEPS; step += 1) {
     if (visited.has(current)) {
       break;
     }
@@ -274,28 +314,39 @@ function traceRiver(context, sourceIndex, sourceScore) {
       continue;
     }
 
-    const lake = createLake(context, current, sourceScore);
-    if (!lake) {
+    // River is stuck — flood a basin lake and continue from its outlet
+    const outlet = resolveStuckRiver(context, cells, current, sourceScore);
+    if (outlet === null) {
       break;
     }
-
-    if (!cells.includes(lake.anchor)) {
-      cells.push(lake.anchor);
-    }
-
-    if (lake.outlet === null) {
-      break;
-    }
-
     previous = current;
-    current = lake.outlet;
+    current = outlet;
   }
 
   return { cells, joinsRiver };
 }
 
+function resolveStuckRiver(context, cells, current, sourceScore) {
+  const lake = createLake(context, current, sourceScore);
+  if (!lake) {
+    return null;
+  }
+  if (!cells.includes(lake.anchor)) {
+    cells.push(lake.anchor);
+  }
+  return lake.outlet; // null means terminal lake with no outlet
+}
+
 function chooseNextFlowCell(context, current, previous) {
-  const { width, height, oceanMask, lakeIdByCell, elevation, mountainField, riverCellOwner } = context;
+  const {
+    width,
+    height,
+    oceanMask,
+    lakeIdByCell,
+    elevation,
+    mountainField,
+    riverCellOwner,
+  } = context;
   const [x, y] = coordsOf(current, width);
   const currentHeight = elevation[current];
   let best = null;
@@ -314,7 +365,8 @@ function chooseNextFlowCell(context, current, previous) {
       return;
     }
 
-    const previousBias = previous >= 0 ? directionPenalty(previous, current, neighbor, width) : 0;
+    const previousBias =
+      previous >= 0 ? directionPenalty(previous, current, neighbor, width) : 0;
     const riverBias = riverCellOwner[neighbor] >= 0 ? -0.06 : 0;
     const score =
       elevation[neighbor] +
@@ -343,7 +395,7 @@ function createLake(context, anchor, sourceScore) {
     coastDistance,
     elevation,
     lakeIdByCell,
-    lakes
+    lakes,
   } = context;
 
   if (lakeIdByCell[anchor] >= 0 || coastDistance[anchor] < 3) {
@@ -356,7 +408,9 @@ function createLake(context, anchor, sourceScore) {
     lakeSizeFactor * 0.18 +
     lakeAmountFactor * 0.05 +
     sourceScore * 0.04;
-  const areaLimit = Math.round(3 + lakeSizeFactor * 110 + lakeAmountFactor * 24 + sourceScore * 14);
+  const areaLimit = Math.round(
+    3 + lakeSizeFactor * 110 + lakeAmountFactor * 24 + sourceScore * 14,
+  );
   const stack = [anchor];
   const seen = new Set();
   const cells = [];
@@ -374,10 +428,15 @@ function createLake(context, anchor, sourceScore) {
 
     const [x, y] = coordsOf(current, width);
     const noise =
-      fractalNoise2D(x * 0.08 + 3.1, y * 0.08 - 6.4, `${params.seed}::lake-shape`, {
-        octaves: 3,
-        gain: 0.6
-      }) - 0.5;
+      fractalNoise2D(
+        x * 0.08 + 3.1,
+        y * 0.08 - 6.4,
+        `${params.seed}::lake-shape`,
+        {
+          octaves: 3,
+          gain: 0.6,
+        },
+      ) - 0.5;
     const localThreshold = threshold + noise * 0.028;
     if (elevation[current] > localThreshold) {
       continue;
@@ -429,7 +488,7 @@ function createLake(context, anchor, sourceScore) {
     anchor,
     outlet,
     cells,
-    source: "river-basin"
+    source: "river-basin",
   });
 
   return lakes[id];
@@ -448,12 +507,16 @@ function placeBasinLakes(context) {
     elevation,
     baseRainfall,
     riverStrength,
-    lakeIdByCell
+    lakeIdByCell,
   } = context;
 
   const candidates = [];
   for (let index = 0; index < size; index += 1) {
-    if (!isLand[index] || lakeIdByCell[index] >= 0 || coastDistance[index] < 5) {
+    if (
+      !isLand[index] ||
+      lakeIdByCell[index] >= 0 ||
+      coastDistance[index] < 5
+    ) {
       continue;
     }
 
@@ -480,7 +543,12 @@ function placeBasinLakes(context) {
       lowerNeighbors * 0.11 +
       rng.range(-0.05, 0.05);
 
-    if (lowerNeighbors <= 2 && elevation[index] > 0.12 && elevation[index] < 0.62 && score > 0.42) {
+    if (
+      lowerNeighbors <= 2 &&
+      elevation[index] > 0.12 &&
+      elevation[index] < 0.62 &&
+      score > 0.42
+    ) {
       candidates.push({ index, score });
     }
   }
@@ -511,10 +579,6 @@ function placeBasinLakes(context) {
   }
 }
 
-function sliderFactor(value, curve) {
-  return clamp(Math.pow(clamp(value / 100, 0, 1), curve), 0, 1);
-}
-
 function collectShoreSources(size, oceanMask, coastMask) {
   const oceanSources = [];
   const coastSources = [];
@@ -530,7 +594,15 @@ function collectShoreSources(size, oceanMask, coastMask) {
   return { oceanSources, coastSources };
 }
 
-function buildBaseRainfall(width, size, params, isLand, oceanDistance, elevation, mountainField) {
+function buildBaseRainfall(
+  width,
+  size,
+  params,
+  isLand,
+  oceanDistance,
+  elevation,
+  mountainField,
+) {
   const baseRainfall = new Float32Array(size);
   const rainfallReach = 18 + params.mapSize * 0.12;
 
@@ -541,13 +613,26 @@ function buildBaseRainfall(width, size, params, isLand, oceanDistance, elevation
 
     const [x, y] = coordsOf(index, width);
     const climateNoise =
-      fractalNoise2D(x * 0.05 + 7.2, y * 0.05 - 2.3, `${params.seed}::rainfall`, {
-        octaves: 4,
-        gain: 0.55
-      }) - 0.5;
+      fractalNoise2D(
+        x * 0.05 + 7.2,
+        y * 0.05 - 2.3,
+        `${params.seed}::rainfall`,
+        {
+          octaves: 4,
+          gain: 0.55,
+        },
+      ) - 0.5;
     const marine = clamp(1 - oceanDistance[index] / rainfallReach, 0, 1);
-    const orographic = clamp(mountainField[index] * 0.6 + elevation[index] * 0.25, 0, 1);
-    baseRainfall[index] = clamp(marine * 0.72 + orographic * 0.28 + climateNoise * 0.24, 0, 1);
+    const orographic = clamp(
+      mountainField[index] * 0.6 + elevation[index] * 0.25,
+      0,
+      1,
+    );
+    baseRainfall[index] = clamp(
+      marine * 0.72 + orographic * 0.28 + climateNoise * 0.24,
+      0,
+      1,
+    );
   }
 
   return baseRainfall;
@@ -563,7 +648,7 @@ function selectRiverSources({
   mountainField,
   baseRainfall,
   oceanDistance,
-  coastDistance
+  coastDistance,
 }) {
   const candidateSources = [];
 
@@ -591,9 +676,11 @@ function selectRiverSources({
   const selectedSources = [];
   const riverAmountFactor = sliderFactor(params.riverAmount ?? 56, 0.78);
   const targetSources = clamp(
-    Math.round((candidateSources.length / 1500) * (1.4 + riverAmountFactor * 15.5)),
+    Math.round(
+      (candidateSources.length / 1500) * (1.4 + riverAmountFactor * 15.5),
+    ),
     1,
-    40
+    40,
   );
   const minSourceSpacing = Math.max(4, Math.round(12 - riverAmountFactor * 7));
 
@@ -619,7 +706,14 @@ function selectRiverSources({
   return selectedSources;
 }
 
-function buildWaterDistance(width, height, size, oceanSources, lakes, riverStrength) {
+function buildWaterDistance(
+  width,
+  height,
+  size,
+  oceanSources,
+  lakes,
+  riverStrength,
+) {
   const waterSources = [...oceanSources];
 
   for (const lake of lakes) {

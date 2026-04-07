@@ -11,22 +11,17 @@ const RANGE_KEYS = [
   "edgeDetail",
   "minBiomeSize",
   "renderScale",
-  "fogVisionRadius"
+  "fogVisionRadius",
+  "temperatureBias",
+  "moistureBias",
+  "coastalBias",
 ];
 
 export function hydrateForm(params) {
   document.querySelector("#seed").value = params.seed;
-  document.querySelector("#mapSize").value = params.mapSize;
-  document.querySelector("#mountainousness").value = params.mountainousness;
-  document.querySelector("#cityDensity").value = params.cityDensity;
-  document.querySelector("#riverAmount").value = params.riverAmount;
-  document.querySelector("#lakeAmount").value = params.lakeAmount;
-  document.querySelector("#lakeSize").value = params.lakeSize;
-  document.querySelector("#coastComplexity").value = params.coastComplexity;
-  document.querySelector("#edgeDetail").value = params.edgeDetail;
-  document.querySelector("#minBiomeSize").value = params.minBiomeSize;
-  document.querySelector("#renderScale").value = params.renderScale;
-  document.querySelector("#fogVisionRadius").value = params.fogVisionRadius;
+  for (const key of RANGE_KEYS) {
+    document.querySelector(`#${key}`).value = params[key];
+  }
 }
 
 export function getFormValues(form) {
@@ -43,7 +38,10 @@ export function getFormValues(form) {
     edgeDetail: Number(data.get("edgeDetail")),
     minBiomeSize: Number(data.get("minBiomeSize")),
     renderScale: Number(data.get("renderScale")),
-    fogVisionRadius: Number(data.get("fogVisionRadius"))
+    fogVisionRadius: Number(data.get("fogVisionRadius")),
+    temperatureBias: Number(data.get("temperatureBias")),
+    moistureBias: Number(data.get("moistureBias")),
+    coastalBias: Number(data.get("coastalBias")),
   };
 }
 
@@ -70,12 +68,25 @@ export function setSeedValue(seed) {
 }
 
 export function randomSeed() {
-  const consonants = ["b", "d", "f", "g", "k", "l", "m", "n", "r", "s", "t", "v"];
+  const consonants = [
+    "b",
+    "d",
+    "f",
+    "g",
+    "k",
+    "l",
+    "m",
+    "n",
+    "r",
+    "s",
+    "t",
+    "v",
+  ];
   const vowels = ["a", "e", "i", "o", "u", "ae", "ou"];
   const parts = [];
   for (let i = 0; i < 3; i += 1) {
     parts.push(
-      `${consonants[Math.floor(Math.random() * consonants.length)]}${vowels[Math.floor(Math.random() * vowels.length)]}${consonants[Math.floor(Math.random() * consonants.length)]}`
+      `${consonants[Math.floor(Math.random() * consonants.length)]}${vowels[Math.floor(Math.random() * vowels.length)]}${consonants[Math.floor(Math.random() * consonants.length)]}`,
     );
   }
   return parts.join("-");

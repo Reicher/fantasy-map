@@ -1,11 +1,14 @@
-import { coordsOf } from "../utils.js";
+import { coordsOf, dedupePoints } from "../utils.js";
 
 export function buildTravelGraph(network, width) {
   const graph = new Map();
   const cityNodes = network.nodes.filter((node) => node.cityId != null);
 
   for (const cityNode of cityNodes) {
-    graph.set(cityNode.cityId, collectCityNeighbors(cityNode.id, network, width));
+    graph.set(
+      cityNode.cityId,
+      collectCityNeighbors(cityNode.id, network, width),
+    );
   }
 
   return graph;
@@ -13,12 +16,14 @@ export function buildTravelGraph(network, width) {
 
 function collectCityNeighbors(startNodeId, network, width) {
   const startNode = network.nodes[startNodeId];
-  const frontier = [{
-    nodeId: startNodeId,
-    points: [{ x: startNode.x, y: startNode.y }],
-    cost: 0,
-    hasSeaRoute: false
-  }];
+  const frontier = [
+    {
+      nodeId: startNodeId,
+      points: [{ x: startNode.x, y: startNode.y }],
+      cost: 0,
+      hasSeaRoute: false,
+    },
+  ];
   const bestCostByNodeId = new Map([[startNodeId, 0]]);
   const bestByCityId = new Map();
 
@@ -32,7 +37,10 @@ function collectCityNeighbors(startNodeId, network, width) {
     for (const edge of network.adjacencyByNodeId.get(current.nodeId) ?? []) {
       const nextNode = network.nodes[edge.nodeId];
       const link = network.links[edge.linkId];
-      const nextPoints = mergePaths(current.points, orientLinkPoints(link, current.nodeId, width));
+      const nextPoints = mergePaths(
+        current.points,
+        orientLinkPoints(link, current.nodeId, width),
+      );
       const nextCost = current.cost + link.length;
       const nextHasSeaRoute = current.hasSeaRoute || link.type === "sea-route";
 
@@ -43,13 +51,16 @@ function collectCityNeighbors(startNodeId, network, width) {
             cityId: nextNode.cityId,
             points: nextPoints,
             cost: nextCost,
-            routeType: nextHasSeaRoute ? "sea-route" : "road"
+            routeType: nextHasSeaRoute ? "sea-route" : "road",
           });
         }
         continue;
       }
 
-      if (nextCost >= (bestCostByNodeId.get(nextNode.id) ?? Number.POSITIVE_INFINITY)) {
+      if (
+        nextCost >=
+        (bestCostByNodeId.get(nextNode.id) ?? Number.POSITIVE_INFINITY)
+      ) {
         continue;
       }
 
@@ -58,7 +69,7 @@ function collectCityNeighbors(startNodeId, network, width) {
         nodeId: nextNode.id,
         points: nextPoints,
         cost: nextCost,
-        hasSeaRoute: nextHasSeaRoute
+        hasSeaRoute: nextHasSeaRoute,
       });
     }
   }
@@ -68,7 +79,7 @@ function collectCityNeighbors(startNodeId, network, width) {
     neighbors.set(cityId, {
       cityId,
       points: value.points,
-      routeType: value.routeType ?? "road"
+      routeType: value.routeType ?? "road",
     });
   }
 
@@ -76,7 +87,8 @@ function collectCityNeighbors(startNodeId, network, width) {
 }
 
 function orientLinkPoints(link, fromNodeId, width) {
-  const cells = link.fromNodeId === fromNodeId ? link.cells : [...link.cells].reverse();
+  const cells =
+    link.fromNodeId === fromNodeId ? link.cells : [...link.cells].reverse();
   return cells.map((cell) => {
     const [x, y] = coordsOf(cell, width);
     return { x, y };
@@ -85,16 +97,4 @@ function orientLinkPoints(link, fromNodeId, width) {
 
 function mergePaths(a, b) {
   return dedupePoints([...a, ...b]);
-}
-
-function dedupePoints(points) {
-  const deduped = [];
-  for (const point of points) {
-    const previous = deduped[deduped.length - 1];
-    if (previous && Math.abs(previous.x - point.x) < 0.0001 && Math.abs(previous.y - point.y) < 0.0001) {
-      continue;
-    }
-    deduped.push(point);
-  }
-  return deduped;
 }

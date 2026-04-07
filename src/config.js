@@ -15,7 +15,10 @@ export const DEFAULT_PARAMS = {
   edgeDetail: 300,
   minBiomeSize: 15,
   renderScale: 150,
-  fogVisionRadius: 18
+  fogVisionRadius: 18,
+  temperatureBias: 50,
+  moistureBias: 50,
+  coastalBias: 50,
 };
 
 export const PARAM_LABELS = {
@@ -26,10 +29,42 @@ export const PARAM_LABELS = {
   lakeAmount: (value) => `${value}%`,
   lakeSize: (value) => `${value}%`,
   coastComplexity: (value) => `${value}%`,
-  edgeDetail: (value) => `${Math.round(value)} x ${Math.round(value * (MAP_HEIGHT / MAP_WIDTH))}`,
+  edgeDetail: (value) =>
+    `${Math.round(value)} x ${Math.round(value * (MAP_HEIGHT / MAP_WIDTH))}`,
   minBiomeSize: (value) => `${Math.round(value)} celler`,
-  renderScale: (value) => `${(Math.max(50, value) / 100).toFixed(value % 100 === 0 ? 0 : 2)}x`,
-  fogVisionRadius: (value) => `${Math.round(value)} celler`
+  renderScale: (value) =>
+    `${(Math.max(50, value) / 100).toFixed(value % 100 === 0 ? 0 : 2)}x`,
+  fogVisionRadius: (value) => `${Math.round(value)} celler`,
+  temperatureBias: (value) =>
+    value < 25
+      ? "Arktisk"
+      : value < 42
+        ? "Kallare"
+        : value < 58
+          ? "Normal"
+          : value < 75
+            ? "Varmare"
+            : "Tropisk",
+  moistureBias: (value) =>
+    value < 20
+      ? "Ökenlik"
+      : value < 40
+        ? "Torrt"
+        : value < 60
+          ? "Normal"
+          : value < 80
+            ? "Fuktigt"
+            : "Regnigt",
+  coastalBias: (value) =>
+    value < 20
+      ? "Inlandskt"
+      : value < 40
+        ? "Blandat inland"
+        : value < 60
+          ? "Blandat"
+          : value < 80
+            ? "Kustbetonat"
+            : "Kustbefolkat",
 };
 
 export const BIOME_KEYS = {
@@ -41,7 +76,7 @@ export const BIOME_KEYS = {
   DESERT: 5,
   TUNDRA: 6,
   HIGHLANDS: 7,
-  MOUNTAIN: 8
+  MOUNTAIN: 8,
 };
 
 export const BIOME_INFO = {
@@ -49,9 +84,17 @@ export const BIOME_INFO = {
   [BIOME_KEYS.LAKE]: { key: "lake", label: "Sjö", color: "#8ba5ac" },
   [BIOME_KEYS.PLAINS]: { key: "plains", label: "Slätt", color: "#b9b27f" },
   [BIOME_KEYS.FOREST]: { key: "forest", label: "Skog", color: "#7d9065" },
-  [BIOME_KEYS.RAINFOREST]: { key: "rainforest", label: "Djupskog", color: "#5f7b55" },
+  [BIOME_KEYS.RAINFOREST]: {
+    key: "rainforest",
+    label: "Djupskog",
+    color: "#5f7b55",
+  },
   [BIOME_KEYS.DESERT]: { key: "desert", label: "Öken", color: "#c9b07b" },
   [BIOME_KEYS.TUNDRA]: { key: "tundra", label: "Tundra", color: "#aeb2a1" },
-  [BIOME_KEYS.HIGHLANDS]: { key: "highlands", label: "Högland", color: "#94856c" },
-  [BIOME_KEYS.MOUNTAIN]: { key: "mountain", label: "Berg", color: "#81705d" }
+  [BIOME_KEYS.HIGHLANDS]: {
+    key: "highlands",
+    label: "Högland",
+    color: "#94856c",
+  },
+  [BIOME_KEYS.MOUNTAIN]: { key: "mountain", label: "Berg", color: "#81705d" },
 };

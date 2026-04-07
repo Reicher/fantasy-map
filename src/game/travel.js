@@ -1,12 +1,31 @@
-const TRAVEL_SPEED = 3.75;
+import { BIOME_INFO } from "../config.js";
+import { dedupePoints } from "../utils.js";
+import { regionAtCell, regionAtPosition } from "./playQueries.js";
+
+export const TRAVEL_SPEED = 3.75;
+const TRAVEL_BIOME_BANDS = {
+  near: 0,
+  mid: 20,
+  far: 40,
+};
 
 export function createPlayState(world) {
-  const currentCityId = world.playerStart?.cityId ?? world.cities[0]?.id ?? null;
-  const currentCity = currentCityId == null ? null : world.cities[currentCityId];
+  const currentCityId =
+    world.playerStart?.cityId ?? world.cities[0]?.id ?? null;
+  const currentCity =
+    currentCityId == null ? null : world.cities[currentCityId];
   const lastRegionId =
-    currentCity && currentCity.cell != null ? regionIdAtCell(world, currentCity.cell) : null;
-  const discoveredCells = new Uint8Array(world.terrain.width * world.terrain.height);
-  revealAroundPosition(world, discoveredCells, currentCity ? { x: currentCity.x, y: currentCity.y } : null);
+    currentCity && currentCity.cell != null
+      ? (regionAtCell(world, currentCity.cell)?.id ?? null)
+      : null;
+  const discoveredCells = new Uint8Array(
+    world.terrain.width * world.terrain.height,
+  );
+  revealAroundPosition(
+    world,
+    discoveredCells,
+    currentCity ? { x: currentCity.x, y: currentCity.y } : null,
+  );
 
   return {
     graph: world.travelGraph,
@@ -18,7 +37,7 @@ export function createPlayState(world) {
     pressedCityId: null,
     travel: null,
     discoveredCells,
-    fogDirty: true
+    fogDirty: true,
   };
 }
 
@@ -34,7 +53,7 @@ export function getValidTargetIds(playState) {
   return [...(playState.graph.get(playState.currentCityId)?.keys() ?? [])];
 }
 
-export function beginTravel(playState, targetCityId) {
+export function beginTravel(playState, targetCityId, world = null) {
   if (!playState) {
     return playState;
   }
@@ -48,11 +67,21 @@ export function beginTravel(playState, targetCityId) {
     return playState;
   }
 
+  const biomeBandSegments = world
+    ? buildTravelBiomeBandSegments(world, path.points)
+    : createEmptyTravelBiomeBands();
+
   return {
     ...playState,
-    travel: createTravel(playState.currentCityId, targetCityId, path.points, path.routeType),
+    travel: createTravel(
+      playState.currentCityId,
+      targetCityId,
+      path.points,
+      path.routeType,
+      biomeBandSegments,
+    ),
     hoveredCityId: null,
-    pressedCityId: null
+    pressedCityId: null,
   };
 }
 
@@ -63,27 +92,39 @@ export function advanceTravel(playState, world, deltaMs) {
 
   const nextProgress = Math.min(
     playState.travel.totalLength,
-    playState.travel.progress + (deltaMs / 1000) * TRAVEL_SPEED
+    playState.travel.progress + (deltaMs / 1000) * TRAVEL_SPEED,
   );
-  const sample = samplePath(playState.travel.points, playState.travel.segmentLengths, nextProgress);
-  const sampledRegionId = regionIdAtPosition(world, sample.point);
+  const sample = samplePath(
+    playState.travel.points,
+    playState.travel.segmentLengths,
+    nextProgress,
+  );
+  const sampledRegionId = regionAtPosition(world, sample.point)?.id ?? null;
   const lastRegionId = sampledRegionId ?? playState.lastRegionId ?? null;
-  const discoveredCells = playState.discoveredCells ?? new Uint8Array(world.terrain.width * world.terrain.height);
+  const discoveredCells =
+    playState.discoveredCells ??
+    new Uint8Array(world.terrain.width * world.terrain.height);
   const revealed = revealAroundPosition(world, discoveredCells, sample.point);
 
   if (nextProgress >= playState.travel.totalLength - 0.0001) {
     const city = world.cities[playState.travel.targetCityId];
     const finalPosition = city ? { x: city.x, y: city.y } : sample.point;
-    const finalReveal = revealAroundPosition(world, discoveredCells, finalPosition);
+    const finalReveal = revealAroundPosition(
+      world,
+      discoveredCells,
+      finalPosition,
+    );
     return {
       ...playState,
       currentCityId: playState.travel.targetCityId,
       position: finalPosition,
       lastRegionId:
-        city && city.cell != null ? regionIdAtCell(world, city.cell) ?? lastRegionId : lastRegionId,
+        city && city.cell != null
+          ? (regionAtCell(world, city.cell)?.id ?? lastRegionId)
+          : lastRegionId,
       travel: null,
       discoveredCells,
-      fogDirty: playState.fogDirty || revealed || finalReveal
+      fogDirty: playState.fogDirty || revealed || finalReveal,
     };
   }
 
@@ -95,12 +136,18 @@ export function advanceTravel(playState, world, deltaMs) {
     fogDirty: playState.fogDirty || revealed,
     travel: {
       ...playState.travel,
-      progress: nextProgress
-    }
+      progress: nextProgress,
+    },
   };
 }
 
-function createTravel(startCityId, targetCityId, points, routeType = "road") {
+function createTravel(
+  startCityId,
+  targetCityId,
+  points,
+  routeType = "road",
+  biomeBandSegments = createEmptyTravelBiomeBands(),
+) {
   const normalizedPoints = dedupePoints(points);
   const segmentLengths = [];
   let totalLength = 0;
@@ -120,7 +167,165 @@ function createTravel(startCityId, targetCityId, points, routeType = "road") {
     points: normalizedPoints,
     segmentLengths,
     totalLength,
-    progress: 0
+    progress: 0,
+    biomeBandSegments,
+    biomeSegments: biomeBandSegments.near.segments,
+    midDistantBiomeSegments: biomeBandSegments.mid.segments,
+    farDistantBiomeSegments: biomeBandSegments.far.segments,
+  };
+}
+
+export function buildTravelBiomeSegments(world, points) {
+  return buildBiomeSegmentsFromPoints(world, dedupePoints(points));
+}
+
+export function buildOffsetTravelBiomeSegments(
+  world,
+  points,
+  offsetDistance = TRAVEL_BIOME_BANDS.mid,
+) {
+  const normalizedPoints = dedupePoints(points);
+  const offsetPoints = normalizedPoints.map((point, index) =>
+    offsetPointLeft(normalizedPoints, index, offsetDistance),
+  );
+  return buildBiomeSegmentsFromPoints(world, offsetPoints);
+}
+
+export function buildTravelBiomeBandSegments(world, points) {
+  const normalizedPoints = dedupePoints(points);
+  return {
+    near: createTravelBiomeBand(
+      "near",
+      TRAVEL_BIOME_BANDS.near,
+      buildBiomeSegmentsFromPoints(world, normalizedPoints),
+    ),
+    mid: createTravelBiomeBand(
+      "mid",
+      TRAVEL_BIOME_BANDS.mid,
+      buildOffsetTravelBiomeSegments(
+        world,
+        normalizedPoints,
+        TRAVEL_BIOME_BANDS.mid,
+      ),
+    ),
+    far: createTravelBiomeBand(
+      "far",
+      TRAVEL_BIOME_BANDS.far,
+      buildOffsetTravelBiomeSegments(
+        world,
+        normalizedPoints,
+        TRAVEL_BIOME_BANDS.far,
+      ),
+    ),
+  };
+}
+
+export function sampleTravelBiomeBandPoints(travel) {
+  if (!travel?.points?.length) {
+    return null;
+  }
+
+  const progress = Math.max(
+    0,
+    Math.min(travel.totalLength ?? 0, travel.progress ?? 0),
+  );
+  const sample = samplePath(
+    travel.points,
+    travel.segmentLengths ?? [],
+    progress,
+  );
+  const bands = travel.biomeBandSegments ?? createEmptyTravelBiomeBands();
+
+  return {
+    near: createTravelBandPointSample(
+      "near",
+      bands.near?.offsetDistance ?? 0,
+      sample.point,
+    ),
+    mid: createTravelBandPointSample(
+      "mid",
+      bands.mid?.offsetDistance ?? TRAVEL_BIOME_BANDS.mid,
+      offsetSamplePointLeft(
+        travel.points,
+        sample,
+        bands.mid?.offsetDistance ?? TRAVEL_BIOME_BANDS.mid,
+      ),
+    ),
+    far: createTravelBandPointSample(
+      "far",
+      bands.far?.offsetDistance ?? TRAVEL_BIOME_BANDS.far,
+      offsetSamplePointLeft(
+        travel.points,
+        sample,
+        bands.far?.offsetDistance ?? TRAVEL_BIOME_BANDS.far,
+      ),
+    ),
+  };
+}
+
+function buildBiomeSegmentsFromPoints(world, points) {
+  if (!world || !points?.length) {
+    return [];
+  }
+
+  const segments = [];
+  let current = null;
+
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index];
+    const biomeKey = biomeKeyAtPoint(world, point);
+    const biomeInfo = BIOME_INFO[biomeKey] ?? {
+      key: "unknown",
+      label: "Okänd",
+    };
+    const nextPoint = points[index + 1];
+    const distance = nextPoint
+      ? Math.hypot(nextPoint.x - point.x, nextPoint.y - point.y)
+      : 0;
+
+    if (!current || current.biome !== biomeInfo.key) {
+      current = {
+        biome: biomeInfo.key,
+        label: biomeInfo.label,
+        distance: 0,
+      };
+      segments.push(current);
+    }
+
+    current.distance += distance;
+  }
+
+  const totalDistance = segments.reduce(
+    (sum, segment) => sum + segment.distance,
+    0,
+  );
+  return segments.map((segment) => ({
+    ...segment,
+    share: totalDistance > 0 ? segment.distance / totalDistance : 0,
+  }));
+}
+
+function createTravelBiomeBand(name, offsetDistance, segments) {
+  return {
+    name,
+    offsetDistance,
+    segments,
+  };
+}
+
+function createTravelBandPointSample(name, offsetDistance, point) {
+  return {
+    name,
+    offsetDistance,
+    point,
+  };
+}
+
+function createEmptyTravelBiomeBands() {
+  return {
+    near: createTravelBiomeBand("near", TRAVEL_BIOME_BANDS.near, []),
+    mid: createTravelBiomeBand("mid", TRAVEL_BIOME_BANDS.mid, []),
+    far: createTravelBiomeBand("far", TRAVEL_BIOME_BANDS.far, []),
   };
 }
 
@@ -129,25 +334,29 @@ function samplePath(points, segmentLengths, distance) {
     return {
       point: points[0] ?? { x: 0, y: 0 },
       segmentIndex: 0,
-      segmentT: 0
+      segmentT: 0,
     };
   }
 
   let traversed = 0;
   for (let index = 0; index < segmentLengths.length; index += 1) {
     const segmentLength = segmentLengths[index];
-    if (distance <= traversed + segmentLength || index === segmentLengths.length - 1) {
-      const local = segmentLength <= 0 ? 0 : (distance - traversed) / segmentLength;
+    if (
+      distance <= traversed + segmentLength ||
+      index === segmentLengths.length - 1
+    ) {
+      const local =
+        segmentLength <= 0 ? 0 : (distance - traversed) / segmentLength;
       const t = Math.max(0, Math.min(1, local));
       const start = points[index];
       const end = points[index + 1];
       return {
         point: {
           x: start.x + (end.x - start.x) * t,
-          y: start.y + (end.y - start.y) * t
+          y: start.y + (end.y - start.y) * t,
         },
         segmentIndex: index,
-        segmentT: t
+        segmentT: t,
       };
     }
     traversed += segmentLength;
@@ -156,43 +365,73 @@ function samplePath(points, segmentLengths, distance) {
   return {
     point: points[points.length - 1],
     segmentIndex: segmentLengths.length - 1,
-    segmentT: 1
+    segmentT: 1,
   };
 }
 
-function dedupePoints(points) {
-  const deduped = [];
-  for (const point of points) {
-    const previous = deduped[deduped.length - 1];
-    if (previous && Math.abs(previous.x - point.x) < 0.0001 && Math.abs(previous.y - point.y) < 0.0001) {
-      continue;
-    }
-    deduped.push(point);
+function offsetPointLeft(points, index, offsetDistance) {
+  const current = points[index];
+  const previous = points[index - 1] ?? current;
+  const next = points[index + 1] ?? current;
+  const tangentX = next.x - previous.x;
+  const tangentY = next.y - previous.y;
+  const tangentLength = Math.hypot(tangentX, tangentY);
+
+  if (tangentLength <= 0.0001) {
+    return { x: current.x, y: current.y };
   }
-  return deduped;
+
+  const normalX = -tangentY / tangentLength;
+  const normalY = tangentX / tangentLength;
+
+  return {
+    x: current.x + normalX * offsetDistance,
+    y: current.y + normalY * offsetDistance,
+  };
 }
 
-function regionIdAtPosition(world, position) {
+function offsetSamplePointLeft(points, sample, offsetDistance) {
+  if (!sample?.point || !points?.length || Math.abs(offsetDistance) <= 0.0001) {
+    return sample?.point ?? null;
+  }
+
+  const startIndex = Math.max(
+    0,
+    Math.min(points.length - 1, sample.segmentIndex ?? 0),
+  );
+  const endIndex = Math.max(0, Math.min(points.length - 1, startIndex + 1));
+  const start = points[startIndex] ?? sample.point;
+  const end = points[endIndex] ?? sample.point;
+  const tangentX = end.x - start.x;
+  const tangentY = end.y - start.y;
+  const tangentLength = Math.hypot(tangentX, tangentY);
+
+  if (tangentLength <= 0.0001) {
+    return sample.point;
+  }
+
+  const normalX = -tangentY / tangentLength;
+  const normalY = tangentX / tangentLength;
+  return {
+    x: sample.point.x + normalX * offsetDistance,
+    y: sample.point.y + normalY * offsetDistance,
+  };
+}
+
+function biomeKeyAtPoint(world, position) {
   if (!world || !position) {
     return null;
   }
 
-  const x = Math.floor(position.x);
-  const y = Math.floor(position.y);
-  if (x < 0 || y < 0 || x >= world.terrain.width || y >= world.terrain.height) {
-    return null;
-  }
-
-  return regionIdAtCell(world, y * world.terrain.width + x);
-}
-
-function regionIdAtCell(world, cell) {
-  if (cell == null || cell < 0) {
-    return null;
-  }
-
-  const regionId = world.features.indices.biomeRegionId[cell];
-  return regionId == null || regionId < 0 ? null : regionId;
+  const x = Math.max(
+    0,
+    Math.min(world.terrain.width - 1, Math.floor(position.x)),
+  );
+  const y = Math.max(
+    0,
+    Math.min(world.terrain.height - 1, Math.floor(position.y)),
+  );
+  return world.climate.biome[y * world.terrain.width + x];
 }
 
 function revealAroundPosition(world, discoveredCells, position) {
@@ -204,9 +443,15 @@ function revealAroundPosition(world, discoveredCells, position) {
   const radius = Math.max(1, Math.round(baseRadius * 1.5));
   const radiusSq = (radius + 0.35) * (radius + 0.35);
   const minX = Math.max(0, Math.floor(position.x - radius));
-  const maxX = Math.min(world.terrain.width - 1, Math.ceil(position.x + radius));
+  const maxX = Math.min(
+    world.terrain.width - 1,
+    Math.ceil(position.x + radius),
+  );
   const minY = Math.max(0, Math.floor(position.y - radius));
-  const maxY = Math.min(world.terrain.height - 1, Math.ceil(position.y + radius));
+  const maxY = Math.min(
+    world.terrain.height - 1,
+    Math.ceil(position.y + radius),
+  );
   let changed = false;
 
   for (let y = minY; y <= maxY; y += 1) {

@@ -9,8 +9,8 @@ import {
   computeTemperature,
   sampleClimateCell,
   sampleClimateNoise,
-  WIND_OPTIONS
-} from "./climateModel.js?v=20260331k";
+  WIND_OPTIONS,
+} from "./climateModel.js?v=20260407a";
 
 export function generateClimate(terrain, hydrology, params) {
   const {
@@ -24,12 +24,19 @@ export function generateClimate(terrain, hydrology, params) {
     reliefHeightField,
     reliefMoistureField,
     reliefHeatField,
-    coastMask
+    coastMask,
   } = terrain;
-  const { oceanDistance, waterDistance, baseRainfall, riverStrength, lakeIdByCell } = hydrology;
+  const {
+    oceanDistance,
+    waterDistance,
+    baseRainfall,
+    riverStrength,
+    lakeIdByCell,
+  } = hydrology;
   const rng = createRng(`${params.seed}::climate`);
   const windAngle = rng.pick(WIND_OPTIONS);
-  const temperatureBias = rng.range(-0.12, 0.12);
+  rng.range(-0.12, 0.12); // advance rng for determinism; temperature is now set by param
+  const temperatureBias = (params.temperatureBias / 100 - 0.5) * 0.36;
   const climateCells = buildClimateCells(rng);
 
   const temperature = new Float32Array(size);
@@ -37,7 +44,7 @@ export function generateClimate(terrain, hydrology, params) {
   const biome = new Uint8Array(size);
 
   for (let index = 0; index < size; index += 1) {
-    if (!isLand[index] && lakeIdByCell[index] >= 0) {
+    if (lakeIdByCell[index] >= 0) {
       biome[index] = BIOME_KEYS.LAKE;
       continue;
     }
@@ -47,15 +54,17 @@ export function generateClimate(terrain, hydrology, params) {
       continue;
     }
 
-    if (lakeIdByCell[index] >= 0) {
-      biome[index] = BIOME_KEYS.LAKE;
-      continue;
-    }
-
     const [x, y] = coordsOf(index, width);
     const climateCell = sampleClimateCell(climateCells, x / width, y / height);
     const noise = sampleClimateNoise(x, y, params.seed);
-    const rainShadow = computeRainShadow(x, y, width, height, mountainField, windAngle);
+    const rainShadow = computeRainShadow(
+      x,
+      y,
+      width,
+      height,
+      mountainField,
+      windAngle,
+    );
     const reliefHeight = reliefHeightField[index];
     const reliefMoisture = reliefMoistureField[index];
     const reliefHeat = reliefHeatField[index];
@@ -70,7 +79,7 @@ export function generateClimate(terrain, hydrology, params) {
       tempNoise: noise.tempNoise,
       tempBias: climateCell.tempBias,
       reliefHeat,
-      temperatureBias
+      temperatureBias,
     });
     moisture[index] = computeMoisture({
       baseRainfall: baseRainfall[index],
@@ -90,7 +99,8 @@ export function generateClimate(terrain, hydrology, params) {
       reliefHeight,
       provinceField: provinceField[index],
       temperature: temperature[index],
-      rainShadow
+      rainShadow,
+      globalMoistureBias: (params.moistureBias / 100 - 0.5) * 0.5,
     });
 
     biome[index] = classifyBiome({
@@ -99,7 +109,7 @@ export function generateClimate(terrain, hydrology, params) {
       mountain: mountainField[index],
       temperature: temperature[index],
       moisture: moisture[index],
-      reliefHeight
+      reliefHeight,
     });
   }
 
@@ -107,6 +117,6 @@ export function generateClimate(terrain, hydrology, params) {
     windAngle,
     temperature,
     moisture,
-    biome
+    biome,
   };
 }

@@ -1,8 +1,10 @@
+import { coordsOf } from "../utils.js";
+
 export function buildWorldNetwork(world) {
   return buildRoadNetwork({
     cities: world.cities,
     roads: world.roads.roads,
-    width: world.terrain.width
+    width: world.terrain.width,
   });
 }
 
@@ -18,7 +20,7 @@ export function buildRoadNetwork({ cities, roads, width }) {
       x: city.x,
       y: city.y,
       cityId: city.id,
-      name: city.name
+      name: city.name,
     };
     nodes.push(node);
     nodeIdByCell.set(city.cell, node.id);
@@ -29,14 +31,14 @@ export function buildRoadNetwork({ cities, roads, width }) {
       if (nodeIdByCell.has(endpoint)) {
         continue;
       }
-      const [x, y] = coordsOfCell(endpoint, width);
+      const [x, y] = coordsOf(endpoint, width);
       const node = {
         id: nodes.length,
         type: road.type === "sea-route" ? "harbor" : "junction",
         cell: endpoint,
         x,
         y,
-        name: road.type === "sea-route" ? "Hamnpunkt" : "Vägknut"
+        name: road.type === "sea-route" ? "Hamnpunkt" : "Vägknut",
       };
       nodes.push(node);
       nodeIdByCell.set(endpoint, node.id);
@@ -44,14 +46,17 @@ export function buildRoadNetwork({ cities, roads, width }) {
   }
 
   const links = buildRoadLinks(roads, nodes, nodeIdByCell);
-  const { components, adjacencyByNodeId } = buildNetworkComponents(nodes, links);
+  const { components, adjacencyByNodeId } = buildNetworkComponents(
+    nodes,
+    links,
+  );
   tagComponents(nodes, links, components);
 
   return {
     nodes,
     links,
     components,
-    adjacencyByNodeId
+    adjacencyByNodeId,
   };
 }
 
@@ -95,7 +100,7 @@ function buildRoadLinks(roads, nodes, nodeIdByCell) {
         toCityId: nodes[end.nodeId].cityId ?? null,
         length: cells.length,
         cost: road.cost,
-        cells
+        cells,
       });
     }
   }
@@ -109,8 +114,12 @@ function buildNetworkComponents(nodes, links) {
     adjacency.set(node.id, []);
   }
   for (const link of links) {
-    adjacency.get(link.fromNodeId)?.push({ nodeId: link.toNodeId, linkId: link.id });
-    adjacency.get(link.toNodeId)?.push({ nodeId: link.fromNodeId, linkId: link.id });
+    adjacency
+      .get(link.fromNodeId)
+      ?.push({ nodeId: link.toNodeId, linkId: link.id });
+    adjacency
+      .get(link.toNodeId)
+      ?.push({ nodeId: link.fromNodeId, linkId: link.id });
   }
 
   const visited = new Uint8Array(nodes.length);
@@ -148,13 +157,13 @@ function buildNetworkComponents(nodes, links) {
       id: components.length,
       nodeIds,
       linkIds: [...linkIds],
-      cityIds
+      cityIds,
     });
   }
 
   return {
     components,
-    adjacencyByNodeId: adjacency
+    adjacencyByNodeId: adjacency,
   };
 }
 
@@ -167,8 +176,4 @@ function tagComponents(nodes, links, components) {
       links[linkId].componentId = component.id;
     }
   }
-}
-
-function coordsOfCell(cell, width) {
-  return [cell % width, Math.floor(cell / width)];
 }

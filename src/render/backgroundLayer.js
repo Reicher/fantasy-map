@@ -27,7 +27,7 @@ export function drawPaper(ctx, width, height, seed) {
 
 export function drawOcean(ctx, width, height) {
   ctx.fillStyle = "#8aa0a8";
-  ctx.fillRect(38, 38, width - 76, height - 76);
+  ctx.fillRect(0, 0, width, height);
 }
 
 export function drawFrame(ctx, width, height) {

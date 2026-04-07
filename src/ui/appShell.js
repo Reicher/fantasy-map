@@ -1,30 +1,49 @@
+import { getNearestEditorZoom } from "./cameraState.js?v=20260407a";
+import { setElementVisible } from "./viewState.js?v=20260403a";
+
 export function inferInitialMode(pathname = window.location.pathname) {
   const path = pathname.replace(/\/+$/, "") || "/";
-  return path.endsWith("/editor") || path.endsWith("/editor/index.html") ? "editor" : "play";
+  return path.endsWith("/editor") || path.endsWith("/editor/index.html")
+    ? "editor"
+    : "play";
 }
 
 export function syncLabelButtons({ refs, renderOptions }) {
-  refs.toggleBiomeLabelsButton.dataset.active = renderOptions.showBiomeLabels ? "true" : "false";
-  refs.toggleCityLabelsButton.dataset.active = renderOptions.showCityLabels ? "true" : "false";
-  refs.toggleSnowButton.dataset.active = renderOptions.showSnow ? "true" : "false";
-  refs.toggleMonochromeButton.dataset.active = renderOptions.showMonochrome ? "true" : "false";
+  refs.toggleBiomeLabelsButton.dataset.active = renderOptions.showBiomeLabels
+    ? "true"
+    : "false";
+  refs.toggleCityLabelsButton.dataset.active = renderOptions.showCityLabels
+    ? "true"
+    : "false";
+  refs.toggleSnowButton.dataset.active = renderOptions.showSnow
+    ? "true"
+    : "false";
+  refs.toggleMonochromeButton.dataset.active = renderOptions.showMonochrome
+    ? "true"
+    : "false";
 }
 
 export function syncModeUi({ refs, state, updatePlaySubView }) {
   const isEditor = state.currentMode === "editor";
-  refs.editorShell.hidden = !isEditor;
-  refs.playView.hidden = isEditor;
-  refs.editorShell.style.display = isEditor ? "grid" : "none";
-  refs.playView.style.display = isEditor ? "none" : "block";
+  setElementVisible(refs.editorShell, isEditor, "grid");
+  setElementVisible(refs.playView, !isEditor, "block");
   const showEditorLoading = isEditor && state.editorLoading;
-  refs.editorLoading.hidden = !showEditorLoading;
-  refs.editorLoading.style.display = showEditorLoading ? "flex" : "none";
-  refs.playLoading.hidden = !state.playLoading;
-  refs.playLoading.style.display = state.playLoading ? "block" : "none";
+  setElementVisible(refs.editorLoading, showEditorLoading, "flex");
+  setElementVisible(refs.playLoading, state.playLoading, "block");
   updatePlaySubView();
 }
 
-export function syncViewUi({ refs, cameraState, isDefaultCamera }) {
-  refs.zoomLevelNode.textContent = `${Math.round(cameraState.zoom * 100)}%`;
-  refs.resetViewButton.disabled = isDefaultCamera(cameraState);
+export function syncViewUi({ refs, cameraState }) {
+  const zoom = getNearestEditorZoom(cameraState.zoom);
+  for (const button of [
+    refs.zoom1Button,
+    refs.zoom2Button,
+    refs.zoom3Button,
+    refs.zoom4Button,
+  ]) {
+    if (!button) continue;
+    button.dataset.active = String(
+      Math.abs(Number(button.dataset.zoom) - zoom) < 0.001,
+    );
+  }
 }

@@ -1,7 +1,7 @@
 import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
 
 export function createViewport(world, cameraState = null) {
-  const margin = 38;
+  const margin = 0;
   const innerWidth = RENDER_WIDTH - margin * 2;
   const innerHeight = RENDER_HEIGHT - margin * 2;
   const baseScaleX = innerWidth / world.terrain.width;

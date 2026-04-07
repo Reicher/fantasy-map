@@ -6,7 +6,7 @@ export const WIND_OPTIONS = [
   { x: 1, y: 0.25 },
   { x: -1, y: 0.15 },
   { x: 0.65, y: 0.85 },
-  { x: -0.45, y: 1 }
+  { x: -0.45, y: 1 },
 ];
 
 export function buildClimateCells(rng) {
@@ -20,7 +20,7 @@ export function buildClimateCells(rng) {
       ry: rng.range(0.16, 0.34),
       tempBias: rng.range(-0.45, 0.45),
       moistureBias: rng.range(-0.5, 0.5),
-      latShift: rng.range(-0.45, 0.45)
+      latShift: rng.range(-0.45, 0.45),
     });
   }
   return cells;
@@ -52,7 +52,7 @@ export function sampleClimateCell(cells, x, y) {
   return {
     tempBias: tempBias / total,
     moistureBias: moistureBias / total,
-    latShift: latShift / total
+    latShift: latShift / total,
   };
 }
 
@@ -61,22 +61,29 @@ export function sampleClimateNoise(x, y, seed) {
     tempNoise:
       fractalNoise2D(x * 0.04 + 3.5, y * 0.04 + 1.2, `${seed}::temp`, {
         octaves: 4,
-        gain: 0.52
+        gain: 0.52,
       }) - 0.5,
     wetNoise:
       fractalNoise2D(x * 0.05 - 7.1, y * 0.05 + 0.9, `${seed}::wet`, {
         octaves: 4,
-        gain: 0.56
+        gain: 0.56,
       }) - 0.5,
     beltNoise:
       fractalNoise2D(x * 0.025 - 2.1, y * 0.025 + 6.7, `${seed}::lat-bands`, {
         octaves: 3,
-        gain: 0.58
-      }) - 0.5
+        gain: 0.58,
+      }) - 0.5,
   };
 }
 
-export function computeRainShadow(x, y, width, height, mountainField, windAngle) {
+export function computeRainShadow(
+  x,
+  y,
+  width,
+  height,
+  mountainField,
+  windAngle,
+) {
   let shadow = 0;
   for (let step = 1; step <= 7; step += 1) {
     const sx = Math.round(x - windAngle.x * step * 2);
@@ -99,7 +106,7 @@ export function computeTemperature({
   tempNoise,
   tempBias,
   reliefHeat,
-  temperatureBias
+  temperatureBias,
 }) {
   const warpedLatitude = sampleWarpedLatitude(y, height, beltNoise, latShift);
   const polarCold = smootherPolar(warpedLatitude);
@@ -115,7 +122,7 @@ export function computeTemperature({
       reliefHeat * 0.22 +
       temperatureBias,
     0,
-    1
+    1,
   );
 }
 
@@ -137,44 +144,66 @@ export function computeMoisture({
   reliefHeight,
   provinceField,
   temperature,
-  rainShadow
+  rainShadow,
+  globalMoistureBias = 0,
 }) {
   const warpedLatitude = sampleWarpedLatitude(y, height, beltNoise, latShift);
   const lakeInfluence = (lakeAmount + lakeSize) * 0.5;
-  const nearWater = clamp(1 - waterDistance / (13 + lakeInfluence * 0.08), 0, 1);
+  const nearWater = clamp(
+    1 - waterDistance / (13 + lakeInfluence * 0.08),
+    0,
+    1,
+  );
   const nearOcean = clamp(1 - oceanDistance / (18 + mapSize * 0.08), 0, 1);
   const continentality = clamp(
     (oceanDistance - waterDistance * 0.55) / (10 + mapSize * 0.06),
     0,
-    1
+    1,
   );
   const inlandMoisturePocket =
     Math.max(0, climateMoistureBias) * clamp(oceanDistance / 18, 0, 1);
   const equatorialWetness = smootherEquator(warpedLatitude);
   const subtropicalDryness = subtropicalBelt(warpedLatitude);
 
+  // Latitude-driven base moisture: equatorial wet belt, subtropical dry belt, base rainfall
+  const latitudeMoisture =
+    equatorialWetness * 0.52 - subtropicalDryness * 0.18 + baseRainfall * 0.36;
+  // Proximity to water reduces dryness; distance from ocean (continentality) increases it
+  const proximityMoisture =
+    nearWater * 0.12 +
+    nearOcean * 0.03 +
+    riverStrength * 0.05 -
+    continentality * 0.12;
+  // Terrain relief adds or removes moisture; mountain rain shadow reduces it
+  const terrainModifier =
+    reliefMoisture * 0.38 + Math.max(0, -reliefHeight) * 0.2 - rainShadow * 0.3;
+  // Climate cell bias, noise, inland pockets, and temperature correction
+  const climateBias =
+    climateMoistureBias * 0.34 +
+    inlandMoisturePocket * 0.26 +
+    wetNoise * 0.18 -
+    (provinceField - 0.5) * 0.06 -
+    Math.max(0, temperature - 0.7) * 0.1;
+
   return clamp(
-    baseRainfall * 0.36 +
-      nearWater * 0.12 +
-      nearOcean * 0.03 +
-      riverStrength * 0.05 +
-      wetNoise * 0.18 +
-      climateMoistureBias * 0.34 +
-      equatorialWetness * 0.52 +
-      inlandMoisturePocket * 0.26 +
-      reliefMoisture * 0.38 +
-      Math.max(0, -reliefHeight) * 0.2 -
-      (provinceField - 0.5) * 0.06 -
-      rainShadow * 0.3 -
-      continentality * 0.12 -
-      subtropicalDryness * 0.18 -
-      Math.max(0, temperature - 0.7) * 0.1,
+    latitudeMoisture +
+      proximityMoisture +
+      terrainModifier +
+      climateBias +
+      globalMoistureBias,
     0,
-    1
+    1,
   );
 }
 
-export function classifyBiome({ isCoast, elevation, mountain, temperature, moisture, reliefHeight }) {
+export function classifyBiome({
+  isCoast,
+  elevation,
+  mountain,
+  temperature,
+  moisture,
+  reliefHeight,
+}) {
   if (mountain > 0.8 && elevation > 0.7) {
     return BIOME_KEYS.MOUNTAIN;
   }
@@ -190,10 +219,13 @@ export function classifyBiome({ isCoast, elevation, mountain, temperature, moist
   if (moisture > 0.32 && (reliefHeight < 0.22 || mountain < 0.62)) {
     return BIOME_KEYS.FOREST;
   }
-  if (elevation > 0.86 && reliefHeight > -0.06 && moisture < 0.54) {
-    return BIOME_KEYS.HIGHLANDS;
-  }
-  if (elevation > 0.76 && mountain > 0.62 && reliefHeight > -0.08 && moisture < 0.46) {
+  if (
+    (elevation > 0.86 && reliefHeight > -0.06 && moisture < 0.54) ||
+    (elevation > 0.76 &&
+      mountain > 0.62 &&
+      reliefHeight > -0.08 &&
+      moisture < 0.46)
+  ) {
     return BIOME_KEYS.HIGHLANDS;
   }
   return BIOME_KEYS.PLAINS;
@@ -206,9 +238,14 @@ function smootherPolar(latitude) {
 
 function sampleWarpedLatitude(y, height, beltNoise, latShift) {
   return clamp(
-    Math.abs((y / Math.max(1, height - 1)) * 2 - 1 + beltNoise * 0.42 + latShift * 0.24),
+    Math.abs(
+      (y / Math.max(1, height - 1)) * 2 -
+        1 +
+        beltNoise * 0.42 +
+        latShift * 0.24,
+    ),
     0,
-    1
+    1,
   );
 }
 

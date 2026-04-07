@@ -1,13 +1,15 @@
+import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
 import { inspectWorldAt } from "../inspector.js?v=20260402h";
 import { renderEditorWorld } from "../render/renderer.js?v=20260403aq";
 import {
   clampEditorCamera,
   createEditorCamera,
+  getAdjacentEditorZoom,
   isDefaultEditorCamera,
-  zoomCameraAroundPoint as buildZoomedCamera
-} from "./cameraState.js?v=20260401b";
+  zoomCameraAroundPoint as buildZoomedCamera,
+} from "./cameraState.js?v=20260407a";
 import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260403b";
-import { attachEditorController } from "./editorController.js?v=20260401b";
+import { attachEditorController } from "./editorController.js?v=20260407a";
 
 export function createEditorSession({ refs, state, syncViewUi }) {
   attachEditorController({
@@ -21,7 +23,8 @@ export function createEditorSession({ refs, state, syncViewUi }) {
     scheduleInteractiveRender,
     syncViewUi,
     clampCamera,
-    zoomCameraAroundPoint
+    zoomCameraAroundPoint,
+    getAdjacentEditorZoom,
   });
 
   return {
@@ -30,7 +33,9 @@ export function createEditorSession({ refs, state, syncViewUi }) {
     createDefaultCamera,
     isDefaultCamera,
     clampCamera,
-    zoomCameraAroundPoint
+    zoomCameraAroundPoint,
+    stepZoom,
+    setZoom,
   };
 
   function rerenderCurrentWorld() {
@@ -40,7 +45,7 @@ export function createEditorSession({ refs, state, syncViewUi }) {
 
     state.currentViewport = renderEditorWorld(refs.canvas, state.currentWorld, {
       ...state.renderOptions,
-      cameraState: state.cameraState
+      cameraState: state.cameraState,
     });
   }
 
@@ -52,11 +57,15 @@ export function createEditorSession({ refs, state, syncViewUi }) {
     state.pendingInteractiveRender = true;
     requestAnimationFrame(() => {
       state.pendingInteractiveRender = false;
-      state.currentViewport = renderEditorWorld(refs.canvas, state.currentWorld, {
-        ...state.renderOptions,
-        cameraState: state.cameraState,
-        interactive: true
-      });
+      state.currentViewport = renderEditorWorld(
+        refs.canvas,
+        state.currentWorld,
+        {
+          ...state.renderOptions,
+          cameraState: state.cameraState,
+          interactive: true,
+        },
+      );
     });
   }
 
@@ -76,11 +85,65 @@ export function createEditorSession({ refs, state, syncViewUi }) {
       worldY,
       canvasX,
       canvasY,
-      zoom
+      zoom,
     );
   }
 
   function isDefaultCamera(camera) {
     return isDefaultEditorCamera(state.currentWorld, camera);
+  }
+
+  function stepZoom(direction) {
+    if (!state.currentWorld || !state.currentViewport) {
+      return;
+    }
+
+    const zoom = getAdjacentEditorZoom(state.cameraState.zoom, direction);
+    if (Math.abs(zoom - state.cameraState.zoom) < 0.001) {
+      return;
+    }
+
+    const canvasX = RENDER_WIDTH * 0.5;
+    const canvasY = RENDER_HEIGHT * 0.5;
+    const worldPoint = state.currentViewport.canvasToWorld(canvasX, canvasY);
+    state.cameraState = clampCamera(
+      zoomCameraAroundPoint(worldPoint.x, worldPoint.y, canvasX, canvasY, zoom),
+    );
+    syncViewUi();
+    rerenderCurrentWorld();
+  }
+
+  function setZoom(targetZoom) {
+    if (!state.currentWorld) {
+      return;
+    }
+
+    if (Math.abs(targetZoom - state.cameraState.zoom) < 0.001) {
+      return;
+    }
+
+    if (!state.currentViewport) {
+      state.cameraState = clampCamera({
+        ...state.cameraState,
+        zoom: targetZoom,
+      });
+      syncViewUi();
+      return;
+    }
+
+    const canvasX = RENDER_WIDTH * 0.5;
+    const canvasY = RENDER_HEIGHT * 0.5;
+    const worldPoint = state.currentViewport.canvasToWorld(canvasX, canvasY);
+    state.cameraState = clampCamera(
+      zoomCameraAroundPoint(
+        worldPoint.x,
+        worldPoint.y,
+        canvasX,
+        canvasY,
+        targetZoom,
+      ),
+    );
+    syncViewUi();
+    rerenderCurrentWorld();
   }
 }

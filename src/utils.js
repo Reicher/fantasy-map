@@ -74,8 +74,42 @@ export function quantile(values, q) {
   if (sorted.length === 0) {
     return 0;
   }
-  const index = clamp(Math.floor((sorted.length - 1) * q), 0, sorted.length - 1);
+  const index = clamp(
+    Math.floor((sorted.length - 1) * q),
+    0,
+    sorted.length - 1,
+  );
   return sorted[index];
+}
+
+export function dedupePoints(points) {
+  const deduped = [];
+  for (const point of points) {
+    const previous = deduped[deduped.length - 1];
+    if (
+      previous &&
+      Math.abs(previous.x - point.x) < 0.0001 &&
+      Math.abs(previous.y - point.y) < 0.0001
+    ) {
+      continue;
+    }
+    deduped.push(point);
+  }
+  return deduped;
+}
+
+export function sliderFactor(value, curve) {
+  return clamp(Math.pow(clamp(value / 100, 0, 1), curve), 0, 1);
+}
+
+export function dedupeCells(cells) {
+  const deduped = [];
+  for (const cell of cells) {
+    if (deduped[deduped.length - 1] !== cell) {
+      deduped.push(cell);
+    }
+  }
+  return deduped;
 }
 
 export function titleCase(text) {

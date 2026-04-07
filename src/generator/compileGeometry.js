@@ -9,7 +9,7 @@ export function compileGeometry(world) {
     coastlineLoops: world.surface.coastlineLoops,
     rivers: compileRiverGeometry(world),
     roads: compileRoadGeometry(world),
-    labels: compileLabelGeometry(world)
+    labels: compileLabelGeometry(world),
   };
 }
 
@@ -24,7 +24,7 @@ function compileRiverGeometry(world) {
         width: river.width,
         cellCount: river.cells.length,
         points: delta?.mainPoints ?? trimRiverToCoast(points, mouthInfo),
-        deltaBranches: delta?.branches ?? []
+        deltaBranches: delta?.branches ?? [],
       };
     })
     .sort((a, b) => a.cellCount - b.cellCount);
@@ -34,7 +34,9 @@ function compileRoadGeometry(world) {
   return world.features.roads.map((road) => ({
     id: road.id,
     type: road.type,
-    points: simplifyWorldPoints(cellsToWorldPoints(road.cells, world.terrain.width))
+    points: simplifyWorldPoints(
+      cellsToWorldPoints(road.cells, world.terrain.width),
+    ),
   }));
 }
 
@@ -48,14 +50,14 @@ function compileLabelGeometry(world) {
       region,
       world.features.indices.biomeRegionId,
       world.terrain.width,
-      world.terrain.height
+      world.terrain.height,
     ),
     candidates: pickRegionLabelCandidates(
       region,
       world.features.indices.biomeRegionId,
       world.terrain.width,
-      world.terrain.height
-    )
+      world.terrain.height,
+    ),
   }));
 
   const lakes = world.features.lakes.map((lake) => ({
@@ -66,8 +68,8 @@ function compileLabelGeometry(world) {
       lake,
       world.features.indices.lakeIdByCell,
       world.terrain.width,
-      world.terrain.height
-    )
+      world.terrain.height,
+    ),
   }));
 
   const mountainRegions = world.features.mountainRegions.map((region) => ({
@@ -78,15 +80,15 @@ function compileLabelGeometry(world) {
       region,
       world.features.indices.mountainRegionId,
       world.terrain.width,
-      world.terrain.height
+      world.terrain.height,
     ),
     candidates: pickRegionLabelCandidates(
       region,
       world.features.indices.mountainRegionId,
       world.terrain.width,
       world.terrain.height,
-      4
-    )
+      4,
+    ),
   }));
 
   const pointsOfInterest = world.features.pointsOfInterest.map((poi) => ({
@@ -95,7 +97,7 @@ function compileLabelGeometry(world) {
     marker: poi.marker ?? "dot",
     name: poi.name,
     x: poi.x + 0.5,
-    y: poi.y + 0.5
+    y: poi.y + 0.5,
   }));
 
   const cities = pointsOfInterest.filter((poi) => poi.kind === "city");
@@ -105,7 +107,7 @@ function compileLabelGeometry(world) {
     mountainRegions,
     lakes,
     pointsOfInterest,
-    cities
+    cities,
   };
 }
 
@@ -148,7 +150,10 @@ function buildSimpleRiverDelta(world, river, points, mouthInfo) {
     return null;
   }
 
-  const splitIndex = Math.max(1, mouthInfo.landIndex - Math.max(2, Math.round(river.width)));
+  const splitIndex = Math.max(
+    1,
+    mouthInfo.landIndex - Math.max(2, Math.round(river.width)),
+  );
   if (splitIndex >= mouthInfo.landIndex) {
     return null;
   }
@@ -167,7 +172,16 @@ function buildSimpleRiverDelta(world, river, points, mouthInfo) {
   const forwardY = dirY / dirLength;
   const sideX = -forwardY;
   const sideY = forwardX;
-  const endpoints = findDeltaEndpoints(world, mouthInfo, mouthPoint, seaPoint, forwardX, forwardY, sideX, sideY);
+  const endpoints = findDeltaEndpoints(
+    world,
+    mouthInfo,
+    mouthPoint,
+    seaPoint,
+    forwardX,
+    forwardY,
+    sideX,
+    sideY,
+  );
   if (endpoints.length < 2) {
     return null;
   }
@@ -177,32 +191,56 @@ function buildSimpleRiverDelta(world, river, points, mouthInfo) {
     points: [
       { x: splitPoint.x, y: splitPoint.y },
       {
-        x: splitPoint.x + (mouthPoint.x - splitPoint.x) * 0.58 + endpoint.side * 0.16,
-        y: splitPoint.y + (mouthPoint.y - splitPoint.y) * 0.58 + endpoint.sideY * 0.16
+        x:
+          splitPoint.x +
+          (mouthPoint.x - splitPoint.x) * 0.58 +
+          endpoint.side * 0.16,
+        y:
+          splitPoint.y +
+          (mouthPoint.y - splitPoint.y) * 0.58 +
+          endpoint.sideY * 0.16,
       },
       {
-        x: mouthPoint.x + (endpoint.x - mouthPoint.x) * 0.42 + endpoint.side * 0.1,
-        y: mouthPoint.y + (endpoint.y - mouthPoint.y) * 0.42 + endpoint.sideY * 0.1
+        x:
+          mouthPoint.x +
+          (endpoint.x - mouthPoint.x) * 0.42 +
+          endpoint.side * 0.1,
+        y:
+          mouthPoint.y +
+          (endpoint.y - mouthPoint.y) * 0.42 +
+          endpoint.sideY * 0.1,
       },
       {
         x: endpoint.x + rng.range(-0.08, 0.08),
-        y: endpoint.y + rng.range(-0.08, 0.08)
-      }
+        y: endpoint.y + rng.range(-0.08, 0.08),
+      },
     ],
-    width: Math.max(0.52, river.width * (endpoint.center ? 0.62 : 0.46))
+    width: Math.max(0.52, river.width * (endpoint.center ? 0.62 : 0.46)),
   }));
 
   return {
     mainPoints: points.slice(0, splitIndex + 1),
-    branches
+    branches,
   };
 }
 
-function findDeltaEndpoints(world, mouthInfo, mouthPoint, seaPoint, forwardX, forwardY, sideX, sideY) {
+function findDeltaEndpoints(
+  world,
+  mouthInfo,
+  mouthPoint,
+  seaPoint,
+  forwardX,
+  forwardY,
+  sideX,
+  sideY,
+) {
   const { terrain } = world;
   const candidates = [];
   const radius = 4;
-  const [originX, originY] = coordsOf(terrain.width * 0 + mouthInfo.oceanCell, terrain.width);
+  const [originX, originY] = coordsOf(
+    terrain.width * 0 + mouthInfo.oceanCell,
+    terrain.width,
+  );
   const oceanX = originX + 0.5;
   const oceanY = originY + 0.5;
 
@@ -212,7 +250,7 @@ function findDeltaEndpoints(world, mouthInfo, mouthPoint, seaPoint, forwardX, fo
     side: 0,
     sideY: 0,
     center: true,
-    score: 0
+    score: 0,
   });
 
   for (let dy = -radius; dy <= radius; dy += 1) {
@@ -245,7 +283,7 @@ function findDeltaEndpoints(world, mouthInfo, mouthPoint, seaPoint, forwardX, fo
         sideY: sideY * sideAmount,
         center: false,
         sideAmount,
-        score: along - Math.abs(sideAmount) * 0.1
+        score: along - Math.abs(sideAmount) * 0.1,
       });
     }
   }
@@ -288,7 +326,7 @@ function findRiverMouth(world, river) {
       return {
         landIndex: index - 1,
         oceanIndex: index,
-        oceanCell: current
+        oceanCell: current,
       };
     }
   }
@@ -297,7 +335,13 @@ function findRiverMouth(world, river) {
 }
 
 function pickRegionLabelAnchor(region, regionIdByCell, width, height) {
-  const candidates = pickRegionLabelCandidates(region, regionIdByCell, width, height, 1);
+  const candidates = pickRegionLabelCandidates(
+    region,
+    regionIdByCell,
+    width,
+    height,
+    1,
+  );
   if (candidates.length > 0) {
     return candidates[0];
   }
@@ -313,7 +357,12 @@ function pickRegionLabelAnchor(region, regionIdByCell, width, height) {
       }
     });
 
-    const centroidDistance = distance(x, y, region.centroid.x, region.centroid.y);
+    const centroidDistance = distance(
+      x,
+      y,
+      region.centroid.x,
+      region.centroid.y,
+    );
     const score = sameNeighbors * 10 - centroidDistance * 1.8;
     if (!best || score > best.score) {
       best = { x: x + 0.5, y: y + 0.5, score };
@@ -323,7 +372,13 @@ function pickRegionLabelAnchor(region, regionIdByCell, width, height) {
   return best ?? { x: region.centroid.x, y: region.centroid.y };
 }
 
-function pickRegionLabelCandidates(region, regionIdByCell, width, height, maxCandidates = 6) {
+function pickRegionLabelCandidates(
+  region,
+  regionIdByCell,
+  width,
+  height,
+  maxCandidates = 6,
+) {
   const cellSet = new Set(region.cells);
   const distances = new Map();
   const queue = [];
@@ -358,7 +413,7 @@ function pickRegionLabelCandidates(region, regionIdByCell, width, height, maxCan
       cell,
       x,
       y,
-      sameNeighbors
+      sameNeighbors,
     });
   }
 
@@ -382,13 +437,19 @@ function pickRegionLabelCandidates(region, regionIdByCell, width, height, maxCan
   const ranked = scored
     .map((entry) => {
       const edgeDistance = Math.max(0, distances.get(entry.cell) ?? 0);
-      const centroidDistance = distance(entry.x, entry.y, region.centroid.x, region.centroid.y);
-      const score = edgeDistance * 24 + entry.sameNeighbors * 2 - centroidDistance * 0.75;
+      const centroidDistance = distance(
+        entry.x,
+        entry.y,
+        region.centroid.x,
+        region.centroid.y,
+      );
+      const score =
+        edgeDistance * 24 + entry.sameNeighbors * 2 - centroidDistance * 0.75;
       return {
         x: entry.x + 0.5,
         y: entry.y + 0.5,
         score,
-        edgeDistance
+        edgeDistance,
       };
     })
     .sort((a, b) => b.score - a.score);
@@ -398,7 +459,9 @@ function pickRegionLabelCandidates(region, regionIdByCell, width, height, maxCan
   for (const candidate of ranked) {
     if (
       candidates.every(
-        (placed) => Math.hypot(placed.x - candidate.x, placed.y - candidate.y) >= minSpacing
+        (placed) =>
+          Math.hypot(placed.x - candidate.x, placed.y - candidate.y) >=
+          minSpacing,
       )
     ) {
       candidates.push(candidate);

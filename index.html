@@ -12,7 +12,7 @@
       })();
     </script>
     <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="%23e6d7b6"/><path d="M6 22 L13 10 L20 22 M12 17 L16 12 L23 22" fill="none" stroke="%23543f27" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' />
-    <link rel="stylesheet" href="./styles.css?v=20260403ao" />
+    <link rel="stylesheet" href="./styles.css?v=20260407a" />
   </head>
   <body>
     <div id="editor-shell" class="app-shell">
@@ -195,13 +195,21 @@
           <div class="map-toolbar">
             <span id="world-title" class="world-title"></span>
             <div class="map-actions">
-              <button id="toggle-biome-labels" type="button" class="ghost-button toggle-button">Kartnamn</button>
-              <button id="toggle-city-labels" type="button" class="ghost-button toggle-button">Städer</button>
-              <button id="toggle-snow" type="button" class="ghost-button toggle-button">Snö</button>
-              <button id="toggle-monochrome" type="button" class="ghost-button toggle-button">Svartvitt</button>
-              <span id="zoom-level" class="zoom-chip">100%</span>
-              <button id="reset-view" type="button" class="ghost-button">Återställ vy</button>
-              <button id="save-image" type="button" class="ghost-button">Spara PNG</button>
+              <div class="map-action-group map-action-group--toggles">
+                <button id="toggle-biome-labels" type="button" class="ghost-button toggle-button">Kartnamn</button>
+                <button id="toggle-city-labels" type="button" class="ghost-button toggle-button">Städer</button>
+                <button id="toggle-snow" type="button" class="ghost-button toggle-button">Snö</button>
+                <button id="toggle-monochrome" type="button" class="ghost-button toggle-button">Svartvitt</button>
+              </div>
+              <div class="map-action-group map-action-group--view">
+                <div class="zoom-control" aria-label="Zoomkontroll">
+                  <button id="zoom-out" type="button" class="ghost-button zoom-step-button" aria-label="Zooma ut">−</button>
+                  <span id="zoom-level" class="zoom-chip">100%</span>
+                  <button id="zoom-in" type="button" class="ghost-button zoom-step-button" aria-label="Zooma in">+</button>
+                </div>
+                <button id="reset-view" type="button" class="ghost-button">Återställ vy</button>
+                <button id="save-image" type="button" class="ghost-button">Spara PNG</button>
+              </div>
             </div>
           </div>
           <div class="canvas-wrap">
@@ -265,6 +273,6 @@
       </div>
     </section>
 
-    <script type="module" src="./src/app.js?v=20260403ci"></script>
+    <script type="module" src="./src/app.js?v=20260407a"></script>
   </body>
 </html>

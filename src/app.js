@@ -1,5 +1,12 @@
-import { DEFAULT_PARAMS, RENDER_HEIGHT, RENDER_WIDTH } from "./config.js?v=20260403d";
-import { generateWorld, normalizeParams } from "./generator/worldGenerator.js?v=20260403f";
+import {
+  DEFAULT_PARAMS,
+  RENDER_HEIGHT,
+  RENDER_WIDTH,
+} from "./config.js?v=20260403d";
+import {
+  generateWorld,
+  normalizeParams,
+} from "./generator/worldGenerator.js?v=20260403f";
 import { renderEditorWorld } from "./render/renderer.js?v=20260403aq";
 import {
   bindRangeLabels,
@@ -7,20 +14,21 @@ import {
   hydrateForm,
   randomSeed,
   setSeedValue,
-  updateLabels
+  updateLabels,
 } from "./ui/controls.js?v=20260403b";
 import {
   inferInitialMode,
   syncLabelButtons as applyLabelButtonState,
   syncModeUi as applyModeUi,
-  syncViewUi as applyViewUi
-} from "./ui/appShell.js?v=20260403f";
+  syncViewUi as applyViewUi,
+} from "./ui/appShell.js?v=20260407a";
 import { applyCanvasResolution } from "./ui/canvasResolution.js?v=20260403a";
 import { createPlayProfiler } from "./ui/playProfiler.js?v=20260403a";
 import { updateStats } from "./ui/statsPanel.js";
-import { createEditorSession } from "./ui/editorSession.js?v=20260403a";
+import { createEditorSession } from "./ui/editorSession.js?v=20260407a";
 import { clearHover } from "./ui/hoverPanel.js?v=20260403b";
-import { createPlaySession } from "./ui/playSession.js?v=20260403aq";
+import { createPlaySession } from "./ui/playSession.js?v=20260404g";
+import { waitForNextPaint } from "./ui/viewState.js?v=20260403a";
 
 const refs = {
   editorShell: document.querySelector("#editor-shell"),
@@ -37,25 +45,49 @@ const refs = {
   playGroundTrack: document.querySelector("#play-ground-track"),
   playPoiMarker: document.querySelector("#play-poi-marker"),
   playPlayer: document.querySelector("#play-player"),
-  playToggleBiomeLabelsButton: document.querySelector("#play-toggle-biome-labels"),
-  playToggleCityLabelsButton: document.querySelector("#play-toggle-city-labels"),
+  playToggleBiomeLabelsButton: document.querySelector(
+    "#play-toggle-biome-labels",
+  ),
+  playToggleCityLabelsButton: document.querySelector(
+    "#play-toggle-city-labels",
+  ),
   playToggleHoverButton: document.querySelector("#play-toggle-hover"),
   playJourneyTitle: document.querySelector("#play-journey-title"),
   playJourneySubtitle: document.querySelector("#play-journey-subtitle"),
   tooltip: document.querySelector("#tooltip"),
   statsContainer: document.querySelector("#stats"),
-  titleNode: document.querySelector("#world-title"),
   toggleBiomeLabelsButton: document.querySelector("#toggle-biome-labels"),
   toggleCityLabelsButton: document.querySelector("#toggle-city-labels"),
   toggleSnowButton: document.querySelector("#toggle-snow"),
   toggleMonochromeButton: document.querySelector("#toggle-monochrome"),
-  resetViewButton: document.querySelector("#reset-view"),
-  zoomLevelNode: document.querySelector("#zoom-level"),
+  zoom1Button: document.querySelector("#zoom-1"),
+  zoom2Button: document.querySelector("#zoom-2"),
+  zoom3Button: document.querySelector("#zoom-3"),
+  playZoom1Button: document.querySelector("#play-zoom-1"),
+  playZoom2Button: document.querySelector("#play-zoom-2"),
+  playZoom3Button: document.querySelector("#play-zoom-3"),
   randomSeedButton: document.querySelector("#random-seed"),
   resetButton: document.querySelector("#reset"),
   saveImageButton: document.querySelector("#save-image"),
-  enterPlayButton: document.querySelector("#enter-play")
+  enterPlayButton: document.querySelector("#enter-play"),
 };
+
+// --- Tab switching ---------------------------------------------------
+const tabButtons = document.querySelectorAll(".tab-btn");
+const tabPanelEls = document.querySelectorAll(".tab-panel");
+function setActiveTab(tabName) {
+  for (const btn of tabButtons) {
+    btn.dataset.active = String(btn.dataset.tab === tabName);
+  }
+  for (const panel of tabPanelEls) {
+    panel.hidden = panel.dataset.tabPanel !== tabName;
+  }
+}
+setActiveTab("karta");
+for (const btn of tabButtons) {
+  btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
+}
+// ---------------------------------------------------------------------
 
 const initialMode = inferInitialMode();
 
@@ -77,32 +109,34 @@ const state = {
     showBiomeLabels: true,
     showCityLabels: false,
     showSnow: true,
-    showMonochrome: false
+    showMonochrome: false,
   },
   playMapOptions: {
     showBiomeLabels: false,
     showCityLabels: false,
-    showHoverInspector: true
+    showHoverInspector: true,
+    debugTravelSampling: false,
   },
+  playZoom: 2,
   cameraState: { zoom: 1, centerX: 150, centerY: 110 },
   dragState: null,
   pendingInteractiveRender: false,
   playAnimationFrame: null,
   lastTravelTick: 0,
   generateRunId: 0,
-  playProfiler: createPlayProfiler()
+  playProfiler: createPlayProfiler(),
 };
 
 const editorSession = createEditorSession({
   refs,
   state,
-  syncViewUi
+  syncViewUi,
 });
 
 const playSession = createPlaySession({
   refs,
   state,
-  syncModeUi
+  syncModeUi,
 });
 
 hydrateForm(DEFAULT_PARAMS);
@@ -165,18 +199,33 @@ refs.playToggleCityLabelsButton.addEventListener("click", () => {
 });
 
 refs.playToggleHoverButton.addEventListener("click", () => {
-  state.playMapOptions.showHoverInspector = !state.playMapOptions.showHoverInspector;
+  state.playMapOptions.showHoverInspector =
+    !state.playMapOptions.showHoverInspector;
   if (!state.playMapOptions.showHoverInspector) {
     clearHover(refs.playTooltip);
   }
   playSession.updatePlaySubView();
 });
 
-refs.resetViewButton.addEventListener("click", () => {
-  state.cameraState = editorSession.createDefaultCamera();
-  syncViewUi();
-  editorSession.rerenderCurrentWorld();
-});
+for (const button of [refs.zoom1Button, refs.zoom2Button, refs.zoom3Button]) {
+  if (!button) continue;
+  button.addEventListener("click", () => {
+    editorSession.setZoom(Number(button.dataset.zoom));
+  });
+}
+
+for (const button of [
+  refs.playZoom1Button,
+  refs.playZoom2Button,
+  refs.playZoom3Button,
+]) {
+  if (!button) continue;
+  button.addEventListener("click", () => {
+    state.playZoom = Number(button.dataset.zoom);
+    syncPlayZoomButtons();
+    playSession.renderPlayWorld();
+  });
+}
 
 refs.saveImageButton.addEventListener("click", () => {
   const url = refs.canvas.toDataURL("image/png");
@@ -194,7 +243,9 @@ window.addEventListener("resize", () => {
   if (!state.isBootReady) {
     return;
   }
-  state.currentRenderScale = normalizeParams(getFormValues(refs.form)).renderScale;
+  state.currentRenderScale = normalizeParams(
+    getFormValues(refs.form),
+  ).renderScale;
   applyCanvasResolution(refs, state.currentRenderScale);
   if (state.currentMode === "editor") {
     editorSession.rerenderCurrentWorld();
@@ -210,13 +261,26 @@ window.addEventListener("keydown", (event) => {
 
   if (event.key === "m" || event.key === "M") {
     event.preventDefault();
-    playSession.setPlayViewMode(state.playState?.viewMode === "journey" ? "map" : "journey");
+    playSession.setPlayViewMode(
+      state.playState?.viewMode === "journey" ? "map" : "journey",
+    );
     return;
   }
 
   if (event.key === "p" || event.key === "P") {
     event.preventDefault();
     state.playProfiler.toggle();
+    return;
+  }
+
+  if (event.key === "d" || event.key === "D") {
+    if (state.playState?.viewMode !== "map") {
+      return;
+    }
+    event.preventDefault();
+    state.playMapOptions.debugTravelSampling =
+      !state.playMapOptions.debugTravelSampling;
+    playSession.renderPlayWorld();
   }
 });
 
@@ -242,13 +306,12 @@ async function generateAndRender() {
   if (state.currentMode === "editor") {
     state.currentViewport = renderEditorWorld(refs.canvas, state.currentWorld, {
       ...state.renderOptions,
-      cameraState: state.cameraState
+      cameraState: state.cameraState,
     });
   } else {
     state.currentViewport = null;
   }
   playSession.renderPlayWorld();
-  refs.titleNode.textContent = `seed ${state.currentWorld.params.seed}`;
   updateStats(refs.statsContainer, state.currentWorld.stats);
   syncViewUi();
 
@@ -276,15 +339,28 @@ async function generateAndRender() {
 function syncLabelButtons() {
   applyLabelButtonState({
     refs,
-    renderOptions: state.renderOptions
+    renderOptions: state.renderOptions,
   });
+}
+
+function syncPlayZoomButtons() {
+  for (const button of [
+    refs.playZoom1Button,
+    refs.playZoom2Button,
+    refs.playZoom3Button,
+  ]) {
+    if (!button) continue;
+    button.dataset.active = String(
+      Math.abs(Number(button.dataset.zoom) - state.playZoom) < 0.001,
+    );
+  }
 }
 
 function syncModeUi() {
   applyModeUi({
     refs,
     state,
-    updatePlaySubView
+    updatePlaySubView: playSession.updatePlaySubView,
   });
 }
 
@@ -292,27 +368,11 @@ function syncViewUi() {
   applyViewUi({
     refs,
     cameraState: state.cameraState,
-    isDefaultCamera
   });
 }
 
-function updatePlaySubView() {
-  playSession.updatePlaySubView();
-}
-
-function clampCamera(camera) {
-  return editorSession.clampCamera(camera);
-}
-
-function zoomCameraAroundPoint(worldX, worldY, canvasX, canvasY, zoom) {
-  return editorSession.zoomCameraAroundPoint(worldX, worldY, canvasX, canvasY, zoom);
-}
-
-function isDefaultCamera(camera) {
-  return editorSession.isDefaultCamera(camera);
-}
-
 syncLabelButtons();
+syncPlayZoomButtons();
 syncModeUi();
 syncViewUi();
 
@@ -330,21 +390,11 @@ function bootApp() {
     return;
   }
 
-  window.addEventListener("load", () => {
-    requestAnimationFrame(start);
-  }, { once: true });
-}
-
-function waitForNextPaint(frames = 1) {
-  return new Promise((resolve) => {
-    const step = () => {
-      if (frames <= 0) {
-        resolve();
-        return;
-      }
-      frames -= 1;
-      requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  });
+  window.addEventListener(
+    "load",
+    () => {
+      requestAnimationFrame(start);
+    },
+    { once: true },
+  );
 }

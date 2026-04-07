@@ -8,10 +8,26 @@ export const BIOME_HABITABILITY = {
   [BIOME_KEYS.DESERT]: 0.16,
   [BIOME_KEYS.TUNDRA]: 0.2,
   [BIOME_KEYS.HIGHLANDS]: 0.48,
-  [BIOME_KEYS.MOUNTAIN]: 0.05
+  [BIOME_KEYS.MOUNTAIN]: 0.05,
 };
 
-export function buildCityCandidates({ width, size, isLand, elevation, coastMask, mountainField, biome, moisture, coastDistance, waterDistance, riverStrength, lakeIdByCell, rng }) {
+export function buildCityCandidates({
+  width,
+  size,
+  isLand,
+  elevation,
+  coastMask,
+  mountainField,
+  biome,
+  moisture,
+  coastDistance,
+  waterDistance,
+  riverStrength,
+  lakeIdByCell,
+  rng,
+  coastalBias = 50,
+}) {
+  const coastalWeight = 0.34 * clamp(coastalBias / 50, 0, 2);
   const candidates = [];
   let habitableArea = 0;
 
@@ -30,20 +46,29 @@ export function buildCityCandidates({ width, size, isLand, elevation, coastMask,
     const inlandness = clamp(coastDistance[index] / 18, 0, 1);
     const nearWater = clamp(1 - waterDistance[index] / 6, 0, 1);
     const inlandWater = !coastal && waterDistance[index] <= 2;
-    const dryInland = !coastal && waterDistance[index] >= 3 && waterDistance[index] <= 7;
+    const dryInland =
+      !coastal && waterDistance[index] >= 3 && waterDistance[index] <= 7;
     const oddballBoost = rng.chance(0.045) ? 0.22 : 0;
     const flatness = clamp(1 - elevation[index], 0, 1);
     const waterBonus =
-      (coastal ? 0.34 : 0) +
+      (coastal ? coastalWeight : 0) +
       nearWater * 0.12 +
       clamp(riverStrength[index] / 3.2, 0, 1) * (0.14 + inlandness * 0.14) +
       (inlandWater ? 0.16 + inlandness * 0.08 : 0);
     const inlandBonus =
       (!coastal ? inlandness * 0.025 : 0) +
       (dryInland ? 0.03 + inlandness * 0.03 : 0) +
-      (coastDistance[index] >= 8 && coastDistance[index] <= 22 && mountainField[index] < 0.22 ? 0.02 : 0);
+      (coastDistance[index] >= 8 &&
+      coastDistance[index] <= 22 &&
+      mountainField[index] < 0.22
+        ? 0.02
+        : 0);
     const remotePenalty =
-      coastDistance[index] > 16 && waterDistance[index] > 6 && mountainField[index] > 0.2 ? 0.08 : 0;
+      coastDistance[index] > 16 &&
+      waterDistance[index] > 6 &&
+      mountainField[index] > 0.2
+        ? 0.08
+        : 0;
     const score =
       habitability * 0.4 +
       waterBonus +
@@ -58,14 +83,17 @@ export function buildCityCandidates({ width, size, isLand, elevation, coastMask,
 
     if (
       (score > 0.26 && (habitability > 0.18 || oddballBoost > 0)) ||
-      (oddballBoost > 0 && habitability > 0.18 && elevation[index] < 0.72 && mountainField[index] < 0.32)
+      (oddballBoost > 0 &&
+        habitability > 0.18 &&
+        elevation[index] < 0.72 &&
+        mountainField[index] < 0.32)
     ) {
       candidates.push({
         index,
         score,
         coastal,
         river: river || inlandWater,
-        oddball: oddballBoost > 0
+        oddball: oddballBoost > 0,
       });
     }
   }
@@ -82,9 +110,11 @@ export function selectCities({ width, candidates, desiredCount, minSpacing }) {
     width,
     cities,
     desiredCount,
-    pool: candidates.filter((candidate) => !candidate.oddball || candidate.score > 0.42),
+    pool: candidates.filter(
+      (candidate) => !candidate.oddball || candidate.score > 0.42,
+    ),
     spacing: minSpacing,
-    preferSpread: false
+    preferSpread: false,
   });
 
   if (cities.length < desiredCount) {
@@ -94,83 +124,93 @@ export function selectCities({ width, candidates, desiredCount, minSpacing }) {
       desiredCount,
       pool: candidates,
       spacing: Math.max(7, minSpacing - 1.5),
-      preferSpread: true
+      preferSpread: true,
     });
   }
 
   return cities;
 }
 
-export function maybeAddInlandOddballCity({ width, rng, candidates, cities, desiredCount, minSpacing }) {
-  if (cities.some((city) => !city.coastal && !city.river) || !rng.chance(0.6)) {
-    return;
-  }
-
-  const fallback = candidates.find(
-    (candidate) =>
-      !candidate.coastal &&
-      !candidate.river &&
-      candidate.score > 0.18 &&
-      canPlaceCandidate(width, cities, candidate, Math.max(5, minSpacing - 2))
-  );
-
-  if (!fallback) {
-    return;
-  }
-
-  if (cities.length >= desiredCount) {
-    const replaceIndex = cities.findIndex((city) => city.coastal || city.river);
-    if (replaceIndex >= 0) {
-      cities.splice(replaceIndex, 1);
-    }
-  }
-
-  cities.push(toCityRecord(width, cities.length, fallback));
-}
-
-export function ensureInlandCities({ width, rng, candidates, cities, desiredCount, minSpacing, density }) {
+export function ensureInlandCities({
+  width,
+  rng,
+  candidates,
+  cities,
+  desiredCount,
+  minSpacing,
+  density,
+}) {
   const targetInlandCount = density >= 0.82 ? 2 : 1;
-  let currentInlandCount = cities.filter((city) => !city.coastal && !city.river).length;
-
-  if (currentInlandCount >= targetInlandCount) {
-    return;
-  }
+  let currentInlandCount = cities.filter(
+    (city) => !city.coastal && !city.river,
+  ).length;
 
   const inlandCandidates = candidates.filter(
     (candidate) =>
-      !candidate.coastal &&
-      !candidate.river &&
-      candidate.score > 0.2
+      !candidate.coastal && !candidate.river && candidate.score > 0.18,
   );
 
-  for (const candidate of inlandCandidates) {
+  // If no inland city exists yet, try adding one with a 60% chance (looser thresholds)
+  if (currentInlandCount === 0 && rng.chance(0.6)) {
+    const oddball = inlandCandidates.find((c) =>
+      canPlaceCandidate(width, cities, c, Math.max(5, minSpacing - 2)),
+    );
+    if (oddball) {
+      if (cities.length >= desiredCount) {
+        const replaceIndex = cities.findIndex(
+          (city) => city.coastal || city.river,
+        );
+        if (replaceIndex >= 0) {
+          cities.splice(replaceIndex, 1);
+        }
+      }
+      cities.push(toCityRecord(width, cities.length, oddball));
+      currentInlandCount += 1;
+    }
+  }
+
+  // Ensure minimum inland count with stricter score threshold
+  const strictCandidates = inlandCandidates.filter((c) => c.score > 0.2);
+  for (const candidate of strictCandidates) {
     if (currentInlandCount >= targetInlandCount) {
       break;
     }
-
-    if (!canPlaceCandidate(width, cities, candidate, Math.max(5.5, minSpacing - 2.5))) {
+    if (
+      !canPlaceCandidate(
+        width,
+        cities,
+        candidate,
+        Math.max(5.5, minSpacing - 2.5),
+      )
+    ) {
       continue;
     }
-
     if (cities.length >= desiredCount) {
-      const replaceIndex = findReplaceableCityIndex(cities, candidate, width, minSpacing);
+      const replaceIndex = findReplaceableCityIndex(
+        cities,
+        candidate,
+        width,
+        minSpacing,
+      );
       if (replaceIndex < 0) {
         continue;
       }
       cities.splice(replaceIndex, 1);
     }
-
     cities.push(toCityRecord(width, cities.length, candidate));
     currentInlandCount += 1;
   }
 
+  // Last-resort fallback with relaxed spacing
   if (currentInlandCount < targetInlandCount && rng.chance(0.25)) {
-    const fallback = inlandCandidates.find((candidate) =>
-      canPlaceCandidate(width, cities, candidate, Math.max(4.5, minSpacing - 3))
+    const fallback = strictCandidates.find((c) =>
+      canPlaceCandidate(width, cities, c, Math.max(4.5, minSpacing - 3)),
     );
     if (fallback) {
       if (cities.length >= desiredCount) {
-        const replaceIndex = cities.findIndex((city) => city.coastal && !city.river);
+        const replaceIndex = cities.findIndex(
+          (city) => city.coastal && !city.river,
+        );
         if (replaceIndex >= 0) {
           cities.splice(replaceIndex, 1);
         }
@@ -180,7 +220,14 @@ export function ensureInlandCities({ width, rng, candidates, cities, desiredCoun
   }
 }
 
-function fillCities({ width, cities, desiredCount, pool, spacing, preferSpread }) {
+function fillCities({
+  width,
+  cities,
+  desiredCount,
+  pool,
+  spacing,
+  preferSpread,
+}) {
   const available = [...pool];
 
   while (available.length > 0 && cities.length < desiredCount) {
@@ -193,9 +240,14 @@ function fillCities({ width, cities, desiredCount, pool, spacing, preferSpread }
         continue;
       }
 
-      const spreadBonus = cities.length === 0 ? 0 : spreadValue(width, cities, candidate);
+      const spreadBonus =
+        cities.length === 0 ? 0 : spreadValue(width, cities, candidate);
       const inlandSpreadBonus =
-        !candidate.coastal && !candidate.river ? 0.02 : !candidate.coastal ? 0.015 : 0;
+        !candidate.coastal && !candidate.river
+          ? 0.02
+          : !candidate.coastal
+            ? 0.015
+            : 0;
       const effectiveScore =
         candidate.score +
         (preferSpread ? spreadBonus * 0.28 : spreadBonus * 0.18) +
@@ -230,7 +282,7 @@ function toCityRecord(width, id, candidate) {
     y,
     coastal: candidate.coastal,
     river: candidate.river,
-    score: candidate.score
+    score: candidate.score,
   };
 }
 
@@ -267,7 +319,8 @@ function findReplaceableCityIndex(cities, candidate, width, minSpacing) {
       continue;
     }
 
-    const replacePenalty = (city.coastal ? 1 : 0) + (city.river ? 0.4 : 0) - city.score;
+    const replacePenalty =
+      (city.coastal ? 1 : 0) + (city.river ? 0.4 : 0) - city.score;
     if (replacePenalty < bestScore) {
       bestScore = replacePenalty;
       bestIndex = index;
