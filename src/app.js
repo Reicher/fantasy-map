@@ -7,7 +7,6 @@ import {
   generateWorld,
   normalizeParams,
 } from "./generator/worldGenerator.js?v=20260403f";
-import { renderEditorWorld } from "./render/renderer.js?v=20260408b";
 import {
   bindRangeLabels,
   getFormValues,
@@ -25,9 +24,9 @@ import {
 import { applyCanvasResolution } from "./ui/canvasResolution.js?v=20260403a";
 import { createPlayProfiler } from "./ui/playProfiler.js?v=20260403a";
 import { updateStats } from "./ui/statsPanel.js";
-import { createEditorSession } from "./ui/editorSession.js?v=20260408b";
+import { createEditorSession } from "./ui/editorSession.js?v=20260408c";
 import { clearHover } from "./ui/hoverPanel.js?v=20260403b";
-import { createPlaySession } from "./ui/playSession.js?v=20260408b";
+import { createPlaySession } from "./ui/playSession.js?v=20260408c";
 import { waitForNextPaint } from "./ui/viewState.js?v=20260403a";
 
 const refs = {
@@ -296,10 +295,7 @@ async function generateAndRender() {
   state.playState = playSession.createInitialPlayState(state.currentWorld);
   state.cameraState = editorSession.createDefaultCamera();
   if (state.currentMode === "editor") {
-    state.currentViewport = renderEditorWorld(refs.canvas, state.currentWorld, {
-      ...state.renderOptions,
-      cameraState: state.cameraState,
-    });
+    editorSession.rerenderCurrentWorld();
   } else {
     state.currentViewport = null;
   }

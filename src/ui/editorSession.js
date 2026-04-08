@@ -1,6 +1,5 @@
 import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
 import { inspectWorldAt } from "../inspector.js?v=20260402h";
-import { renderEditorWorld } from "../render/renderer.js?v=20260408b";
 import {
   clampEditorCamera,
   createEditorCamera,
@@ -10,8 +9,15 @@ import {
 } from "./cameraState.js?v=20260407a";
 import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260403b";
 import { attachEditorController } from "./editorController.js?v=20260407a";
+import { createEditorMapCacheManager } from "./editorMapCache.js?v=20260408c";
 
 export function createEditorSession({ refs, state, syncViewUi }) {
+  const mapCache = createEditorMapCacheManager({
+    canvas: refs.canvas,
+    getWorld: () => state.currentWorld,
+    getCameraState: () => state.cameraState,
+  });
+
   attachEditorController({
     canvas: refs.canvas,
     tooltip: refs.tooltip,
@@ -43,10 +49,12 @@ export function createEditorSession({ refs, state, syncViewUi }) {
       return;
     }
 
-    state.currentViewport = renderEditorWorld(refs.canvas, state.currentWorld, {
+    const renderOptions = {
       ...state.renderOptions,
       cameraState: state.cameraState,
-    });
+    };
+    mapCache.ensure(renderOptions);
+    state.currentViewport = mapCache.draw(state.cameraState);
   }
 
   function scheduleInteractiveRender() {
@@ -57,15 +65,13 @@ export function createEditorSession({ refs, state, syncViewUi }) {
     state.pendingInteractiveRender = true;
     requestAnimationFrame(() => {
       state.pendingInteractiveRender = false;
-      state.currentViewport = renderEditorWorld(
-        refs.canvas,
-        state.currentWorld,
-        {
-          ...state.renderOptions,
-          cameraState: state.cameraState,
-          interactive: true,
-        },
-      );
+      const renderOptions = {
+        ...state.renderOptions,
+        cameraState: state.cameraState,
+        interactive: true,
+      };
+      mapCache.ensure(renderOptions);
+      state.currentViewport = mapCache.draw(state.cameraState);
     });
   }
 
