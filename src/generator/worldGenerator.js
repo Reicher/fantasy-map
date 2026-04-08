@@ -3,17 +3,17 @@ import { createRng } from "../random.js";
 import { clamp } from "../utils.js";
 import { generateCities } from "./cities.js?v=20260407a";
 import { generateClimate } from "./climate.js?v=20260407a";
-import { compileGeometry } from "./compileGeometry.js?v=20260403a";
-import { buildFeatureCatalog } from "./features.js?v=20260408a";
+import { compileGeometry } from "./compileGeometry.js?v=20260408c";
+import { buildFeatureCatalog } from "./features.js?v=20260408h";
 import { generateHydrology } from "./hydrology.js?v=20260407a";
 import { buildWorldNetwork } from "./network.js?v=20260401i";
 import { applyFeatureNames } from "./nameFeatures.js";
 import { buildRegions } from "./regions.js?v=20260402c";
-import { generateRoads } from "./roads.js?v=20260408c";
+import { generateRoads } from "./roads.js?v=20260408n";
 import { buildSurfaceGeometry } from "./surface.js?v=20260403b";
 import { generateTerrain } from "./terrain.js?v=20260401i";
 import { buildTravelGraph } from "./travelGraph.js?v=20260401a";
-import { buildWorldStats } from "./worldStats.js?v=20260402c";
+import { buildWorldStats } from "./worldStats.js?v=20260408a";
 
 export function normalizeParams(input) {
   const legacyWater = asNumber(input.waterRichness, 56);
@@ -27,12 +27,39 @@ export function normalizeParams(input) {
     lakeSize: clamp(asNumber(input.lakeSize, legacyWater), 0, 100),
     coastComplexity: clamp(asNumber(input.coastComplexity, 62), 0, 100),
     edgeDetail: clamp(asNumber(input.edgeDetail, 300), 180, 520),
-    minBiomeSize: clamp(asNumber(input.minBiomeSize, 15), 0, 20),
+    minBiomeSize: clamp(asNumber(input.minBiomeSize, 15), 0, 30),
     renderScale: clamp(asNumber(input.renderScale, 150), 50, 250),
     fogVisionRadius: clamp(asNumber(input.fogVisionRadius, 18), 6, 40),
     temperatureBias: clamp(asNumber(input.temperatureBias, 50), 0, 100),
     moistureBias: clamp(asNumber(input.moistureBias, 50), 0, 100),
     coastalBias: clamp(asNumber(input.coastalBias, 50), 0, 100),
+    poiSettlementWeight: clamp(
+      asNumber(input.poiSettlementWeight, 62),
+      0,
+      100,
+    ),
+    poiCrashSiteWeight: clamp(
+      asNumber(input.poiCrashSiteWeight, 28),
+      0,
+      100,
+    ),
+    poiSignpostWeight: clamp(
+      asNumber(input.poiSignpostWeight, 24),
+      0,
+      100,
+    ),
+    roadShortcutAggression: clamp(
+      asNumber(input.roadShortcutAggression, 50),
+      0,
+      100,
+    ),
+    roadReuseBias: clamp(asNumber(input.roadReuseBias, 50), 0, 100),
+    roadCityAvoidance: clamp(asNumber(input.roadCityAvoidance, 50), 0, 100),
+    roadMaxConnectionsPerCity: clamp(
+      asNumber(input.roadMaxConnectionsPerCity, 5),
+      2,
+      8,
+    ),
   };
 }
 

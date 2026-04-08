@@ -1,4 +1,4 @@
-import { PARAM_LABELS } from "../config.js?v=20260403d";
+import { PARAM_LABELS } from "../config.js?v=20260408b";
 
 const RANGE_KEYS = [
   "mapSize",
@@ -15,6 +15,13 @@ const RANGE_KEYS = [
   "temperatureBias",
   "moistureBias",
   "coastalBias",
+  "poiSettlementWeight",
+  "poiCrashSiteWeight",
+  "poiSignpostWeight",
+  "roadShortcutAggression",
+  "roadReuseBias",
+  "roadCityAvoidance",
+  "roadMaxConnectionsPerCity",
 ];
 
 export function hydrateForm(params) {
@@ -44,6 +51,13 @@ export function getFormValues(form) {
     temperatureBias: Number(data.get("temperatureBias")),
     moistureBias: Number(data.get("moistureBias")),
     coastalBias: Number(data.get("coastalBias")),
+    poiSettlementWeight: Number(data.get("poiSettlementWeight")),
+    poiCrashSiteWeight: Number(data.get("poiCrashSiteWeight")),
+    poiSignpostWeight: Number(data.get("poiSignpostWeight")),
+    roadShortcutAggression: Number(data.get("roadShortcutAggression")),
+    roadReuseBias: Number(data.get("roadReuseBias")),
+    roadCityAvoidance: Number(data.get("roadCityAvoidance")),
+    roadMaxConnectionsPerCity: Number(data.get("roadMaxConnectionsPerCity")),
   };
 }
 

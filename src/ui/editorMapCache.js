@@ -1,5 +1,5 @@
-import { renderEditorWorld } from "../render/renderer.js?v=20260408b";
-import { createMapAtlasCacheManager } from "./mapAtlasCache.js?v=20260408c";
+import { renderEditorWorld } from "../render/renderer.js?v=20260408l";
+import { createMapAtlasCacheManager } from "./mapAtlasCache.js?v=20260408h";
 
 export function createEditorMapCacheManager({ canvas, getWorld, getCameraState }) {
   return createMapAtlasCacheManager({
@@ -11,7 +11,7 @@ export function createEditorMapCacheManager({ canvas, getWorld, getCameraState }
       return [
         renderOptions.showSnow ? 1 : 0,
         renderOptions.showBiomeLabels ? 1 : 0,
-        renderOptions.showCityLabels ? 1 : 0,
+        (renderOptions.showPoiLabels ?? renderOptions.showCityLabels) ? 1 : 0,
       ].join(":");
     },
     getAtlasPadding(world, cameraState) {

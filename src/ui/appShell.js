@@ -12,7 +12,9 @@ export function syncLabelButtons({ refs, renderOptions }) {
   refs.toggleBiomeLabelsButton.dataset.active = renderOptions.showBiomeLabels
     ? "true"
     : "false";
-  refs.toggleCityLabelsButton.dataset.active = renderOptions.showCityLabels
+  refs.toggleCityLabelsButton.dataset.active = (
+    renderOptions.showPoiLabels ?? renderOptions.showCityLabels
+  )
     ? "true"
     : "false";
   refs.toggleSnowButton.dataset.active = renderOptions.showSnow

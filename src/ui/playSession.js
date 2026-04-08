@@ -5,14 +5,14 @@ import {
   getValidTargetIds,
   sampleTravelBiomeBandPoints,
 } from "../game/travel.js?v=20260408a";
-import { createJourneyScene } from "../game/journeyScene.js?v=20260408a";
-import { renderPlayWorldDynamic } from "../render/renderer.js?v=20260408b";
-import { inspectWorldAt } from "../inspector.js?v=20260402h";
+import { createJourneyScene } from "../game/journeyScene.js?v=20260408b";
+import { renderPlayWorldDynamic } from "../render/renderer.js?v=20260408l";
+import { inspectWorldAt } from "../inspector.js?v=20260408b";
 import { createPlayCamera as buildPlayCamera } from "./cameraState.js?v=20260407a";
-import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260403b";
-import { createPlayMapCacheManager } from "./playMapCache.js?v=20260408c";
-import { createPlayController } from "./playController.js?v=20260408b";
-import { createPlaySubViewController } from "./playSubView.js?v=20260403b";
+import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260408a";
+import { createPlayMapCacheManager } from "./playMapCache.js?v=20260408j";
+import { createPlayController } from "./playController.js?v=20260408j";
+import { createPlaySubViewController } from "./playSubView.js?v=20260408c";
 import { waitForNextPaint } from "./viewState.js?v=20260403a";
 
 export function createPlaySession({ refs, state, syncModeUi }) {
@@ -25,6 +25,7 @@ export function createPlaySession({ refs, state, syncModeUi }) {
 
   const journeyScene = createJourneyScene({
     canvas: refs.playJourneyCanvas,
+    getWorld: () => state.currentWorld,
   });
 
   const playController = createPlayController({
@@ -86,8 +87,8 @@ export function createPlaySession({ refs, state, syncModeUi }) {
         const renderOptions = {
           showSnow: state.renderOptions.showSnow,
           showBiomeLabels: state.playMapOptions.showBiomeLabels,
-          showCityLabels: state.playMapOptions.showCityLabels,
-          cityLabelIds: visibleCityIds,
+          showPoiLabels: state.playMapOptions.showPoiLabels,
+          poiLabelIds: visibleCityIds,
           discoveredCells: state.playState.discoveredCells,
           cameraState: createPlayCamera(),
           playerStart: state.playState.position,
@@ -221,20 +222,21 @@ export function createPlaySession({ refs, state, syncModeUi }) {
       return Array.from(visibleIds);
     }
 
-    for (const city of world.cities ?? []) {
-      if (!city) {
+    const pointsOfInterest = world.features?.pointsOfInterest ?? world.cities ?? [];
+    for (const poi of pointsOfInterest) {
+      if (!poi) {
         continue;
       }
       const x = Math.max(
         0,
-        Math.min(world.terrain.width - 1, Math.floor(city.x)),
+        Math.min(world.terrain.width - 1, Math.floor(poi.x)),
       );
       const y = Math.max(
         0,
-        Math.min(world.terrain.height - 1, Math.floor(city.y)),
+        Math.min(world.terrain.height - 1, Math.floor(poi.y)),
       );
       if (discoveredCells[y * world.terrain.width + x]) {
-        visibleIds.add(city.id);
+        visibleIds.add(poi.id);
       }
     }
 

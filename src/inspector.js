@@ -1,25 +1,24 @@
 import { clamp, distance } from "./utils.js";
 import { isFrozenLake } from "./generator/surfaceModel.js?v=20260402b";
+import { getPoiTitle } from "./poi/poiModel.js";
 import { riverDistanceInCells } from "./query/rivers.js";
 
 export function inspectWorldAt(world, worldX, worldY, renderContext = null) {
   const x = clamp(Math.floor(worldX), 0, world.terrain.width - 1);
   const y = clamp(Math.floor(worldY), 0, world.terrain.height - 1);
   const index = y * world.terrain.width + x;
-  const { cities, lakes, biomeRegions, indices } = world.features;
+  const { pointsOfInterest, lakes, biomeRegions, indices } = world.features;
 
-  let nearestCity = null;
-  for (const city of cities) {
-    const d = distance(worldX, worldY, city.x, city.y);
-    if (d <= 4 && (!nearestCity || d < nearestCity.distance)) {
-      nearestCity = { city, distance: d };
+  let nearestPoi = null;
+  for (const poi of pointsOfInterest) {
+    const d = distance(worldX, worldY, poi.x, poi.y);
+    if (d <= 4.8 && (!nearestPoi || d < nearestPoi.distance)) {
+      nearestPoi = { poi, distance: d };
     }
   }
-  if (nearestCity) {
+  if (nearestPoi) {
     return {
-      title: nearestCity.city.name,
-      subtitle: "Stad",
-      detail: nearestCity.city.coastal ? "Kustnära bosättning" : nearestCity.city.river ? "Vattennära bosättning" : "Inlandsstad"
+      title: getPoiTitle(nearestPoi.poi),
     };
   }
 

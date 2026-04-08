@@ -20,9 +20,13 @@ export function showHoverContent(tooltip, html, clientX, clientY) {
 }
 
 function renderHoverHtml(hit) {
-  return `${[
-    `<strong>${hit.title}</strong>`,
-    `<span>${hit.subtitle}</span>`,
-    hit.detail ? `<span>${hit.detail}</span>` : ""
-  ].join("")}`;
+  const lines = [];
+  lines.push(`<strong>${hit.title ?? "Okand plats"}</strong>`);
+  if (hit.subtitle) {
+    lines.push(`<span>${hit.subtitle}</span>`);
+  }
+  if (hit.detail) {
+    lines.push(`<span>${hit.detail}</span>`);
+  }
+  return lines.join("");
 }

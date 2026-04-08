@@ -1,6 +1,7 @@
 import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
-import { createViewport } from "../render/renderer.js?v=20260408b";
-import { findPlayableCityAtWorldPoint } from "../game/playQueries.js?v=20260401a";
+import { createViewport } from "../render/renderer.js?v=20260408l";
+import { findPlayableCityAtWorldPoint } from "../game/playQueries.js?v=20260408a";
+import { getPoiTitle } from "../poi/poiModel.js";
 
 export function createPlayController({
   playCanvas,
@@ -41,8 +42,7 @@ export function createPlayController({
       const city = state.currentWorld.cities[hoveredCityId];
       showHoverHit(
         {
-          title: city?.name ?? "Okänd plats",
-          subtitle: "Resmål",
+          title: getPoiTitle(city),
         },
         tooltip,
         event.clientX,

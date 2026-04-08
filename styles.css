@@ -43,6 +43,8 @@ input {
   display: grid;
   grid-template-columns: minmax(280px, 320px) 1fr;
   gap: 0;
+  height: 100vh;
+  height: 100dvh;
   min-height: 100vh;
   padding: 0;
 }
@@ -53,13 +55,14 @@ input {
   border-radius: 14px;
   box-shadow: 0 12px 32px var(--shadow);
   overflow: hidden;
-  margin: 10px 0 10px 10px;
+  margin: 0 0 0 10px;
 }
 
 .control-panel {
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 20px);
+  height: 100%;
+  max-height: 100%;
   padding: 14px 14px;
   background:
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.6), transparent 28%),
@@ -525,56 +528,62 @@ canvas[data-dragging="true"] {
 
 .play-map-legend {
   position: absolute;
-  top: 22px;
-  left: 22px;
+  top: 16px;
+  right: 16px;
+  left: auto;
   z-index: 12;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: rgba(28, 22, 16, 0.62);
-  border: 1px solid rgba(242, 230, 202, 0.14);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
-  backdrop-filter: blur(6px);
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(28, 22, 16, 0.46);
+  border: 1px solid rgba(242, 230, 202, 0.1);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(4px);
 }
 
 .play-map-legend-title {
-  color: rgba(247, 239, 221, 0.9);
-  font-size: 0.78rem;
-  letter-spacing: 0.14em;
+  color: rgba(247, 239, 221, 0.76);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
 .play-map-legend-buttons {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
 .play-map-legend .ghost-button {
-  padding: 8px 12px;
-  background: rgba(251, 246, 234, 0.16);
-  border-color: rgba(247, 236, 210, 0.16);
-  color: rgba(248, 240, 225, 0.94);
+  padding: 6px 10px;
+  background: rgba(251, 246, 234, 0.12);
+  border-color: rgba(247, 236, 210, 0.12);
+  color: rgba(248, 240, 225, 0.86);
   box-shadow: none;
+  font-size: 0.78rem;
 }
 
 .play-map-legend .ghost-button:hover {
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.14);
 }
 
 .play-map-legend-zoom {
   display: flex;
-  gap: 6px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(242, 230, 202, 0.12);
+  gap: 5px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(242, 230, 202, 0.1);
 }
 
 .play-map-legend .toggle-button[data-active="true"] {
-  background: linear-gradient(180deg, rgba(164, 127, 66, 0.92), rgba(117, 84, 35, 0.96));
+  background: linear-gradient(
+    180deg,
+    rgba(161, 124, 64, 0.84),
+    rgba(113, 81, 34, 0.9)
+  );
   color: #f9f4e8;
-  border-color: rgba(247, 236, 210, 0.24);
+  border-color: rgba(247, 236, 210, 0.18);
 }
 
 #play-canvas {
@@ -679,5 +688,22 @@ canvas[data-dragging="true"] {
   canvas {
     width: min(100%, calc((70vh) * 1.428571));
     max-height: 70vh;
+  }
+
+  .play-map-legend {
+    top: 10px;
+    right: 10px;
+    padding: 8px 9px;
+    border-radius: 12px;
+    gap: 6px;
+  }
+
+  .play-map-legend .ghost-button {
+    padding: 5px 8px;
+    font-size: 0.72rem;
+  }
+
+  .play-map-legend-buttons {
+    gap: 5px;
   }
 }

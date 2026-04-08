@@ -2,11 +2,11 @@ import {
   DEFAULT_PARAMS,
   RENDER_HEIGHT,
   RENDER_WIDTH,
-} from "./config.js?v=20260403d";
+} from "./config.js?v=20260408b";
 import {
   generateWorld,
   normalizeParams,
-} from "./generator/worldGenerator.js?v=20260403f";
+} from "./generator/worldGenerator.js?v=20260408v";
 import {
   bindRangeLabels,
   getFormValues,
@@ -14,20 +14,22 @@ import {
   randomSeed,
   setSeedValue,
   updateLabels,
-} from "./ui/controls.js?v=20260403b";
+} from "./ui/controls.js?v=20260408b";
 import {
   inferInitialMode,
   syncLabelButtons as applyLabelButtonState,
   syncModeUi as applyModeUi,
   syncViewUi as applyViewUi,
-} from "./ui/appShell.js?v=20260408b";
+} from "./ui/appShell.js?v=20260408c";
 import { applyCanvasResolution } from "./ui/canvasResolution.js?v=20260403a";
 import { createPlayProfiler } from "./ui/playProfiler.js?v=20260403a";
 import { updateStats } from "./ui/statsPanel.js";
-import { createEditorSession } from "./ui/editorSession.js?v=20260408c";
-import { clearHover } from "./ui/hoverPanel.js?v=20260403b";
-import { createPlaySession } from "./ui/playSession.js?v=20260408c";
+import { createEditorSession } from "./ui/editorSession.js?v=20260408j";
+import { clearHover } from "./ui/hoverPanel.js?v=20260408a";
+import { createPlaySession } from "./ui/playSession.js?v=20260408m";
 import { waitForNextPaint } from "./ui/viewState.js?v=20260403a";
+
+const EDITOR_SETTINGS_STORAGE_KEY = "fantasy-map.editor.settings.v1";
 
 const refs = {
   editorShell: document.querySelector("#editor-shell"),
@@ -106,12 +108,12 @@ const state = {
   currentRenderScale: DEFAULT_PARAMS.renderScale,
   renderOptions: {
     showBiomeLabels: true,
-    showCityLabels: false,
+    showPoiLabels: false,
     showSnow: true,
   },
   playMapOptions: {
     showBiomeLabels: false,
-    showCityLabels: false,
+    showPoiLabels: false,
     showHoverInspector: true,
     debugTravelSampling: false,
   },
@@ -137,8 +139,12 @@ const playSession = createPlaySession({
   syncModeUi,
 });
 
-hydrateForm(DEFAULT_PARAMS);
-setSeedValue(randomSeed());
+const persistedParams = loadPersistedEditorParams();
+const initialParams = persistedParams ?? {
+  ...DEFAULT_PARAMS,
+  seed: randomSeed(),
+};
+hydrateForm(initialParams);
 bindRangeLabels();
 syncLabelButtons();
 syncModeUi();
@@ -151,14 +157,20 @@ refs.form.addEventListener("submit", (event) => {
 
 refs.randomSeedButton.addEventListener("click", () => {
   setSeedValue(randomSeed());
+  persistCurrentForm();
   generateAndRender();
 });
 
 refs.resetButton.addEventListener("click", () => {
   hydrateForm(DEFAULT_PARAMS);
   updateLabels();
+  persistCurrentForm();
   generateAndRender();
 });
+
+const persistFormSettingsDebounced = createDebouncedFormPersistor();
+refs.form.addEventListener("input", persistFormSettingsDebounced);
+refs.form.addEventListener("change", persistFormSettingsDebounced);
 
 refs.toggleBiomeLabelsButton.addEventListener("click", () => {
   state.renderOptions.showBiomeLabels = !state.renderOptions.showBiomeLabels;
@@ -167,7 +179,7 @@ refs.toggleBiomeLabelsButton.addEventListener("click", () => {
 });
 
 refs.toggleCityLabelsButton.addEventListener("click", () => {
-  state.renderOptions.showCityLabels = !state.renderOptions.showCityLabels;
+  state.renderOptions.showPoiLabels = !state.renderOptions.showPoiLabels;
   syncLabelButtons();
   editorSession.rerenderCurrentWorld();
 });
@@ -185,7 +197,7 @@ refs.playToggleBiomeLabelsButton.addEventListener("click", () => {
 });
 
 refs.playToggleCityLabelsButton.addEventListener("click", () => {
-  state.playMapOptions.showCityLabels = !state.playMapOptions.showCityLabels;
+  state.playMapOptions.showPoiLabels = !state.playMapOptions.showPoiLabels;
   playSession.renderPlayWorld();
 });
 
@@ -278,6 +290,7 @@ window.addEventListener("keydown", (event) => {
 async function generateAndRender() {
   const runId = ++state.generateRunId;
   const params = normalizeParams(getFormValues(refs.form));
+  persistEditorParams(params);
   state.currentRenderScale = params.renderScale;
   updateLabels();
   state.editorLoading = state.currentMode === "editor";
@@ -385,4 +398,48 @@ function bootApp() {
     },
     { once: true },
   );
+}
+
+function loadPersistedEditorParams() {
+  try {
+    const raw = window.localStorage.getItem(EDITOR_SETTINGS_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    return normalizeParams(parsed);
+  } catch {
+    return null;
+  }
+}
+
+function persistEditorParams(params) {
+  try {
+    window.localStorage.setItem(
+      EDITOR_SETTINGS_STORAGE_KEY,
+      JSON.stringify(normalizeParams(params)),
+    );
+  } catch {
+    // Ignore localStorage errors (privacy mode, quota, etc.).
+  }
+}
+
+function persistCurrentForm() {
+  persistEditorParams(getFormValues(refs.form));
+}
+
+function createDebouncedFormPersistor(delayMs = 150) {
+  let timeoutId = null;
+  return () => {
+    if (timeoutId != null) {
+      window.clearTimeout(timeoutId);
+    }
+    timeoutId = window.setTimeout(() => {
+      timeoutId = null;
+      persistCurrentForm();
+    }, delayMs);
+  };
 }

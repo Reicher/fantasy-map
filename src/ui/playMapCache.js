@@ -1,5 +1,5 @@
-import { renderPlayWorldStatic } from "../render/renderer.js?v=20260408b";
-import { createMapAtlasCacheManager } from "./mapAtlasCache.js?v=20260408c";
+import { renderPlayWorldStatic } from "../render/renderer.js?v=20260408l";
+import { createMapAtlasCacheManager } from "./mapAtlasCache.js?v=20260408h";
 
 export function createPlayMapCacheManager({
   playCanvas,

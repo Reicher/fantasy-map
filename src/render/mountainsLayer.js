@@ -3,6 +3,10 @@ import { isSnowCell } from "../generator/surfaceModel.js?v=20260402b";
 import { clamp, coordsOf } from "../utils.js";
 import { glyphNoise } from "./hash.js";
 
+const MOUNTAIN_ROAD_ANCHOR_EXCLUSION_RADIUS = 1.12;
+const MOUNTAIN_ROAD_GLYPH_EXCLUSION_MIN_PX = 5.7;
+const MOUNTAIN_ROAD_GLYPH_EXCLUSION_WIDTH_FACTOR = 0.18;
+
 export function collectMountainRenderGlyphs(terrain, climate, regions, geometry, viewport, options = {}) {
   const showSnow = options.showSnow !== false;
   const glyphs = [];
@@ -77,7 +81,13 @@ function buildMountainAnchors(cells, terrain, climate, targetAnchors, anchorSpac
     });
 
   let candidates = allCandidates.filter(
-    (candidate) => !isNearRoad(candidate.cellX + 0.5, candidate.cellY + 0.5, roadSegments, 1.65)
+    (candidate) =>
+      !isNearRoad(
+        candidate.cellX + 0.5,
+        candidate.cellY + 0.5,
+        roadSegments,
+        MOUNTAIN_ROAD_ANCHOR_EXCLUSION_RADIUS,
+      )
   );
 
   if (candidates.length < Math.max(2, Math.round(targetAnchors * 0.7))) {
@@ -438,7 +448,10 @@ function mountainGlyphFitsLand(glyph, terrain, climate, viewport) {
 
 function mountainGlyphNearRoad(glyph, roadSegments) {
   const geometry = getMountainGeometry(glyph);
-  const threshold = Math.max(8, glyph.width * 0.28);
+  const threshold = Math.max(
+    MOUNTAIN_ROAD_GLYPH_EXCLUSION_MIN_PX,
+    glyph.width * MOUNTAIN_ROAD_GLYPH_EXCLUSION_WIDTH_FACTOR,
+  );
   const samplePoints = [
     [geometry.x, geometry.baseY],
     [geometry.leftX + (geometry.x - geometry.leftX) * 0.24, geometry.leftFootY],

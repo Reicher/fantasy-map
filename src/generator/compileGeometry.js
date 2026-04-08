@@ -100,7 +100,9 @@ function compileLabelGeometry(world) {
     y: poi.y + 0.5,
   }));
 
-  const cities = pointsOfInterest.filter((poi) => poi.kind === "city");
+  const cities = pointsOfInterest.filter(
+    (poi) => String(poi.name ?? "").trim().length > 0,
+  );
 
   return {
     biomeRegions,
@@ -363,7 +365,11 @@ function pickRegionLabelAnchor(region, regionIdByCell, width, height) {
       region.centroid.x,
       region.centroid.y,
     );
-    const score = sameNeighbors * 10 - centroidDistance * 1.8;
+    const mapEdgeDistance = Math.min(x, y, width - 1 - x, height - 1 - y);
+    const score =
+      sameNeighbors * 8.5 +
+      mapEdgeDistance * 2.2 -
+      centroidDistance * 1.35;
     if (!best || score > best.score) {
       best = { x: x + 0.5, y: y + 0.5, score };
     }
@@ -443,19 +449,49 @@ function pickRegionLabelCandidates(
         region.centroid.x,
         region.centroid.y,
       );
+      const mapEdgeDistance = Math.min(
+        entry.x,
+        entry.y,
+        width - 1 - entry.x,
+        height - 1 - entry.y,
+      );
+      const localCoreRatio = estimateLocalCoreRatio(
+        entry.x,
+        entry.y,
+        cellSet,
+        width,
+        height,
+        2,
+      );
+      const localCoreScore = localCoreRatio * 12;
       const score =
-        edgeDistance * 24 + entry.sameNeighbors * 2 - centroidDistance * 0.75;
+        edgeDistance * 21 +
+        entry.sameNeighbors * 1.8 +
+        localCoreScore * 3.6 +
+        Math.min(9, mapEdgeDistance) * 1.25 -
+        centroidDistance * 0.72;
       return {
         x: entry.x + 0.5,
         y: entry.y + 0.5,
         score,
         edgeDistance,
+        centroidDistance,
+        mapEdgeDistance,
+        localCoreRatio,
       };
     })
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => {
+      if (Math.abs(b.score - a.score) > 1e-4) {
+        return b.score - a.score;
+      }
+      if (Math.abs(b.edgeDistance - a.edgeDistance) > 1e-4) {
+        return b.edgeDistance - a.edgeDistance;
+      }
+      return a.centroidDistance - b.centroidDistance;
+    });
 
   const candidates = [];
-  const minSpacing = Math.max(4, Math.min(12, Math.sqrt(region.size) * 0.3));
+  const minSpacing = Math.max(5, Math.min(14, Math.sqrt(region.size) * 0.36));
   for (const candidate of ranked) {
     if (
       candidates.every(
@@ -472,4 +508,29 @@ function pickRegionLabelCandidates(
   }
 
   return candidates;
+}
+
+function estimateLocalCoreRatio(x, y, cellSet, width, height, radius) {
+  let inside = 0;
+  let total = 0;
+  const radiusSq = radius * radius;
+
+  for (let oy = -radius; oy <= radius; oy += 1) {
+    for (let ox = -radius; ox <= radius; ox += 1) {
+      if (ox * ox + oy * oy > radiusSq) {
+        continue;
+      }
+      const nx = x + ox;
+      const ny = y + oy;
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+        continue;
+      }
+      total += 1;
+      if (cellSet.has(indexOf(nx, ny, width))) {
+        inside += 1;
+      }
+    }
+  }
+
+  return total > 0 ? inside / total : 0;
 }

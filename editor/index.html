@@ -11,7 +11,7 @@
       rel="icon"
       href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="%23e6d7b6"/><path d="M6 22 L13 10 L20 22 M12 17 L16 12 L23 22" fill="none" stroke="%23543f27" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
     />
-    <link rel="stylesheet" href="../styles.css?v=20260407a" />
+    <link rel="stylesheet" href="../styles.css?v=20260408a" />
   </head>
   <body>
     <div id="editor-shell" class="app-shell">
@@ -34,8 +34,11 @@
             <button class="tab-btn" data-tab="vatten" type="button">
               Vatten
             </button>
-            <button class="tab-btn" data-tab="stader" type="button">
-              Städer
+            <button class="tab-btn" data-tab="poi" type="button">
+              POI
+            </button>
+            <button class="tab-btn" data-tab="vagar" type="button">
+              Vägar
             </button>
             <button class="tab-btn" data-tab="avancerat" type="button">
               Avancerat
@@ -162,11 +165,11 @@
             </div>
           </div>
 
-          <!-- Städer: city density, coastal bias, road density -->
-          <div class="tab-panel" data-tab-panel="stader" hidden>
+          <!-- POI: density, placement bias, type distribution -->
+          <div class="tab-panel" data-tab-panel="poi" hidden>
             <div class="field">
               <div class="field-header">
-                <span class="field-label">Stadstäthet</span>
+                <span class="field-label">POI-täthet</span>
                 <span id="cityDensity-value" class="field-value"></span>
               </div>
               <input
@@ -180,7 +183,7 @@
             </div>
             <div class="field">
               <div class="field-header">
-                <span class="field-label">Kustpreferens</span>
+                <span class="field-label">Vattennära bias</span>
                 <span id="coastalBias-value" class="field-value"></span>
               </div>
               <input
@@ -189,6 +192,108 @@
                 type="range"
                 min="0"
                 max="100"
+                step="1"
+              />
+            </div>
+            <div class="field">
+              <div class="field-header">
+                <span class="field-label">Andel bosättningar</span>
+                <span id="poiSettlementWeight-value" class="field-value"></span>
+              </div>
+              <input
+                id="poiSettlementWeight"
+                name="poiSettlementWeight"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+              />
+            </div>
+            <div class="field">
+              <div class="field-header">
+                <span class="field-label">Andel kraschplatser</span>
+                <span id="poiCrashSiteWeight-value" class="field-value"></span>
+              </div>
+              <input
+                id="poiCrashSiteWeight"
+                name="poiCrashSiteWeight"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+              />
+            </div>
+            <div class="field">
+              <div class="field-header">
+                <span class="field-label">Andel vägvisare</span>
+                <span id="poiSignpostWeight-value" class="field-value"></span>
+              </div>
+              <input
+                id="poiSignpostWeight"
+                name="poiSignpostWeight"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+              />
+            </div>
+          </div>
+
+          <!-- Vägar: network shape and city/POI branching -->
+          <div class="tab-panel" data-tab-panel="vagar" hidden>
+            <div class="field">
+              <div class="field-header">
+                <span class="field-label">Genvägar mellan POI</span>
+                <span id="roadShortcutAggression-value" class="field-value"></span>
+              </div>
+              <input
+                id="roadShortcutAggression"
+                name="roadShortcutAggression"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+              />
+            </div>
+            <div class="field">
+              <div class="field-header">
+                <span class="field-label">Huvudleder</span>
+                <span id="roadReuseBias-value" class="field-value"></span>
+              </div>
+              <input
+                id="roadReuseBias"
+                name="roadReuseBias"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+              />
+            </div>
+            <div class="field">
+              <div class="field-header">
+                <span class="field-label">Undvik POI-kärnor</span>
+                <span id="roadCityAvoidance-value" class="field-value"></span>
+              </div>
+              <input
+                id="roadCityAvoidance"
+                name="roadCityAvoidance"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+              />
+            </div>
+            <div class="field">
+              <div class="field-header">
+                <span class="field-label">Max vägar per POI</span>
+                <span id="roadMaxConnectionsPerCity-value" class="field-value"></span>
+              </div>
+              <input
+                id="roadMaxConnectionsPerCity"
+                name="roadMaxConnectionsPerCity"
+                type="range"
+                min="2"
+                max="8"
                 step="1"
               />
             </div>
@@ -220,7 +325,7 @@
                 name="minBiomeSize"
                 type="range"
                 min="0"
-                max="20"
+                max="30"
                 step="1"
               />
             </div>
@@ -291,7 +396,7 @@
                     type="button"
                     class="ghost-button toggle-button"
                   >
-                    Städer
+                    POI-namn
                   </button>
                   <button
                     id="toggle-snow"
@@ -386,7 +491,7 @@
               type="button"
               class="ghost-button toggle-button"
             >
-              Stadsnamn
+              POI-namn
             </button>
             <button
               id="play-toggle-hover"
@@ -446,6 +551,6 @@
       </div>
     </section>
 
-    <script type="module" src="../src/app.js?v=20260408c"></script>
+    <script type="module" src="../src/app.js?v=20260408v"></script>
   </body>
 </html>

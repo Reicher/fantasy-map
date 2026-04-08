@@ -1,5 +1,5 @@
 import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
-import { inspectWorldAt } from "../inspector.js?v=20260402h";
+import { inspectWorldAt } from "../inspector.js?v=20260408b";
 import {
   clampEditorCamera,
   createEditorCamera,
@@ -7,9 +7,9 @@ import {
   isDefaultEditorCamera,
   zoomCameraAroundPoint as buildZoomedCamera,
 } from "./cameraState.js?v=20260407a";
-import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260403b";
+import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260408a";
 import { attachEditorController } from "./editorController.js?v=20260407a";
-import { createEditorMapCacheManager } from "./editorMapCache.js?v=20260408c";
+import { createEditorMapCacheManager } from "./editorMapCache.js?v=20260408j";
 
 export function createEditorSession({ refs, state, syncViewUi }) {
   const mapCache = createEditorMapCacheManager({

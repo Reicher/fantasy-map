@@ -1,4 +1,5 @@
 import { BIOME_INFO } from "../../config.js";
+import { drawPoiMarkerGlyph } from "../../render/poiGlyph.js?v=20260408b";
 
 const BIOME_COLOR_BY_KEY = Object.fromEntries(
   Object.values(BIOME_INFO)
@@ -201,24 +202,14 @@ export function drawPoiMarkerOnCanvas(
   ctx,
   x,
   y,
-  outerRadius = 6,
-  innerRadius = 3,
+  options = {},
 ) {
-  ctx.save();
-  ctx.beginPath();
-  ctx.fillStyle = "rgba(247, 239, 218, 0.96)";
-  ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.strokeStyle = "rgba(70, 48, 33, 0.9)";
-  ctx.lineWidth = Math.max(0.9, outerRadius * 0.18);
-  ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.fillStyle = "rgba(72, 43, 31, 0.94)";
-  ctx.arc(x, y, innerRadius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  drawPoiMarkerGlyph(ctx, x, y, options.marker, {
+    scale: options.scale ?? 1.25,
+    highlighted: options.highlighted ?? true,
+    hovered: false,
+    pressed: false,
+  });
 }
 
 // ---------------------------------------------------------------------------

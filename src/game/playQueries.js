@@ -26,7 +26,7 @@ export function findPlayableCityAtWorldPoint(
   validCityIds,
   worldX,
   worldY,
-  radius = 5.2,
+  radius = 6.4,
 ) {
   if (!world || !playState || validCityIds.size === 0) {
     return null;

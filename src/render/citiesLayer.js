@@ -1,10 +1,23 @@
+import { drawPoiMarkerGlyph } from "./poiGlyph.js?v=20260408b";
+
 export function drawCities(ctx, cities, viewport, options = {}) {
   drawPointsOfInterest(ctx, cities, viewport, options);
 }
 
-export function drawPointsOfInterest(ctx, pointsOfInterest, viewport, options = {}) {
+export function drawPointsOfInterest(
+  ctx,
+  pointsOfInterest,
+  viewport,
+  options = {},
+) {
   const validIds = new Set(options.validCityIds ?? options.validPoiIds ?? []);
-  const visibleIds = new Set(options.visibleCityIds ?? options.visiblePoiIds ?? options.validCityIds ?? options.validPoiIds ?? []);
+  const visibleIds = new Set(
+    options.visibleCityIds ??
+      options.visiblePoiIds ??
+      options.validCityIds ??
+      options.validPoiIds ??
+      [],
+  );
   const hoveredId = options.hoveredCityId ?? options.hoveredPoiId ?? null;
   const pressedId = options.pressedCityId ?? options.pressedPoiId ?? null;
   const onlyValid = options.onlyValid === true;
@@ -16,15 +29,19 @@ export function drawPointsOfInterest(ctx, pointsOfInterest, viewport, options = 
     }
 
     const point = viewport.worldToCanvas(poi.x, poi.y);
+    const hovered = poi.id === hoveredId;
+    const pressed = poi.id === pressedId;
+    const highlighted = validIds.has(poi.id);
 
-    if (validIds.has(poi.id)) {
-      drawPoiTargetHalo(ctx, point.x, point.y, symbolScale, poi.id === hoveredId, poi.id === pressedId);
+    if (highlighted) {
+      drawPoiTargetHalo(ctx, point.x, point.y, symbolScale, hovered, pressed);
     }
 
-    drawPoiGlyph(ctx, poi, point.x, point.y, symbolScale, {
-      highlighted: validIds.has(poi.id),
-      hovered: poi.id === hoveredId,
-      pressed: poi.id === pressedId
+    drawPoiMarkerGlyph(ctx, point.x, point.y, poi.marker, {
+      scale: symbolScale,
+      highlighted,
+      hovered,
+      pressed,
     });
   }
 }
@@ -48,56 +65,39 @@ export function drawPlayerMarker(ctx, playerStart, viewport) {
 }
 
 function drawPoiTargetHalo(ctx, x, y, scale, hovered, pressed) {
+  const expanded = hovered || pressed;
+  const haloCenterY = y - 1.6 * scale;
+  const radiusX = (expanded ? 16.2 : 14.0) * scale;
+  const radiusY = (expanded ? 10.9 : 9.4) * scale;
+
   ctx.save();
   ctx.beginPath();
   ctx.fillStyle = pressed
-    ? "rgba(206, 135, 89, 0.18)"
+    ? "rgba(207, 139, 86, 0.3)"
     : hovered
-      ? "rgba(214, 154, 108, 0.16)"
-      : "rgba(171, 104, 81, 0.12)";
-  ctx.arc(x, y, (hovered || pressed ? 8.8 : 7.2) * scale, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawPoiGlyph(ctx, poi, x, y, scale, state) {
-  switch (poi.marker ?? "dot") {
-    case "dot":
-    default:
-      drawPoiDot(ctx, x, y, scale, state);
-      break;
-  }
-}
-
-function drawPoiDot(ctx, x, y, scale, state) {
-  const outerRadius = (state.hovered || state.pressed ? 4.5 : 3.9) * scale;
-  const innerRadius = (state.hovered || state.pressed ? 2.15 : 1.85) * scale;
-
-  ctx.save();
-
-  ctx.beginPath();
-  ctx.fillStyle = "rgba(247, 239, 218, 0.96)";
-  ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
+      ? "rgba(216, 155, 102, 0.28)"
+      : "rgba(175, 110, 77, 0.22)";
+  ctx.ellipse(x, haloCenterY, radiusX, radiusY, 0, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.beginPath();
-  ctx.fillStyle = state.pressed
-    ? "rgba(121, 48, 39, 0.98)"
-    : state.hovered
-      ? "rgba(104, 47, 39, 0.96)"
-      : "rgba(72, 43, 31, 0.94)";
-  ctx.arc(x, y, innerRadius, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.strokeStyle = "rgba(70, 48, 33, 0.9)";
-  ctx.lineWidth = Math.max(0.9, 1.05 * scale);
-  ctx.arc(x, y, outerRadius, 0, Math.PI * 2);
+  ctx.strokeStyle = expanded
+    ? "rgba(250, 226, 184, 0.72)"
+    : "rgba(234, 202, 154, 0.54)";
+  ctx.lineWidth = Math.max(1.2, 1.35 * scale);
+  ctx.ellipse(
+    x,
+    haloCenterY,
+    radiusX * 0.71,
+    radiusY * 0.71,
+    0,
+    0,
+    Math.PI * 2,
+  );
   ctx.stroke();
-
   ctx.restore();
 }
 
 function getPoiZoomScale(viewport) {
-  return Math.max(1, Math.min(3.6, viewport.zoom));
+  return Math.max(2.1, Math.min(6.2, viewport.zoom * 1.32));
 }

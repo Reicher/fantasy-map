@@ -1,19 +1,135 @@
 import { BIOME_KEYS } from "../config.js";
 
 export function drawLabels(ctx, world, viewport, options = {}) {
-  const { showBiomeLabels = false, showCityLabels = false, discoveredCells = null } = options;
+  const {
+    showBiomeLabels = false,
+    showPoiLabels = options.showCityLabels ?? false,
+    discoveredCells = null
+  } = options;
   const placedBoxes = [];
   const regionLabelSettings = getRegionLabelSettings(viewport);
+  const opacity = 0.9;
+
+  ctx.save();
+  ctx.globalAlpha = opacity;
 
   if (showBiomeLabels) {
-    drawLakeLabels(ctx, world, viewport, placedBoxes, regionLabelSettings, discoveredCells);
-    drawMountainLabels(ctx, world, viewport, placedBoxes, regionLabelSettings, discoveredCells);
-    drawBiomeLabels(ctx, world, viewport, placedBoxes, regionLabelSettings, discoveredCells);
+    const mapPlacedBoxes = [...placedBoxes];
+    const reservedPoiCount = reservePoiCollisionBoxesForMapNames(
+      world,
+      viewport,
+      mapPlacedBoxes,
+      options,
+      discoveredCells,
+    );
+
+    drawMajorRegionLabels(
+      ctx,
+      world,
+      viewport,
+      mapPlacedBoxes,
+      regionLabelSettings,
+      discoveredCells,
+    );
+    drawLakeLabels(
+      ctx,
+      world,
+      viewport,
+      mapPlacedBoxes,
+      regionLabelSettings,
+      discoveredCells,
+    );
+
+    for (let index = reservedPoiCount; index < mapPlacedBoxes.length; index += 1) {
+      placedBoxes.push(mapPlacedBoxes[index]);
+    }
   }
 
-  if (showCityLabels) {
-    drawCityLabels(ctx, world, viewport, placedBoxes, options.cityLabelIds ?? null);
+  if (showPoiLabels) {
+    drawPoiLabels(
+      ctx,
+      world,
+      viewport,
+      placedBoxes,
+      options.poiLabelIds ?? options.cityLabelIds ?? null,
+    );
   }
+
+  ctx.restore();
+}
+
+function reservePoiCollisionBoxesForMapNames(
+  world,
+  viewport,
+  placedBoxes,
+  options,
+  discoveredCells,
+) {
+  const pois = world.geometry?.labels?.pointsOfInterest ?? [];
+  if (!pois.length) {
+    return placedBoxes.length;
+  }
+
+  const visiblePoiIds = resolveVisiblePoiIdsForLabels(options);
+  const allowedIds = visiblePoiIds ? new Set(visiblePoiIds) : null;
+  const markerScale = getPoiCollisionScale(viewport);
+  const iconLift = markerScale * 7.2;
+  const halfWidth = markerScale * 7.0;
+  const halfHeight = markerScale * 6.2;
+  const padding = Math.max(2.2, markerScale * 0.7);
+  const bounds = {
+    left: viewport.margin - 12,
+    right: viewport.margin + viewport.innerWidth + 12,
+    top: viewport.margin - 12,
+    bottom: viewport.margin + viewport.innerHeight + 12,
+  };
+
+  for (const poi of pois) {
+    if (allowedIds && !allowedIds.has(poi.id)) {
+      continue;
+    }
+    if (!isWorldPointDiscovered(world, discoveredCells, poi)) {
+      continue;
+    }
+
+    const point = viewport.worldToCanvas(poi.x - 0.5, poi.y - 0.5);
+    const centerX = point.x;
+    const centerY = point.y - iconLift;
+    const box = {
+      left: centerX - halfWidth - padding,
+      right: centerX + halfWidth + padding,
+      top: centerY - halfHeight - padding,
+      bottom: centerY + halfHeight + padding,
+    };
+
+    if (
+      box.right < bounds.left ||
+      box.left > bounds.right ||
+      box.bottom < bounds.top ||
+      box.top > bounds.bottom
+    ) {
+      continue;
+    }
+    placedBoxes.push(box);
+  }
+
+  return placedBoxes.length;
+}
+
+function resolveVisiblePoiIdsForLabels(options = {}) {
+  return (
+    options.cityOverlay?.visiblePoiIds ??
+    options.cityOverlay?.visibleCityIds ??
+    options.visiblePoiIds ??
+    options.visibleCityIds ??
+    options.poiLabelIds ??
+    options.cityLabelIds ??
+    null
+  );
+}
+
+function getPoiCollisionScale(viewport) {
+  return Math.max(2.1, Math.min(6.2, viewport.zoom * 1.32));
 }
 
 function drawLakeLabels(ctx, world, viewport, placedBoxes, settings, discoveredCells) {
@@ -58,118 +174,172 @@ function drawLakeLabels(ctx, world, viewport, placedBoxes, settings, discoveredC
   ctx.restore();
 }
 
-function drawBiomeLabels(ctx, world, viewport, placedBoxes, settings, discoveredCells) {
-  const regions = [...world.geometry.labels.biomeRegions]
+function drawMajorRegionLabels(ctx, world, viewport, placedBoxes, settings, discoveredCells) {
+  const mountainEntries = [...(world.geometry.labels.mountainRegions ?? [])]
+    .filter(
+      (region) =>
+        region.size >= settings.mountains.minSize &&
+        hasDiscoveredLabelAnchor(world, discoveredCells, region)
+    )
+    .slice(0, settings.mountains.maxCount)
+    .map((region) => {
+      const fontSize = Math.max(13, Math.min(22, 11.5 + Math.sqrt(region.size) * 0.42));
+      const anchors = region.candidates?.length ? region.candidates : [region.anchor];
+      const anchorDepth = anchors[0]?.edgeDistance ?? 0;
+      return {
+        region,
+        label: region.name,
+        fontSize,
+        anchors,
+        style: getMountainLabelStyle(fontSize),
+        priority: Math.pow(region.size, 0.58) * 1.34 + anchorDepth * 0.85
+      };
+    });
+
+  const biomeEntries = [...world.geometry.labels.biomeRegions]
     .filter(
       (region) =>
         region.size >= settings.biomes.minSize &&
         region.biome !== BIOME_KEYS.MOUNTAIN &&
         hasDiscoveredLabelAnchor(world, discoveredCells, region)
     )
-    .sort((a, b) => b.size - a.size)
-    .slice(0, settings.biomes.maxCount);
+    .slice(0, settings.biomes.maxCount)
+    .map((region) => {
+      const fontSize = Math.max(13, Math.min(24, 11.5 + Math.sqrt(region.size) * 0.46));
+      const anchors = region.candidates?.length ? region.candidates : [region.anchor];
+      const anchorDepth = anchors[0]?.edgeDistance ?? 0;
+      return {
+        region,
+        label: region.name,
+        fontSize,
+        anchors,
+        style: getBiomeLabelStyle(region.biome, fontSize),
+        priority: Math.pow(region.size, 0.56) + anchorDepth * 0.72
+      };
+    });
+
+  const entries = [...mountainEntries, ...biomeEntries]
+    .sort((a, b) => b.priority - a.priority);
 
   ctx.save();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-  for (const region of regions) {
-    const fontSize = Math.max(13, Math.min(24, 11.5 + Math.sqrt(region.size) * 0.46));
-    const label = region.name;
-    const style = getBiomeLabelStyle(region.biome, fontSize);
-
-    ctx.font = style.font;
-    const anchors = region.candidates?.length ? region.candidates : [region.anchor];
+  for (const entry of entries) {
+    ctx.font = entry.style.font;
     const placement = findLabelPlacement(
       ctx,
       world,
       viewport,
-      anchors,
-      label,
-      fontSize,
+      entry.anchors,
+      entry.label,
+      entry.fontSize,
       placedBoxes,
-      discoveredCells
+      discoveredCells,
+      entry.priority
     );
     if (!placement) {
       continue;
     }
 
     placedBoxes.push(placement.box);
-    ctx.lineWidth = style.lineWidth;
-    ctx.strokeStyle = style.strokeStyle;
-    ctx.fillStyle = style.fillStyle;
-    ctx.strokeText(label, placement.point.x, placement.point.y);
-    ctx.fillText(label, placement.point.x, placement.point.y);
+    ctx.lineWidth = entry.style.lineWidth;
+    ctx.strokeStyle = entry.style.strokeStyle;
+    ctx.fillStyle = entry.style.fillStyle;
+    ctx.strokeText(entry.label, placement.point.x, placement.point.y);
+    ctx.fillText(entry.label, placement.point.x, placement.point.y);
   }
 
   ctx.restore();
 }
 
-function drawMountainLabels(ctx, world, viewport, placedBoxes, settings, discoveredCells) {
-  const regions = [...(world.geometry.labels.mountainRegions ?? [])]
-    .filter(
-      (region) =>
-        region.size >= settings.mountains.minSize &&
-        hasDiscoveredLabelAnchor(world, discoveredCells, region)
-    )
-    .sort((a, b) => b.size - a.size)
-    .slice(0, settings.mountains.maxCount);
-
-  ctx.save();
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-
-  for (const region of regions) {
-    const fontSize = Math.max(13, Math.min(22, 11.5 + Math.sqrt(region.size) * 0.42));
-    const label = region.name;
-
-    ctx.font = `600 ${fontSize}px Baskerville, "Palatino Linotype", Georgia, serif`;
-    const anchors = region.candidates?.length ? region.candidates : [region.anchor];
-    const placement = findLabelPlacement(
-      ctx,
-      world,
-      viewport,
-      anchors,
-      label,
-      fontSize,
-      placedBoxes,
-      discoveredCells
-    );
-    if (!placement) {
-      continue;
-    }
-
-    placedBoxes.push(placement.box);
-    ctx.lineWidth = 4.6;
-    ctx.strokeStyle = "rgba(244, 235, 218, 0.88)";
-    ctx.fillStyle = "rgba(88, 78, 68, 0.88)";
-    ctx.strokeText(label, placement.point.x, placement.point.y);
-    ctx.fillText(label, placement.point.x, placement.point.y);
-  }
-
-  ctx.restore();
-}
-
-function findLabelPlacement(ctx, world, viewport, anchors, label, fontSize, placedBoxes, discoveredCells) {
+function findLabelPlacement(
+  ctx,
+  world,
+  viewport,
+  anchors,
+  label,
+  fontSize,
+  placedBoxes,
+  discoveredCells,
+  priority = 0
+) {
   const textWidth = ctx.measureText(label).width;
+  const padding = Math.max(8, Math.min(18, fontSize * 0.42));
+  const viewportBounds = {
+    left: viewport.margin + padding,
+    right: viewport.margin + viewport.innerWidth - padding,
+    top: viewport.margin + padding,
+    bottom: viewport.margin + viewport.innerHeight - padding
+  };
+  const viewportCenterX = viewport.margin + viewport.innerWidth * 0.5;
+  const viewportCenterY = viewport.margin + viewport.innerHeight * 0.5;
+  const offsets = [
+    { x: 0, y: 0 },
+    { x: 0, y: -fontSize * 0.2 },
+    { x: 0, y: fontSize * 0.2 },
+    { x: fontSize * 0.28, y: 0 },
+    { x: -fontSize * 0.28, y: 0 },
+    { x: fontSize * 0.2, y: -fontSize * 0.16 },
+    { x: -fontSize * 0.2, y: -fontSize * 0.16 },
+    { x: fontSize * 0.2, y: fontSize * 0.16 },
+    { x: -fontSize * 0.2, y: fontSize * 0.16 }
+  ];
+  let bestPlacement = null;
 
-  for (const anchor of anchors) {
+  for (let anchorIndex = 0; anchorIndex < anchors.length; anchorIndex += 1) {
+    const anchor = anchors[anchorIndex];
     if (!isWorldPointDiscovered(world, discoveredCells, anchor)) {
       continue;
     }
-    const point = viewport.worldToCanvas(anchor.x - 0.5, anchor.y - 0.5);
-    const box = {
-      left: point.x - textWidth * 0.58,
-      right: point.x + textWidth * 0.58,
-      top: point.y - fontSize * 0.72,
-      bottom: point.y + fontSize * 0.72
-    };
-    if (!intersectsPlacedBox(box, placedBoxes)) {
-      return { point, box };
+    const basePoint = viewport.worldToCanvas(anchor.x - 0.5, anchor.y - 0.5);
+    const anchorScore = (anchor.score ?? 0) * 0.7 - anchorIndex * 4;
+
+    for (const offset of offsets) {
+      const point = {
+        x: basePoint.x + offset.x,
+        y: basePoint.y + offset.y
+      };
+      const box = {
+        left: point.x - textWidth * 0.58,
+        right: point.x + textWidth * 0.58,
+        top: point.y - fontSize * 0.72,
+        bottom: point.y + fontSize * 0.72
+      };
+      if (
+        box.left < viewportBounds.left ||
+        box.right > viewportBounds.right ||
+        box.top < viewportBounds.top ||
+        box.bottom > viewportBounds.bottom
+      ) {
+        continue;
+      }
+      if (intersectsPlacedBox(box, placedBoxes)) {
+        continue;
+      }
+
+      const edgeClearance = Math.min(
+        box.left - viewportBounds.left,
+        viewportBounds.right - box.right,
+        box.top - viewportBounds.top,
+        viewportBounds.bottom - box.bottom
+      );
+      const centerDist = Math.hypot(point.x - viewportCenterX, point.y - viewportCenterY);
+      const offsetDist = Math.hypot(offset.x, offset.y);
+      const score =
+        priority * 4.2 +
+        anchorScore +
+        edgeClearance * 0.3 -
+        offsetDist * 0.28 -
+        centerDist * 0.012;
+
+      if (!bestPlacement || score > bestPlacement.score) {
+        bestPlacement = { point, box, score };
+      }
     }
   }
 
-  return null;
+  return bestPlacement ? { point: bestPlacement.point, box: bestPlacement.box } : null;
 }
 
 function hasDiscoveredLabelAnchor(world, discoveredCells, region) {
@@ -191,28 +361,36 @@ function isWorldPointDiscovered(world, discoveredCells, point) {
   return Boolean(discoveredCells[y * world.terrain.width + x]);
 }
 
-function drawCityLabels(ctx, world, viewport, placedBoxes, visibleCityIds = null) {
-  const allowedIds = visibleCityIds ? new Set(visibleCityIds) : null;
+function drawPoiLabels(ctx, world, viewport, placedBoxes, visiblePoiIds = null) {
+  const allowedIds = visiblePoiIds ? new Set(visiblePoiIds) : null;
+  const namedPois =
+    world.geometry.labels.pointsOfInterest ?? world.geometry.labels.cities ?? [];
 
   ctx.save();
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.font = '15px Baskerville, "Palatino Linotype", Georgia, serif';
 
-  for (const city of world.geometry.labels.cities) {
-    if (allowedIds && !allowedIds.has(city.id)) {
+  for (const poi of namedPois) {
+    if (!String(poi.name ?? "").trim()) {
+      continue;
+    }
+    if (allowedIds && !allowedIds.has(poi.id)) {
       continue;
     }
 
-    const point = viewport.worldToCanvas(city.x - 0.5, city.y - 0.5);
-    const labelX = point.x + 8;
-    const labelY = point.y - 8;
-    const textWidth = ctx.measureText(city.name).width;
+    const point = viewport.worldToCanvas(poi.x - 0.5, poi.y - 0.5);
+    const markerScale = getPoiCollisionScale(viewport);
+    const iconCenterY = point.y - markerScale * 7.2;
+    const labelX = point.x + Math.max(12, markerScale * 8.4);
+    const labelY = iconCenterY;
+    const textWidth = ctx.measureText(poi.name).width;
+    const halfTextHeight = 9.5;
     const box = {
       left: labelX - 2,
       right: labelX + textWidth + 2,
-      top: labelY - 10,
-      bottom: labelY + 10
+      top: labelY - halfTextHeight,
+      bottom: labelY + halfTextHeight
     };
     if (intersectsPlacedBox(box, placedBoxes)) {
       continue;
@@ -222,8 +400,8 @@ function drawCityLabels(ctx, world, viewport, placedBoxes, visibleCityIds = null
     ctx.lineWidth = 3.5;
     ctx.strokeStyle = "rgba(243, 234, 214, 0.92)";
     ctx.fillStyle = "rgba(58, 45, 29, 0.92)";
-    ctx.strokeText(city.name, labelX, labelY);
-    ctx.fillText(city.name, labelX, labelY);
+    ctx.strokeText(poi.name, labelX, labelY);
+    ctx.fillText(poi.name, labelX, labelY);
   }
 
   ctx.restore();
@@ -245,8 +423,8 @@ function getRegionLabelSettings(viewport) {
 
   return {
     lakes: {
-      minSize: Math.max(22, Math.round(58 / zoomPower)),
-      maxCount: Math.max(5, Math.min(16, Math.round(3 + zoom * 4.2)))
+      minSize: Math.max(28, Math.round(84 / zoomPower)),
+      maxCount: Math.max(3, Math.min(11, Math.round(2 + zoom * 2.8)))
     },
     mountains: {
       minSize: Math.max(22, Math.round(74 / zoomPower)),
@@ -256,6 +434,15 @@ function getRegionLabelSettings(viewport) {
       minSize: Math.max(70, Math.round(220 / zoomPower)),
       maxCount: Math.max(6, Math.min(20, Math.round(4 + zoom * 4.5)))
     }
+  };
+}
+
+function getMountainLabelStyle(fontSize) {
+  return {
+    font: `600 ${fontSize}px Baskerville, "Palatino Linotype", Georgia, serif`,
+    fillStyle: "rgba(88, 78, 68, 0.88)",
+    strokeStyle: "rgba(244, 235, 218, 0.88)",
+    lineWidth: 4.6
   };
 }
 

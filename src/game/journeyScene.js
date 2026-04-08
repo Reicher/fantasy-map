@@ -38,9 +38,7 @@ const PLAYER_FEET_Y_FRAC = 0.8;
 // Walk animation frame toggle interval
 const WALK_FRAME_MS = 220;
 
-// POI marker sizes
-const POI_OUTER_R = 7;
-const POI_INNER_R = 3.2;
+const POI_MARKER_SCALE = 1.35;
 
 // Sky gradient – lighter at the horizon to reinforce atmospheric depth
 const SKY_TOP = "rgb(152, 204, 240)";
@@ -61,9 +59,9 @@ const SILHOUETTE_FILL_OVERLAP_PX = 0.75;
 // ---------------------------------------------------------------------------
 
 /**
- * @param {{ canvas: HTMLCanvasElement }} options
+ * @param {{ canvas: HTMLCanvasElement, getWorld?: () => object | null }} options
  */
-export function createJourneyScene({ canvas }) {
+export function createJourneyScene({ canvas, getWorld = () => null }) {
   const ctx = canvas ? canvas.getContext("2d") : null;
   const state = {
     strip: null,
@@ -125,7 +123,14 @@ export function createJourneyScene({ canvas }) {
       state.cachedH = viewH;
     }
 
-    renderFrame(playState, viewW, viewH, isTraveling, debugEnabled);
+    renderFrame(
+      playState,
+      viewW,
+      viewH,
+      isTraveling,
+      debugEnabled,
+      options.world ?? getWorld(),
+    );
   }
 
   function reset() {
@@ -156,7 +161,14 @@ export function createJourneyScene({ canvas }) {
   // Render
   // -------------------------------------------------------------------------
 
-  function renderFrame(playState, viewW, viewH, isTraveling, debug = false) {
+  function renderFrame(
+    playState,
+    viewW,
+    viewH,
+    isTraveling,
+    debug = false,
+    world = null,
+  ) {
     const strip = state.strip;
     const playerX = Math.round(viewW * PLAYER_X_FRAC);
     const playerFeetY = Math.round(viewH * PLAYER_FEET_Y_FRAC);
@@ -234,7 +246,7 @@ export function createJourneyScene({ canvas }) {
     drawGroundLayer(ctx, strip, scrollX, playerX, viewW);
 
     // 8. POI markers – behind the player but above all background layers
-    drawPoiMarkers(ctx, strip, scrollX, playerX, groundTopY, viewH);
+    drawPoiMarkers(ctx, strip, scrollX, playerX, groundTopY, viewH, playState, world);
 
     // 9. Player (fixed – behind foreground so foreground overlaps lower body)
     drawPlayerFigure(
@@ -427,16 +439,38 @@ export function createJourneyScene({ canvas }) {
     ctx.restore();
   }
 
-  function drawPoiMarkers(ctx, strip, scrollX, playerX, groundTopY, viewH) {
+  function drawPoiMarkers(
+    ctx,
+    strip,
+    scrollX,
+    playerX,
+    groundTopY,
+    viewH,
+    playState,
+    world,
+  ) {
     const speed = PARALLAX_SPEED.ground;
     const layerStripLeft = scrollX * speed - playerX;
     const markerY = groundTopY + Math.round((viewH - groundTopY) * 0.15);
 
     const startCanvasX = strip.startMarkerStripX - layerStripLeft;
     const destCanvasX = strip.destMarkerStripX - layerStripLeft;
+    const activeTravel = playState?.travel ?? state.lastTravel;
+    const startMarker =
+      world?.cities?.[activeTravel?.startCityId ?? -1]?.marker ?? "settlement";
+    const destMarker =
+      world?.cities?.[activeTravel?.targetCityId ?? -1]?.marker ?? "settlement";
 
-    drawPoiMarkerOnCanvas(ctx, startCanvasX, markerY, POI_OUTER_R, POI_INNER_R);
-    drawPoiMarkerOnCanvas(ctx, destCanvasX, markerY, POI_OUTER_R, POI_INNER_R);
+    drawPoiMarkerOnCanvas(ctx, startCanvasX, markerY, {
+      marker: startMarker,
+      scale: POI_MARKER_SCALE,
+      highlighted: false,
+    });
+    drawPoiMarkerOnCanvas(ctx, destCanvasX, markerY, {
+      marker: destMarker,
+      scale: POI_MARKER_SCALE,
+      highlighted: true,
+    });
   }
 
   // -------------------------------------------------------------------------

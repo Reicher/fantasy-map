@@ -1,4 +1,5 @@
 import { regionAtCell, regionAtPosition } from "./playQueries.js";
+import { getPoiTitle } from "../poi/poiModel.js";
 
 export function describePlayView(world, playState) {
   if (!world || !playState) {
@@ -20,7 +21,9 @@ export function describePlayView(world, playState) {
 
     return {
       title:
-        fromCity && toCity ? `${fromCity.name} till ${toCity.name}` : "På resa",
+        fromCity && toCity
+          ? `${getPoiTitle(fromCity)} till ${getPoiTitle(toCity)}`
+          : "På resa",
       subtitle:
         playState.travel.routeType === "sea-route"
           ? "På havet"
@@ -35,7 +38,7 @@ export function describePlayView(world, playState) {
     : regionAtPosition(world, playState.position);
 
   return {
-    title: city?.name ?? "Okänd plats",
+    title: city ? getPoiTitle(city) : "Okänd plats",
     subtitle: formatRegionLine(region) ?? "Okänd region",
     biomeKey: region?.biome ?? null,
   };

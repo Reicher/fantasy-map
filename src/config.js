@@ -19,6 +19,13 @@ export const DEFAULT_PARAMS = {
   temperatureBias: 50,
   moistureBias: 50,
   coastalBias: 50,
+  poiSettlementWeight: 62,
+  poiCrashSiteWeight: 28,
+  poiSignpostWeight: 24,
+  roadShortcutAggression: 50,
+  roadReuseBias: 50,
+  roadCityAvoidance: 50,
+  roadMaxConnectionsPerCity: 5,
 };
 
 export const PARAM_LABELS = {
@@ -65,6 +72,40 @@ export const PARAM_LABELS = {
           : value < 80
             ? "Kustbetonat"
             : "Kustbefolkat",
+  poiSettlementWeight: (value) => `${Math.round(value)}%`,
+  poiCrashSiteWeight: (value) => `${Math.round(value)}%`,
+  poiSignpostWeight: (value) => `${Math.round(value)}%`,
+  roadShortcutAggression: (value) =>
+    value < 20
+      ? "Sällan"
+      : value < 45
+        ? "Försiktigt"
+        : value < 70
+          ? "Balans"
+          : value < 90
+            ? "Ofta"
+            : "Väldigt ofta",
+  roadReuseBias: (value) =>
+    value < 20
+      ? "Spritt nät"
+      : value < 45
+        ? "Lätt spritt"
+        : value < 70
+          ? "Balans"
+          : value < 90
+            ? "Tydliga leder"
+            : "Starka huvudleder",
+  roadCityAvoidance: (value) =>
+    value < 20
+      ? "Lågt"
+      : value < 45
+        ? "Måttligt"
+        : value < 70
+          ? "Tydligt"
+          : value < 90
+            ? "Högt"
+            : "Max",
+  roadMaxConnectionsPerCity: (value) => `${Math.round(value)} vägar`,
 };
 
 export const BIOME_KEYS = {

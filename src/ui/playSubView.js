@@ -1,4 +1,4 @@
-import { describePlayView } from "../game/playViewText.js?v=20260403a";
+import { describePlayView } from "../game/playViewText.js?v=20260408b";
 import { setElementVisible } from "./viewState.js?v=20260403a";
 
 export function createPlaySubViewController({
@@ -66,6 +66,7 @@ export function createPlaySubViewController({
     profiler.measure("journey-update", () => {
       journeyScene.update(playState, {
         debug: state.playMapOptions?.debugTravelSampling,
+        world,
       });
     });
     profiler.setSnapshot(journeyScene.getDebugSnapshot());
@@ -75,7 +76,9 @@ export function createPlaySubViewController({
 function syncPlayLegendButtons(playMapOptions, refs) {
   refs.playToggleBiomeLabelsButton.dataset.active =
     playMapOptions.showBiomeLabels ? "true" : "false";
-  refs.playToggleCityLabelsButton.dataset.active = playMapOptions.showCityLabels
+  refs.playToggleCityLabelsButton.dataset.active = (
+    playMapOptions.showPoiLabels ?? playMapOptions.showCityLabels
+  )
     ? "true"
     : "false";
   refs.playToggleHoverButton.dataset.active = playMapOptions.showHoverInspector
