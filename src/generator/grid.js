@@ -120,27 +120,3 @@ export function distanceField(width, height, sourceIndices, diagonal = false) {
 
   return distances;
 }
-
-export function dilateMask(width, height, mask, steps = 1) {
-  let current = new Uint8Array(mask);
-  for (let step = 0; step < steps; step += 1) {
-    const next = new Uint8Array(current);
-    for (let index = 0; index < current.length; index += 1) {
-      if (current[index]) {
-        continue;
-      }
-      const [x, y] = coordsOf(index, width);
-      let touches = false;
-      forEachNeighbor(width, height, x, y, true, (nx, ny) => {
-        if (current[indexOf(nx, ny, width)]) {
-          touches = true;
-        }
-      });
-      if (touches) {
-        next[index] = 1;
-      }
-    }
-    current = next;
-  }
-  return current;
-}

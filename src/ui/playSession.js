@@ -8,7 +8,7 @@ import {
 import { createJourneyScene } from "../game/journeyScene.js?v=20260408a";
 import { renderPlayWorldDynamic } from "../render/renderer.js?v=20260408b";
 import { inspectWorldAt } from "../inspector.js?v=20260402h";
-import { createPlayCamera as buildPlayCamera } from "./cameraState.js?v=20260401b";
+import { createPlayCamera as buildPlayCamera } from "./cameraState.js?v=20260407a";
 import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260403b";
 import { createPlayMapCacheManager } from "./playMapCache.js?v=20260408b";
 import { createPlayController } from "./playController.js?v=20260408b";

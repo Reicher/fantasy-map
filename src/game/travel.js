@@ -172,10 +172,6 @@ function createTravel(
   };
 }
 
-export function buildTravelBiomeSegments(world, points) {
-  return buildBiomeSegmentsFromPoints(world, dedupePoints(points));
-}
-
 export function buildOffsetTravelBiomeSegments(
   world,
   points,

@@ -43,11 +43,6 @@ export function renderEditorWorld(canvas, world, options = {}) {
   });
 }
 
-export function renderPlayWorldScene(canvas, world, options = {}) {
-  renderPlayWorldStatic(canvas, world, options);
-  return renderPlayWorldDynamic(canvas, world, options);
-}
-
 export function renderPlayWorldStatic(canvas, world, options = {}) {
   return renderScene(canvas, world, options, {
     showPaper: false,

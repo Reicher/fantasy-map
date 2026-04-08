@@ -1,5 +1,5 @@
 import { BIOME_KEYS } from "../config.js";
-import { isSnowCell } from "../generator/surfaceModel.js?v=20260401a";
+import { isSnowCell } from "../generator/surfaceModel.js?v=20260402b";
 import { coordsOf } from "../utils.js";
 import { glyphNoise } from "./hash.js";
 
@@ -35,14 +35,6 @@ export function collectForestRenderGlyphs(world, viewport, options = {}) {
   }
 
   return entries;
-}
-
-export function drawForests(ctx, world, viewport, options = {}) {
-  const entries = collectForestRenderGlyphs(world, viewport, options);
-  entries.sort((a, b) => a.footY - b.footY);
-  for (const entry of entries) {
-    drawForestEntry(ctx, entry);
-  }
 }
 
 function getVegetationStyle(biomeKey) {

@@ -36,7 +36,6 @@ export function syncViewUi({ refs, cameraState }) {
     refs.zoom1Button,
     refs.zoom2Button,
     refs.zoom3Button,
-    refs.zoom4Button,
   ]) {
     if (!button) continue;
     button.dataset.active = String(

@@ -95,12 +95,4 @@ export function attachEditorController({
     canvas.dataset.dragging = "false";
     clearHover(tooltip);
   });
-
-  canvas.addEventListener(
-    "wheel",
-    (_event) => {
-      // Mouse wheel is reserved for panning; zoom is handled by the toolbar buttons.
-    },
-    { passive: false },
-  );
 }

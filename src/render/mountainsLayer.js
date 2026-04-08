@@ -1,24 +1,7 @@
 import { BIOME_KEYS } from "../config.js";
-import { isSnowCell } from "../generator/surfaceModel.js?v=20260401a";
+import { isSnowCell } from "../generator/surfaceModel.js?v=20260402b";
 import { clamp, coordsOf } from "../utils.js";
 import { glyphNoise } from "./hash.js";
-
-export function drawMountains(ctx, terrain, climate, regions, geometry, viewport, options = {}) {
-  const { glyphs, glyphHits } = collectMountainRenderGlyphs(
-    terrain,
-    climate,
-    regions,
-    geometry,
-    viewport,
-    options
-  );
-
-  for (const glyph of glyphs) {
-    drawMountainGlyph(ctx, glyph);
-  }
-
-  return glyphHits;
-}
 
 export function collectMountainRenderGlyphs(terrain, climate, regions, geometry, viewport, options = {}) {
   const showSnow = options.showSnow !== false;
