@@ -5,6 +5,7 @@ const BIOME_COLOR_BY_KEY = Object.fromEntries(
     .filter((entry) => entry?.key && entry?.color)
     .map((entry) => [entry.key, entry.color]),
 );
+const SNOW_GROUND_RGB = [244, 243, 238];
 
 // ---------------------------------------------------------------------------
 // Biome color helpers
@@ -17,7 +18,15 @@ export function getBiomeColor(biomeKey) {
 
 /** Returns the depth-tinted biome colour as an [r, g, b] array.
  * Near = darker, warmer, richer. Far = lighter, cooler, atmospheric haze. */
-export function getBiomeLayerColorRgb(biomeKey, layerDepth) {
+export function getBiomeLayerColorRgb(
+  biomeKey,
+  layerDepth,
+  { isSnow = false } = {},
+) {
+  if (isSnow && layerDepth === "ground") {
+    return SNOW_GROUND_RGB;
+  }
+
   const hex = getBiomeColor(biomeKey);
   const base = hexToRgb(hex);
   switch (layerDepth) {

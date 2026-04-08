@@ -4,8 +4,8 @@ import {
   createPlayState,
   getValidTargetIds,
   sampleTravelBiomeBandPoints,
-} from "../game/travel.js?v=20260404e";
-import { createJourneyScene } from "../game/journeyScene.js?v=20260404c";
+} from "../game/travel.js?v=20260408a";
+import { createJourneyScene } from "../game/journeyScene.js?v=20260408a";
 import { renderPlayWorldDynamic } from "../render/renderer.js?v=20260408b";
 import { inspectWorldAt } from "../inspector.js?v=20260402h";
 import { createPlayCamera as buildPlayCamera } from "./cameraState.js?v=20260401b";

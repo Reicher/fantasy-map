@@ -273,18 +273,22 @@ function expandFromStartX(
   const firstBiome = normalizeBiomeKey(rawSegs[0]?.biome) ?? "plains";
   const lastBiome =
     normalizeBiomeKey(rawSegs[rawSegs.length - 1]?.biome) ?? firstBiome;
+  const firstIsSnow = segmentIsSnow(rawSegs[0]);
+  const lastIsSnow = segmentIsSnow(rawSegs[rawSegs.length - 1]);
   let cursor = startX;
 
   if (rawSegs.length && totalWorldLength > 0.0001) {
     for (const seg of rawSegs) {
       const biomeKey = normalizeBiomeKey(seg.biome) ?? firstBiome;
+      const isSnow = segmentIsSnow(seg);
       const px = Math.max(1, (seg.distance / totalWorldLength) * routePx);
-      result.push({ biomeKey, stripX: cursor, stripWidth: px });
+      result.push({ biomeKey, isSnow, stripX: cursor, stripWidth: px });
       cursor += px;
     }
   } else {
     result.push({
       biomeKey: firstBiome,
+      isSnow: firstIsSnow,
       stripX: cursor,
       stripWidth: Math.max(1, routePx),
     });
@@ -294,6 +298,7 @@ function expandFromStartX(
   if (extAfterPx > 0) {
     result.push({
       biomeKey: lastBiome,
+      isSnow: lastIsSnow,
       stripX: cursor,
       stripWidth: extAfterPx,
     });
@@ -311,9 +316,11 @@ function appendLayerSegs(target, pixelSegs, layerDepth, speedScale = 1.0) {
 
   let newSegs = scaledSegs.map((seg) => {
     const biomeKey = seg.biomeKey ?? "plains";
-    const colorRgb = getBiomeLayerColorRgb(biomeKey, layerDepth);
+    const isSnow = Boolean(seg.isSnow);
+    const colorRgb = getBiomeLayerColorRgb(biomeKey, layerDepth, { isSnow });
     return {
       biomeKey,
+      isSnow,
       color: rgbToCss(colorRgb),
       colorRgb,
       stripX: seg.stripX,
@@ -339,7 +346,7 @@ function appendLayerSegs(target, pixelSegs, layerDepth, speedScale = 1.0) {
   if (target.length > 0 && newSegs.length > 0) {
     const last = target[target.length - 1];
     const first = newSegs[0];
-    if (!last.isBlend && !first.isBlend && last.biomeKey === first.biomeKey) {
+    if (!last.isBlend && !first.isBlend && sameSurfaceStyle(last, first)) {
       if (first.topEdgeSamples && last.topEdgeSamples) {
         const merged = new Float32Array(
           last.topEdgeSamples.length + first.topEdgeSamples.length - 1,
@@ -464,7 +471,7 @@ function mergeAdjacentSegments(segs) {
   for (let i = 1; i < segs.length; i++) {
     const prev = merged[merged.length - 1];
     const cur = segs[i];
-    if (cur.biomeKey === prev.biomeKey) {
+    if (sameSurfaceStyle(cur, prev)) {
       prev.stripWidth += cur.stripWidth;
     } else {
       merged.push({ ...cur });
@@ -487,10 +494,17 @@ function expandSegmentsToPx(
   const firstBiome = normalizeBiomeKey(rawSegs[0]?.biome) ?? "plains";
   const lastBiome =
     normalizeBiomeKey(rawSegs[rawSegs.length - 1]?.biome) ?? firstBiome;
+  const firstIsSnow = segmentIsSnow(rawSegs[0]);
+  const lastIsSnow = segmentIsSnow(rawSegs[rawSegs.length - 1]);
 
   // Pre-extension
   if (extBeforePx > 0) {
-    result.push({ biomeKey: firstBiome, stripX: 0, stripWidth: extBeforePx });
+    result.push({
+      biomeKey: firstBiome,
+      isSnow: firstIsSnow,
+      stripX: 0,
+      stripWidth: extBeforePx,
+    });
   }
 
   // Route segments scaled to pixels
@@ -500,14 +514,16 @@ function expandSegmentsToPx(
   if (rawSegs.length && totalWorldLength > 0.0001) {
     for (const seg of rawSegs) {
       const biomeKey = normalizeBiomeKey(seg.biome) ?? firstBiome;
+      const isSnow = segmentIsSnow(seg);
       const px = Math.max(1, (seg.distance / totalWorldLength) * routePx);
-      result.push({ biomeKey, stripX: cursor, stripWidth: px });
+      result.push({ biomeKey, isSnow, stripX: cursor, stripWidth: px });
       cursor += px;
     }
   } else {
     // No segment data – fill with fallback
     result.push({
       biomeKey: firstBiome,
+      isSnow: firstIsSnow,
       stripX: cursor,
       stripWidth: Math.max(1, routePx),
     });
@@ -518,6 +534,7 @@ function expandSegmentsToPx(
   if (extAfterPx > 0) {
     result.push({
       biomeKey: lastBiome,
+      isSnow: lastIsSnow,
       stripX: cursor,
       stripWidth: extAfterPx,
     });
@@ -621,7 +638,8 @@ function getBlendHalfWidth(leftWidth, rightWidth) {
 function buildLayerSegments(pixelSegments, layerDepth) {
   let segs = pixelSegments.map((seg) => {
     const biomeKey = seg.biomeKey ?? "plains";
-    const colorRgb = getBiomeLayerColorRgb(biomeKey, layerDepth);
+    const isSnow = Boolean(seg.isSnow);
+    const colorRgb = getBiomeLayerColorRgb(biomeKey, layerDepth, { isSnow });
     const topEdgeSamples =
       layerDepth === "ground"
         ? null // ground is a flat filled rect – no silhouette needed
@@ -633,6 +651,7 @@ function buildLayerSegments(pixelSegments, layerDepth) {
           );
     return {
       biomeKey,
+      isSnow,
       color: rgbToCss(colorRgb),
       colorRgb,
       stripX: seg.stripX,
@@ -646,6 +665,17 @@ function buildLayerSegments(pixelSegments, layerDepth) {
   }
 
   return segs;
+}
+
+function segmentIsSnow(seg) {
+  return Boolean(seg?.isSnow ?? seg?.snow);
+}
+
+function sameSurfaceStyle(a, b) {
+  return (
+    (a?.biomeKey ?? null) === (b?.biomeKey ?? null) &&
+    segmentIsSnow(a) === segmentIsSnow(b)
+  );
 }
 
 function createEmptyStrip() {

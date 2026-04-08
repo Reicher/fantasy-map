@@ -320,7 +320,9 @@ export function createJourneyScene({ canvas }) {
     for (let i = 0; i + 1 < segs.length; i++) {
       const a = segs[i];
       const b = segs[i + 1];
-      if (!a.colorRgb || !b.colorRgb || a.biomeKey === b.biomeKey) continue;
+      const sameSurface =
+        a.biomeKey === b.biomeKey && Boolean(a.isSnow) === Boolean(b.isSnow);
+      if (!a.colorRgb || !b.colorRgb || sameSurface) continue;
       const half = getGroundBlendHalfWidth(a.stripWidth, b.stripWidth, bz);
       if (half <= 0) continue;
       const blendWidth = half * 2;

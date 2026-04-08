@@ -1,4 +1,5 @@
 import { BIOME_INFO } from "../config.js";
+import { isSnowCell } from "../generator/surfaceModel.js";
 import { dedupePoints } from "../utils.js";
 import { TRAVEL_BIOME_BANDS } from "./journey/journeyConstants.js";
 import { regionAtCell, regionAtPosition } from "./playQueries.js";
@@ -269,7 +270,7 @@ function buildBiomeSegmentsFromPoints(world, points) {
 
   for (let index = 0; index < points.length; index += 1) {
     const point = points[index];
-    const biomeKey = biomeKeyAtPoint(world, point);
+    const { biomeKey, snow } = sampleSurfaceAtPoint(world, point);
     const biomeInfo = BIOME_INFO[biomeKey] ?? {
       key: "unknown",
       label: "Okänd",
@@ -279,10 +280,15 @@ function buildBiomeSegmentsFromPoints(world, points) {
       ? Math.hypot(nextPoint.x - point.x, nextPoint.y - point.y)
       : 0;
 
-    if (!current || current.biome !== biomeInfo.key) {
+    if (
+      !current ||
+      current.biome !== biomeInfo.key ||
+      current.snow !== snow
+    ) {
       current = {
         biome: biomeInfo.key,
         label: biomeInfo.label,
+        snow,
         distance: 0,
       };
       segments.push(current);
@@ -414,7 +420,28 @@ function offsetSamplePointLeft(points, sample, offsetDistance) {
   };
 }
 
-function biomeKeyAtPoint(world, position) {
+function sampleSurfaceAtPoint(world, position) {
+  const cellIndex = cellIndexAtPosition(world, position);
+  if (cellIndex == null) {
+    return { biomeKey: null, snow: false };
+  }
+
+  const biomeKey = world.climate.biome[cellIndex] ?? null;
+  return {
+    biomeKey,
+    snow:
+      biomeKey != null &&
+      isSnowCell(
+        biomeKey,
+        world.terrain.elevation[cellIndex],
+        world.terrain.mountainField[cellIndex],
+        world.climate.temperature[cellIndex],
+        true,
+      ),
+  };
+}
+
+function cellIndexAtPosition(world, position) {
   if (!world || !position) {
     return null;
   }
@@ -427,7 +454,7 @@ function biomeKeyAtPoint(world, position) {
     0,
     Math.min(world.terrain.height - 1, Math.floor(position.y)),
   );
-  return world.climate.biome[y * world.terrain.width + x];
+  return y * world.terrain.width + x;
 }
 
 function revealAroundPosition(world, discoveredCells, position) {
