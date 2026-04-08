@@ -103,13 +103,14 @@ function getOrCreateCacheCanvas(cache, playCanvas, atlas) {
 }
 
 function createPlayMapAtlas(world, cameraState) {
-  const margin = 38;
-  const innerWidth = RENDER_WIDTH - margin * 2;
-  const innerHeight = RENDER_HEIGHT - margin * 2;
-  const scaleX = (innerWidth / world.terrain.width) * cameraState.zoom;
-  const scaleY = (innerHeight / world.terrain.height) * cameraState.zoom;
-  const maxVisibleWidth = innerWidth / scaleX;
-  const maxVisibleHeight = innerHeight / scaleY;
+  // Use the exact same world->canvas scale as the live play viewport so
+  // dynamic overlays (POI, labels, player marker) never drift against the
+  // cached static map during camera movement.
+  const margin = 0;
+  const scaleX = (RENDER_WIDTH / world.terrain.width) * cameraState.zoom;
+  const scaleY = (RENDER_HEIGHT / world.terrain.height) * cameraState.zoom;
+  const maxVisibleWidth = RENDER_WIDTH / scaleX;
+  const maxVisibleHeight = RENDER_HEIGHT / scaleY;
   const leftWorld = -maxVisibleWidth * 0.5;
   const topWorld = -maxVisibleHeight * 0.5;
   const visibleWidth = world.terrain.width + maxVisibleWidth;

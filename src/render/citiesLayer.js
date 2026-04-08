@@ -15,7 +15,7 @@ export function drawPointsOfInterest(ctx, pointsOfInterest, viewport, options = 
       continue;
     }
 
-    const point = viewport.worldToCanvas(poi.x - 0.5, poi.y - 0.5);
+    const point = viewport.worldToCanvas(poi.x, poi.y);
 
     if (validIds.has(poi.id)) {
       drawPoiTargetHalo(ctx, point.x, point.y, symbolScale, poi.id === hoveredId, poi.id === pressedId);
