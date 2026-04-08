@@ -299,6 +299,16 @@ function applyMountainRelief({
       const province = sampleTerrainProvince(terrainProvinces, nx, ny);
       const interior = sampleInteriorFeatures(interiorFeatures, nx, ny);
 
+      const localNoise =
+        fractalNoise2D(
+          (nx + 3.1) * 4.4,
+          (ny - 1.9) * 4.4,
+          `${params.seed}::mountain-detail`,
+          {
+            octaves: 3,
+            gain: 0.55,
+          },
+        ) * 0.25;
       let ridge = 0;
       for (const chain of mountainChains) {
         let minDistance = Number.POSITIVE_INFINITY;
@@ -315,16 +325,6 @@ function applyMountainRelief({
           );
         }
 
-        const localNoise =
-          fractalNoise2D(
-            (nx + 3.1) * 4.4,
-            (ny - 1.9) * 4.4,
-            `${params.seed}::mountain-detail`,
-            {
-              octaves: 3,
-              gain: 0.55,
-            },
-          ) * 0.25;
         const influence = Math.exp(-((minDistance / chain.width) ** 2) * 2.4);
         ridge = Math.max(ridge, influence * chain.strength + localNoise);
       }

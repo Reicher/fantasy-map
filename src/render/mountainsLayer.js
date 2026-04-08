@@ -49,54 +49,21 @@ export function collectMountainRenderGlyphs(terrain, climate, regions, geometry,
       regionStyle.anchorSpacingWorld,
       roadSegments
     );
-    const regionGlyphs = [];
-    const placedCells = new Set();
-    let placedCount = appendMountainGlyphsFromAnchors({
-      anchors,
-      regionId: region.id,
-      regionStyle,
-      viewport,
-      showSnow,
-      zoomScale,
-      terrain,
-      climate,
-      canvasRoadSegments,
-      outGlyphs: regionGlyphs,
-      placedCells,
-      maxGlyphs: targetAnchors
-    });
 
-    // Refill pass: when filtering near water/roads removes many candidates,
-    // add more anchors with slightly tighter spacing to avoid sparse gaps.
-    if (placedCount < targetAnchors) {
-      const refillAnchors = buildMountainAnchors(
-        cells,
-        terrain,
-        climate,
-        Math.max(targetAnchors + 4, Math.round(targetAnchors * 1.35)),
-        regionStyle.anchorSpacingWorld * 0.9,
-        roadSegments
-      );
-      placedCount = appendMountainGlyphsFromAnchors({
-        anchors: refillAnchors,
-        regionId: region.id,
+    for (let index = 0; index < anchors.length; index += 1) {
+      const glyph = buildMountainGlyph(
+        anchors[index],
+        region.id,
+        index,
         regionStyle,
         viewport,
         showSnow,
-        zoomScale,
-        terrain,
-        climate,
-        canvasRoadSegments,
-        outGlyphs: regionGlyphs,
-        placedCells,
-        startIndex: anchors.length,
-        initialCount: placedCount,
-        maxGlyphs: targetAnchors
-      });
-    }
-
-    if (placedCount > 0) {
-      glyphs.push(...regionGlyphs);
+        zoomScale
+      );
+      const fitted = fitMountainGlyphToLand(glyph, terrain, climate, viewport);
+      if (fitted && !mountainGlyphNearRoad(fitted, canvasRoadSegments)) {
+        glyphs.push(fitted);
+      }
     }
   }
 
@@ -138,38 +105,46 @@ function buildMountainAnchors(cells, terrain, climate, targetAnchors, anchorSpac
     return [];
   }
 
-  const anchors = [candidates[0]];
+  const candidatePool = [...candidates]
+    .sort((a, b) => b.value - a.value)
+    .slice(0, Math.max(targetAnchors * 3, 24));
+  const desiredSpacing = Math.max(
+    anchorSpacingWorld * 1.3,
+    Math.sqrt(cells.length / Math.max(1, targetAnchors)) * 0.72
+  );
+  const anchors = [candidatePool[0]];
+  const selected = new Uint8Array(candidatePool.length);
+  selected[0] = 1;
+  const minDistance = new Float32Array(candidatePool.length);
+  minDistance.fill(Number.POSITIVE_INFINITY);
+  updateCandidateDistances(candidatePool, selected, minDistance, candidatePool[0]);
 
-  while (anchors.length < targetAnchors) {
-    let best = null;
+  while (anchors.length < targetAnchors && anchors.length < candidatePool.length) {
+    let bestIndex = -1;
     let bestScore = -Infinity;
 
-    for (const candidate of candidates) {
-      if (anchors.some((anchor) => anchor.cell === candidate.cell)) {
+    for (let index = 0; index < candidatePool.length; index += 1) {
+      if (selected[index] === 1) {
         continue;
       }
-
-      let minDistance = Infinity;
-      for (const anchor of anchors) {
-        minDistance = Math.min(
-          minDistance,
-          Math.hypot(anchor.cellX - candidate.cellX, anchor.cellY - candidate.cellY)
-        );
-      }
-
-      const spacingPenalty = minDistance < anchorSpacingWorld ? (anchorSpacingWorld - minDistance) * 0.7 : 0;
-      const score = minDistance * 1.05 + candidate.value * 2.35 - spacingPenalty;
+      const spacingRatio = minDistance[index] / Math.max(0.001, desiredSpacing);
+      const spreadScore = Math.min(2.4, spacingRatio);
+      const crowdPenalty = Math.exp(-(spacingRatio * spacingRatio) * 3.1);
+      const score = candidatePool[index].value * 2.7 + spreadScore * 1.7 - crowdPenalty * 2.05;
       if (score > bestScore) {
-        best = candidate;
         bestScore = score;
+        bestIndex = index;
       }
     }
 
-    if (!best) {
+    if (bestIndex < 0) {
       break;
     }
 
-    anchors.push(best);
+    selected[bestIndex] = 1;
+    const nextAnchor = candidatePool[bestIndex];
+    anchors.push(nextAnchor);
+    updateCandidateDistances(candidatePool, selected, minDistance, nextAnchor);
   }
 
   return anchors;
@@ -212,47 +187,6 @@ function buildMountainGlyph(anchor, regionId, anchorIndex, regionStyle, viewport
   };
 }
 
-function appendMountainGlyphsFromAnchors({
-  anchors,
-  regionId,
-  regionStyle,
-  viewport,
-  showSnow,
-  zoomScale,
-  terrain,
-  climate,
-  canvasRoadSegments,
-  outGlyphs,
-  placedCells,
-  startIndex = 0,
-  initialCount = 0,
-  maxGlyphs = Number.POSITIVE_INFINITY
-}) {
-  let placedCount = initialCount;
-  for (let index = 0; index < anchors.length && placedCount < maxGlyphs; index += 1) {
-    const anchor = anchors[index];
-    if (placedCells.has(anchor.cell)) {
-      continue;
-    }
-    const glyph = buildMountainGlyph(
-      anchor,
-      regionId,
-      startIndex + index,
-      regionStyle,
-      viewport,
-      showSnow,
-      zoomScale
-    );
-    const fitted = fitMountainGlyphToLand(glyph, terrain, climate, viewport);
-    if (fitted && !mountainGlyphNearRoad(fitted, canvasRoadSegments)) {
-      outGlyphs.push(fitted);
-      placedCells.add(anchor.cell);
-      placedCount += 1;
-    }
-  }
-  return placedCount;
-}
-
 function getMountainRegionStyle(regionId, aspect = 1) {
   const profile = glyphNoise(regionId * 941 + 17);
   const shape = glyphNoise(regionId * 569 + 91);
@@ -293,9 +227,22 @@ function getMountainRegionStyle(regionId, aspect = 1) {
 }
 
 function getTargetMountainAnchorCount(regionSize, anchorDivisor) {
-  const baseTarget = Math.round(regionSize / anchorDivisor);
-  const softCap = Math.round(Math.sqrt(regionSize) * 2.7 + regionSize * 0.03);
-  return clamp(baseTarget, 5, Math.max(10, softCap));
+  const packingSpacing = Math.max(1.15, anchorDivisor * 0.45);
+  const areaPerAnchor = Math.PI * packingSpacing * packingSpacing;
+  return clamp(Math.round(regionSize / areaPerAnchor), 3, Math.max(10, regionSize));
+}
+
+function updateCandidateDistances(candidatePool, selected, minDistance, anchor) {
+  for (let index = 0; index < candidatePool.length; index += 1) {
+    if (selected[index] === 1) {
+      continue;
+    }
+    const candidate = candidatePool[index];
+    const distance = Math.hypot(anchor.cellX - candidate.cellX, anchor.cellY - candidate.cellY);
+    if (distance < minDistance[index]) {
+      minDistance[index] = distance;
+    }
+  }
 }
 
 function buildRoadSegments(roads) {
