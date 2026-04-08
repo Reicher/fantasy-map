@@ -275,7 +275,7 @@ window.addEventListener("keydown", (event) => {
   }
 
   if (event.key === "d" || event.key === "D") {
-    if (state.playState?.viewMode !== "map") {
+    if (!state.playState || state.currentMode !== "play") {
       return;
     }
     event.preventDefault();

@@ -4,7 +4,7 @@ export function createPlayProfiler() {
     lastReportAt: 0,
     durations: new Map(),
     counters: new Map(),
-    snapshot: {}
+    snapshot: {},
   };
 
   return {
@@ -13,7 +13,7 @@ export function createPlayProfiler() {
     measure,
     count,
     setSnapshot,
-    frame
+    frame,
   };
 
   function isEnabled() {
@@ -23,7 +23,6 @@ export function createPlayProfiler() {
   function toggle() {
     state.enabled = !state.enabled;
     resetWindow();
-    console.info(`[play-profiler] ${state.enabled ? "enabled" : "disabled"} (toggle with P)`);
     return state.enabled;
   }
 
@@ -53,7 +52,7 @@ export function createPlayProfiler() {
 
     state.snapshot = {
       ...state.snapshot,
-      ...snapshot
+      ...snapshot,
     };
   }
 
@@ -75,7 +74,8 @@ export function createPlayProfiler() {
 
     const report = {};
     for (const [label, sample] of state.durations.entries()) {
-      report[`${label} avg`] = `${(sample.total / Math.max(1, sample.count)).toFixed(2)}ms`;
+      report[`${label} avg`] =
+        `${(sample.total / Math.max(1, sample.count)).toFixed(2)}ms`;
       report[`${label} max`] = `${sample.max.toFixed(2)}ms`;
     }
     for (const [label, value] of state.counters.entries()) {

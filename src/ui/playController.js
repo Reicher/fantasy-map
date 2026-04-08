@@ -14,7 +14,7 @@ export function createPlayController({
   getValidTargetIds,
   inspectWorldAt,
   clearHover,
-  showHoverHit
+  showHoverHit,
 }) {
   let lastRenderedAt = 0;
 
@@ -33,25 +33,32 @@ export function createPlayController({
     const canvasY = ((event.clientY - rect.top) / rect.height) * RENDER_HEIGHT;
     const viewport = createViewport(state.currentWorld, createPlayCamera());
     const worldPoint = viewport.canvasToWorld(canvasX, canvasY);
-    const hoveredCityId = state.playState.travel ? null : findPlayableCityAtEvent(event);
+    const hoveredCityId = state.playState.travel
+      ? null
+      : findPlayableCityAtEvent(event);
 
     if (hoveredCityId != null) {
       const city = state.currentWorld.cities[hoveredCityId];
       showHoverHit(
         {
           title: city?.name ?? "Okänd plats",
-          subtitle: "Resmål"
+          subtitle: "Resmål",
         },
         tooltip,
         event.clientX,
-        event.clientY
+        event.clientY,
       );
     } else if (state.playMapOptions?.showHoverInspector) {
-      const hit = inspectWorldAt(state.currentWorld, worldPoint.x, worldPoint.y, {
-        canvasX,
-        canvasY,
-        viewport
-      });
+      const hit = inspectWorldAt(
+        state.currentWorld,
+        worldPoint.x,
+        worldPoint.y,
+        {
+          canvasX,
+          canvasY,
+          viewport,
+        },
+      );
       if (hit) {
         showHoverHit(hit, tooltip, event.clientX, event.clientY);
       } else {
@@ -62,11 +69,14 @@ export function createPlayController({
     }
 
     if (state.playState.travel) {
-      if (state.playState.hoveredCityId != null || state.playState.pressedCityId != null) {
+      if (
+        state.playState.hoveredCityId != null ||
+        state.playState.pressedCityId != null
+      ) {
         state.playState = {
           ...state.playState,
           hoveredCityId: null,
-          pressedCityId: null
+          pressedCityId: null,
         };
         renderPlayWorld();
       }
@@ -82,9 +92,10 @@ export function createPlayController({
       ...state.playState,
       hoveredCityId,
       pressedCityId:
-        state.playState.pressedCityId && state.playState.pressedCityId === hoveredCityId
+        state.playState.pressedCityId &&
+        state.playState.pressedCityId === hoveredCityId
           ? state.playState.pressedCityId
-          : null
+          : null,
     };
     playCanvas.style.cursor = hoveredCityId != null ? "pointer" : "default";
     renderPlayWorld();
@@ -109,7 +120,7 @@ export function createPlayController({
     state.playState = {
       ...state.playState,
       hoveredCityId: pressedCityId,
-      pressedCityId
+      pressedCityId,
     };
     renderPlayWorld();
   });
@@ -125,21 +136,23 @@ export function createPlayController({
     }
 
     const targetCityId = findPlayableCityAtEvent(event);
-    const shouldTravel = targetCityId != null && targetCityId === state.playState.pressedCityId;
+    const shouldTravel =
+      targetCityId != null && targetCityId === state.playState.pressedCityId;
     state.playState = {
       ...state.playState,
       pressedCityId: null,
-      hoveredCityId: targetCityId
+      hoveredCityId: targetCityId,
     };
 
     if (shouldTravel) {
-      const nextPlayState = beginTravel(state.playState, targetCityId, state.currentWorld);
-      if (nextPlayState?.travel?.biomeBandSegments) {
-        console.log("Travel biome bands", nextPlayState.travel.biomeBandSegments);
-      }
+      const nextPlayState = beginTravel(
+        state.playState,
+        targetCityId,
+        state.currentWorld,
+      );
       state.playState = {
         ...nextPlayState,
-        viewMode: "journey"
+        viewMode: "journey",
       };
       ensureAnimation();
       playCanvas.style.cursor = "default";
@@ -158,14 +171,14 @@ export function createPlayController({
     state.playState = {
       ...state.playState,
       hoveredCityId: null,
-      pressedCityId: null
+      pressedCityId: null,
     };
     renderPlayWorld();
   });
 
   return {
     ensureAnimation,
-    stopAnimation
+    stopAnimation,
   };
 
   function findPlayableCityAtEvent(event) {
@@ -184,12 +197,14 @@ export function createPlayController({
       state.playState,
       validCityIds,
       worldPoint.x,
-      worldPoint.y
+      worldPoint.y,
     );
   }
 
   function ensureAnimation() {
-    const shouldAnimate = state.currentMode === "play" && (state.playState?.travel || state.playState?.viewMode === "journey");
+    const shouldAnimate =
+      state.currentMode === "play" &&
+      (state.playState?.travel || state.playState?.viewMode === "journey");
     if (state.playAnimationFrame != null || !shouldAnimate) {
       return;
     }
@@ -198,7 +213,8 @@ export function createPlayController({
     const step = (timestamp) => {
       state.playAnimationFrame = null;
       const shouldKeepAnimating =
-        state.currentMode === "play" && (state.playState?.travel || state.playState?.viewMode === "journey");
+        state.currentMode === "play" &&
+        (state.playState?.travel || state.playState?.viewMode === "journey");
       if (!shouldKeepAnimating) {
         return;
       }
@@ -209,17 +225,18 @@ export function createPlayController({
       state.lastTravelTick = timestamp;
       if (state.playState?.travel) {
         state.playState = profiler.measure("advance-travel", () =>
-          advanceTravel(state.playState, state.currentWorld, delta)
+          advanceTravel(state.playState, state.currentWorld, delta),
         );
         profiler.count("travel-ticks");
       }
       profiler.setSnapshot({
         viewMode: state.playState?.viewMode ?? "unknown",
-        traveling: state.playState?.travel ? "yes" : "no"
+        traveling: state.playState?.travel ? "yes" : "no",
       });
       const isJourney = state.playState?.viewMode === "journey";
       const shouldRenderMapFrame =
-        !isJourney && (timestamp - lastRenderedAt >= 66 || !state.playState.travel);
+        !isJourney &&
+        (timestamp - lastRenderedAt >= 66 || !state.playState.travel);
 
       if (isJourney || shouldRenderMapFrame) {
         renderPlayWorld();

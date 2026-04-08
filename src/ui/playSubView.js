@@ -50,10 +50,10 @@ export function createPlaySubViewController({
       return;
     }
 
-    const description = describePlayView(world, playState);
     if (!isJourney) {
       return;
     }
+    const description = describePlayView(world, playState);
 
     if (description.subtitle !== lastJourneySubtitle) {
       refs.playJourneySubtitle.textContent = description.subtitle;
@@ -64,7 +64,9 @@ export function createPlaySubViewController({
       lastJourneyTitle = description.title;
     }
     profiler.measure("journey-update", () => {
-      journeyScene.update(playState);
+      journeyScene.update(playState, {
+        debug: state.playMapOptions?.debugTravelSampling,
+      });
     });
     profiler.setSnapshot(journeyScene.getDebugSnapshot());
   }

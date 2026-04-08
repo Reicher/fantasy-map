@@ -1,13 +1,9 @@
 import { BIOME_INFO } from "../config.js";
 import { dedupePoints } from "../utils.js";
+import { TRAVEL_BIOME_BANDS } from "./journey/journeyConstants.js";
 import { regionAtCell, regionAtPosition } from "./playQueries.js";
 
 export const TRAVEL_SPEED = 3.75;
-const TRAVEL_BIOME_BANDS = {
-  near: 0,
-  mid: 20,
-  far: 40,
-};
 
 export function createPlayState(world) {
   const currentCityId =

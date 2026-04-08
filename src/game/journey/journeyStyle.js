@@ -1,46 +1,40 @@
 import { BIOME_INFO } from "../../config.js";
 
+const BIOME_COLOR_BY_KEY = Object.fromEntries(
+  Object.values(BIOME_INFO)
+    .filter((entry) => entry?.key && entry?.color)
+    .map((entry) => [entry.key, entry.color]),
+);
+
 // ---------------------------------------------------------------------------
 // Biome color helpers
 // ---------------------------------------------------------------------------
 
 export function getBiomeColor(biomeKey) {
   const normalizedKey = normalizeBiomeKey(biomeKey);
-  return (
-    Object.values(BIOME_INFO).find((entry) => entry.key === normalizedKey)
-      ?.color ?? "#b9b27f"
-  );
+  return BIOME_COLOR_BY_KEY[normalizedKey] ?? "#b9b27f";
 }
 
-export function getBiomeLayerColor(biomeKey, layerDepth) {
+/** Returns the depth-tinted biome colour as an [r, g, b] array.
+ * Near = darker, warmer, richer. Far = lighter, cooler, atmospheric haze. */
+export function getBiomeLayerColorRgb(biomeKey, layerDepth) {
   const hex = getBiomeColor(biomeKey);
   const base = hexToRgb(hex);
-
   switch (layerDepth) {
-    case "ground":
-      return rgbToCss(base);
-    case "foreground": {
-      const fg = mixRgb(base, [40, 32, 20], 0.28);
-      return rgbToCss(fg);
-    }
-    case "near1": {
-      const near1 = mixRgb(base, [50, 42, 28], 0.22);
-      return rgbToCss(near1);
-    }
-    case "near2": {
-      const near2 = mixRgb(base, [62, 55, 40], 0.3);
-      return rgbToCss(near2);
-    }
-    case "mid": {
-      const mid = mixRgb(base, [72, 66, 54], 0.38);
-      return rgbToCss(mid);
-    }
-    case "far": {
-      const far = mixRgb(base, [82, 76, 66], 0.46);
-      return rgbToCss(far);
-    }
+    // Close layers: mix toward deep warm shadow for strong presence
+    case "foreground":
+      return mixRgb(base, [18, 14,  8], 0.42);
+    case "near1":
+      return mixRgb(base, [28, 22, 14], 0.32);
+    case "near2":
+      return mixRgb(base, [45, 42, 35], 0.18);
+    // Distant layers: mix toward cool light atmospheric haze so they recede
+    case "mid":
+      return mixRgb(base, [152, 158, 168], 0.32);
+    case "far":
+      return mixRgb(base, [192, 200, 214], 0.54);
     default:
-      return rgbToCss(base);
+      return base; // "ground": raw biome colour
   }
 }
 
@@ -60,32 +54,23 @@ export function buildSilhouetteTopEdge(
     normalizeBiomeKey(biomeKey) ?? "plains",
     layerDepth,
   );
-  const samples = new Float32Array(Math.max(1, Math.ceil(stripWidthPx)));
+  const samples = new Float32Array(Math.max(1, Math.ceil(stripWidthPx) + 1));
   for (let x = 0; x < samples.length; x++) {
     samples[x] = sampleSilhouetteY(spec, worldOffsetPx + x);
   }
   return samples;
 }
 
-// Build a canvas polygon from a top-edge array.
-// The polygon fills from layerBottomY up to the silhouette edge.
-export function buildSilhouettePolygon(
-  topEdgeSamples,
-  x0,
-  layerTopY,
-  layerBottomY,
-) {
-  const width = topEdgeSamples.length;
-  const layerHeight = Math.max(1, layerBottomY - layerTopY);
-  const points = [];
-  points.push([x0, layerBottomY]);
-  for (let x = 0; x < width; x++) {
-    const yFraction = topEdgeSamples[x];
-    const y = layerTopY + yFraction * layerHeight;
-    points.push([x0 + x, y]);
-  }
-  points.push([x0 + width + 1, layerBottomY]);
-  return points;
+/**
+ * Sample the silhouette top-edge y-fraction at a single global strip position.
+ * Returns a value in [0, 1] (0 = top of layer band, 1 = bottom).
+ */
+export function sampleSilhouetteAtX(biomeKey, globalX, layerDepth) {
+  const spec = getSilhouetteSpec(
+    normalizeBiomeKey(biomeKey) ?? "plains",
+    layerDepth,
+  );
+  return sampleSilhouetteY(spec, globalX);
 }
 
 // ---------------------------------------------------------------------------
@@ -93,12 +78,15 @@ export function buildSilhouettePolygon(
 // ---------------------------------------------------------------------------
 
 function getSilhouetteSpec(biomeKey, layerDepth) {
+  // Negative = more jagged (foreground), positive = smoother (far background)
   const depthFactor =
-    { foreground: 0, near1: 1, near2: 2, mid: 3, far: 4 }[layerDepth] ?? 1;
+    { foreground: -1.0, near1: 0, near2: 1.5, mid: 3.2, far: 5.5 }[layerDepth] ?? 0;
   const p1 = hash01(`${biomeKey}:${layerDepth}:p1`) * 1000;
   const p2 = hash01(`${biomeKey}:${layerDepth}:p2`) * 600;
   const base = getBiomeBaseSpec(biomeKey);
-  const smoothing = 1 + depthFactor * 0.22;
+  // smoothing < 1 → shorter wavelengths + bigger amplitude (more detail)
+  // smoothing > 1 → longer wavelengths + smaller amplitude (smoother)
+  const smoothing = Math.max(0.55, 1 + depthFactor * 0.26);
   return {
     baseY: base.baseY,
     amplitude: base.amplitude / smoothing,
@@ -159,6 +147,16 @@ function getBiomeBaseSpec(biomeKey) {
         wavelength1: 220,
         wavelength2: 100,
         sharpness: 1.1,
+      };
+    case "ocean":
+    case "lake":
+      // Flat horizon – barely any silhouette visible above the ground line
+      return {
+        baseY: 0.97,
+        amplitude: 0.02,
+        wavelength1: 800,
+        wavelength2: 400,
+        sharpness: 0.5,
       };
     case "plains":
     default:
