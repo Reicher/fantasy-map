@@ -4,7 +4,7 @@ import {
   drawOcean,
   drawFrame,
 } from "./backgroundLayer.js?v=20260401e";
-import { drawCities, drawPlayerMarker } from "./citiesLayer.js?v=20260408a";
+import { drawCities, drawPlayerMarker } from "./citiesLayer.js?v=20260408b";
 import { drawTravelDebugOverlay } from "./debugLayer.js?v=20260404a";
 import { drawFogOfWar } from "./fogLayer.js?v=20260403h";
 import {
@@ -17,7 +17,7 @@ import {
   drawMountainGlyph,
   getMountainFootY,
 } from "./mountainsLayer.js?v=20260403h";
-import { drawRoads } from "./roadsLayer.js?v=20260403a";
+import { drawRoads } from "./roadsLayer.js?v=20260408b";
 import {
   drawBiomeBorders,
   drawTerrainRaster,
@@ -102,7 +102,7 @@ function renderScene(canvas, world, options = {}, scene = {}) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.save();
   ctx.scale(scaleX, scaleY);
-  ctx.filter = options.showMonochrome ? "grayscale(1)" : "none";
+  ctx.filter = "none";
   if (showPaper) {
     drawPaper(ctx, renderWidth, renderHeight, world.params.seed);
   }
@@ -220,7 +220,7 @@ function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
 
   ctx.save();
   ctx.scale(scaleX, scaleY);
-  ctx.filter = options.showMonochrome ? "grayscale(1)" : "none";
+  ctx.filter = "none";
 
   if (showFogOfWar && options.fogOfWar?.enabled) {
     drawFogOfWar(ctx, world, viewport, options.fogOfWar);

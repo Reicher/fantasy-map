@@ -6,12 +6,12 @@ import {
   sampleTravelBiomeBandPoints,
 } from "../game/travel.js?v=20260404e";
 import { createJourneyScene } from "../game/journeyScene.js?v=20260404c";
-import { renderPlayWorldDynamic } from "../render/renderer.js?v=20260408a";
+import { renderPlayWorldDynamic } from "../render/renderer.js?v=20260408b";
 import { inspectWorldAt } from "../inspector.js?v=20260402h";
 import { createPlayCamera as buildPlayCamera } from "./cameraState.js?v=20260401b";
 import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260403b";
-import { createPlayMapCacheManager } from "./playMapCache.js?v=20260403b";
-import { createPlayController } from "./playController.js?v=20260404c";
+import { createPlayMapCacheManager } from "./playMapCache.js?v=20260408b";
+import { createPlayController } from "./playController.js?v=20260408b";
 import { createPlaySubViewController } from "./playSubView.js?v=20260403b";
 import { waitForNextPaint } from "./viewState.js?v=20260403a";
 
@@ -85,7 +85,6 @@ export function createPlaySession({ refs, state, syncModeUi }) {
         );
         const renderOptions = {
           showSnow: state.renderOptions.showSnow,
-          showMonochrome: state.renderOptions.showMonochrome,
           showBiomeLabels: state.playMapOptions.showBiomeLabels,
           showCityLabels: state.playMapOptions.showCityLabels,
           cityLabelIds: visibleCityIds,

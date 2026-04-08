@@ -3,6 +3,7 @@ export function drawRoads(ctx, geometry, viewport) {
   if (roads.length === 0) {
     return;
   }
+  const zoomScale = getRoadZoomScale(viewport);
 
   ctx.save();
   ctx.lineCap = "round";
@@ -15,29 +16,33 @@ export function drawRoads(ctx, geometry, viewport) {
       continue;
     }
 
-    const wobblePoints = getRoadWobblePoints(points, roadIndex, road.type === "sea-route" ? 0.55 : 0.7);
+    const wobblePoints = getRoadWobblePoints(
+      points,
+      roadIndex,
+      (road.type === "sea-route" ? 0.55 : 0.7) * zoomScale
+    );
 
     if (road.type === "sea-route") {
       ctx.setLineDash([]);
       ctx.strokeStyle = "rgba(233, 244, 249, 0.62)";
-      ctx.lineWidth = 3.1;
+      ctx.lineWidth = 3.1 * zoomScale;
       strokeSmoothPath(ctx, wobblePoints);
 
       ctx.setLineDash([]);
       ctx.strokeStyle = "rgba(122, 176, 198, 0.96)";
-      ctx.lineWidth = 1.55;
+      ctx.lineWidth = 1.55 * zoomScale;
       strokeSmoothPath(ctx, wobblePoints);
       continue;
     }
 
     ctx.setLineDash([]);
     ctx.strokeStyle = "rgba(145, 92, 76, 0.26)";
-    ctx.lineWidth = 2.35;
+    ctx.lineWidth = 2.35 * zoomScale;
     strokeSmoothPath(ctx, wobblePoints);
 
-    ctx.setLineDash(getRoadDashPattern(roadIndex));
+    ctx.setLineDash(getRoadDashPattern(roadIndex, zoomScale));
     ctx.strokeStyle = "rgba(122, 61, 53, 0.86)";
-    ctx.lineWidth = 1.75;
+    ctx.lineWidth = 1.75 * zoomScale;
     strokeSmoothPath(ctx, wobblePoints);
   }
 
@@ -59,6 +64,9 @@ function strokeSmoothPath(ctx, points) {
 
 function getRoadWobblePoints(points, roadIndex, wobble) {
   return points.map((point, index) => {
+    if (index === 0 || index === points.length - 1) {
+      return { x: point.x, y: point.y };
+    }
     const previous = points[Math.max(0, index - 1)];
     const next = points[Math.min(points.length - 1, index + 1)];
     const tangentX = next.x - previous.x;
@@ -75,12 +83,19 @@ function getRoadWobblePoints(points, roadIndex, wobble) {
   });
 }
 
-function getRoadDashPattern(roadIndex) {
+function getRoadDashPattern(roadIndex, zoomScale) {
   const noise = roadNoise(roadIndex, 91);
-  return [6.8 + noise * 2.6, 8.2 + roadNoise(roadIndex, 137) * 3.5];
+  return [
+    (6.8 + noise * 2.6) * zoomScale,
+    (8.2 + roadNoise(roadIndex, 137) * 3.5) * zoomScale,
+  ];
 }
 
 function roadNoise(roadIndex, pointIndex) {
   const value = Math.sin((roadIndex + 1) * 127.1 + pointIndex * 311.7) * 43758.5453123;
   return value - Math.floor(value);
+}
+
+function getRoadZoomScale(viewport) {
+  return Math.max(1, Math.min(4.2, viewport?.zoom ?? 1));
 }

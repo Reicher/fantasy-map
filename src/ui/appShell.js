@@ -18,9 +18,6 @@ export function syncLabelButtons({ refs, renderOptions }) {
   refs.toggleSnowButton.dataset.active = renderOptions.showSnow
     ? "true"
     : "false";
-  refs.toggleMonochromeButton.dataset.active = renderOptions.showMonochrome
-    ? "true"
-    : "false";
 }
 
 export function syncModeUi({ refs, state, updatePlaySubView }) {

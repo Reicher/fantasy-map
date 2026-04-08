@@ -2,7 +2,7 @@ import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
 import {
   createViewport,
   renderPlayWorldStatic,
-} from "../render/renderer.js?v=20260408a";
+} from "../render/renderer.js?v=20260408b";
 
 export function createPlayMapCacheManager({
   playCanvas,
@@ -27,7 +27,6 @@ export function createPlayMapCacheManager({
         playCanvas.width,
         playCanvas.height,
         renderOptions.showSnow ? 1 : 0,
-        renderOptions.showMonochrome ? 1 : 0,
         atlas.zoom.toFixed(3),
         atlas.renderWidth.toFixed(2),
         atlas.renderHeight.toFixed(2),

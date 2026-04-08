@@ -7,7 +7,7 @@ import {
   generateWorld,
   normalizeParams,
 } from "./generator/worldGenerator.js?v=20260403f";
-import { renderEditorWorld } from "./render/renderer.js?v=20260408a";
+import { renderEditorWorld } from "./render/renderer.js?v=20260408b";
 import {
   bindRangeLabels,
   getFormValues,
@@ -21,13 +21,13 @@ import {
   syncLabelButtons as applyLabelButtonState,
   syncModeUi as applyModeUi,
   syncViewUi as applyViewUi,
-} from "./ui/appShell.js?v=20260407a";
+} from "./ui/appShell.js?v=20260408b";
 import { applyCanvasResolution } from "./ui/canvasResolution.js?v=20260403a";
 import { createPlayProfiler } from "./ui/playProfiler.js?v=20260403a";
 import { updateStats } from "./ui/statsPanel.js";
-import { createEditorSession } from "./ui/editorSession.js?v=20260407a";
+import { createEditorSession } from "./ui/editorSession.js?v=20260408b";
 import { clearHover } from "./ui/hoverPanel.js?v=20260403b";
-import { createPlaySession } from "./ui/playSession.js?v=20260404g";
+import { createPlaySession } from "./ui/playSession.js?v=20260408b";
 import { waitForNextPaint } from "./ui/viewState.js?v=20260403a";
 
 const refs = {
@@ -56,7 +56,6 @@ const refs = {
   toggleBiomeLabelsButton: document.querySelector("#toggle-biome-labels"),
   toggleCityLabelsButton: document.querySelector("#toggle-city-labels"),
   toggleSnowButton: document.querySelector("#toggle-snow"),
-  toggleMonochromeButton: document.querySelector("#toggle-monochrome"),
   zoom1Button: document.querySelector("#zoom-1"),
   zoom2Button: document.querySelector("#zoom-2"),
   zoom3Button: document.querySelector("#zoom-3"),
@@ -110,7 +109,6 @@ const state = {
     showBiomeLabels: true,
     showCityLabels: false,
     showSnow: true,
-    showMonochrome: false,
   },
   playMapOptions: {
     showBiomeLabels: false,
@@ -177,13 +175,6 @@ refs.toggleCityLabelsButton.addEventListener("click", () => {
 
 refs.toggleSnowButton.addEventListener("click", () => {
   state.renderOptions.showSnow = !state.renderOptions.showSnow;
-  syncLabelButtons();
-  editorSession.rerenderCurrentWorld();
-  playSession.renderPlayWorld();
-});
-
-refs.toggleMonochromeButton.addEventListener("click", () => {
-  state.renderOptions.showMonochrome = !state.renderOptions.showMonochrome;
   syncLabelButtons();
   editorSession.rerenderCurrentWorld();
   playSession.renderPlayWorld();

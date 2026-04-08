@@ -1,6 +1,6 @@
 import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
 import { inspectWorldAt } from "../inspector.js?v=20260402h";
-import { renderEditorWorld } from "../render/renderer.js?v=20260408a";
+import { renderEditorWorld } from "../render/renderer.js?v=20260408b";
 import {
   clampEditorCamera,
   createEditorCamera,
