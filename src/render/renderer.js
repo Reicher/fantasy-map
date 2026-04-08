@@ -4,7 +4,7 @@ import {
   drawOcean,
   drawFrame,
 } from "./backgroundLayer.js?v=20260401e";
-import { drawCities, drawPlayerMarker } from "./citiesLayer.js?v=20260403c";
+import { drawCities, drawPlayerMarker } from "./citiesLayer.js?v=20260408a";
 import { drawTravelDebugOverlay } from "./debugLayer.js?v=20260404a";
 import { drawFogOfWar } from "./fogLayer.js?v=20260403h";
 import {
@@ -221,16 +221,6 @@ function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
   ctx.save();
   ctx.scale(scaleX, scaleY);
   ctx.filter = options.showMonochrome ? "grayscale(1)" : "none";
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(
-    viewport.margin,
-    viewport.margin,
-    viewport.innerWidth,
-    viewport.innerHeight,
-  );
-  ctx.clip();
-  ctx.restore();
 
   if (showFogOfWar && options.fogOfWar?.enabled) {
     drawFogOfWar(ctx, world, viewport, options.fogOfWar);

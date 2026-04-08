@@ -7,7 +7,7 @@ import {
   generateWorld,
   normalizeParams,
 } from "./generator/worldGenerator.js?v=20260403f";
-import { renderEditorWorld } from "./render/renderer.js?v=20260403aq";
+import { renderEditorWorld } from "./render/renderer.js?v=20260408a";
 import {
   bindRangeLabels,
   getFormValues,

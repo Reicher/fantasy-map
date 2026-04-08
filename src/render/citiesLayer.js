@@ -1,10 +1,5 @@
 export function drawCities(ctx, cities, viewport, options = {}) {
-  const pointsOfInterest = cities.map((city) => ({
-    ...city,
-    kind: city.kind ?? "city",
-    marker: city.marker ?? "dot"
-  }));
-  drawPointsOfInterest(ctx, pointsOfInterest, viewport, options);
+  drawPointsOfInterest(ctx, cities, viewport, options);
 }
 
 export function drawPointsOfInterest(ctx, pointsOfInterest, viewport, options = {}) {
@@ -66,7 +61,7 @@ function drawPoiTargetHalo(ctx, x, y, scale, hovered, pressed) {
 }
 
 function drawPoiGlyph(ctx, poi, x, y, scale, state) {
-  switch (poi.marker) {
+  switch (poi.marker ?? "dot") {
     case "dot":
     default:
       drawPoiDot(ctx, x, y, scale, state);

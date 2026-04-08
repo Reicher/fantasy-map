@@ -2,7 +2,7 @@ import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
 import {
   createViewport,
   renderPlayWorldStatic,
-} from "../render/renderer.js?v=20260403aq";
+} from "../render/renderer.js?v=20260408a";
 
 export function createPlayMapCacheManager({
   playCanvas,
