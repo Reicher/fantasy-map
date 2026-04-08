@@ -40,11 +40,7 @@ export function collectMountainRenderGlyphs(terrain, climate, regions, geometry,
     const bounds = getCellBounds(cells, terrain.width);
     const aspect = Math.max(bounds.width, bounds.height) / Math.max(1, Math.min(bounds.width, bounds.height));
     const regionStyle = getMountainRegionStyle(region.id, aspect);
-    const targetAnchors = clamp(
-      Math.round(region.size / regionStyle.anchorDivisor),
-      5,
-      Math.max(10, Math.round(Math.sqrt(region.size) * 2.7))
-    );
+    const targetAnchors = getTargetMountainAnchorCount(region.size, regionStyle.anchorDivisor);
     const anchors = buildMountainAnchors(
       cells,
       terrain,
@@ -53,21 +49,54 @@ export function collectMountainRenderGlyphs(terrain, climate, regions, geometry,
       regionStyle.anchorSpacingWorld,
       roadSegments
     );
+    const regionGlyphs = [];
+    const placedCells = new Set();
+    let placedCount = appendMountainGlyphsFromAnchors({
+      anchors,
+      regionId: region.id,
+      regionStyle,
+      viewport,
+      showSnow,
+      zoomScale,
+      terrain,
+      climate,
+      canvasRoadSegments,
+      outGlyphs: regionGlyphs,
+      placedCells,
+      maxGlyphs: targetAnchors
+    });
 
-    for (let index = 0; index < anchors.length; index += 1) {
-      const glyph = buildMountainGlyph(
-        anchors[index],
-        region.id,
-        index,
+    // Refill pass: when filtering near water/roads removes many candidates,
+    // add more anchors with slightly tighter spacing to avoid sparse gaps.
+    if (placedCount < targetAnchors) {
+      const refillAnchors = buildMountainAnchors(
+        cells,
+        terrain,
+        climate,
+        Math.max(targetAnchors + 4, Math.round(targetAnchors * 1.35)),
+        regionStyle.anchorSpacingWorld * 0.9,
+        roadSegments
+      );
+      placedCount = appendMountainGlyphsFromAnchors({
+        anchors: refillAnchors,
+        regionId: region.id,
         regionStyle,
         viewport,
         showSnow,
-        zoomScale
-      );
-      const fitted = fitMountainGlyphToLand(glyph, terrain, climate, viewport);
-      if (fitted && !mountainGlyphNearRoad(fitted, canvasRoadSegments)) {
-        glyphs.push(fitted);
-      }
+        zoomScale,
+        terrain,
+        climate,
+        canvasRoadSegments,
+        outGlyphs: regionGlyphs,
+        placedCells,
+        startIndex: anchors.length,
+        initialCount: placedCount,
+        maxGlyphs: targetAnchors
+      });
+    }
+
+    if (placedCount > 0) {
+      glyphs.push(...regionGlyphs);
     }
   }
 
@@ -183,6 +212,47 @@ function buildMountainGlyph(anchor, regionId, anchorIndex, regionStyle, viewport
   };
 }
 
+function appendMountainGlyphsFromAnchors({
+  anchors,
+  regionId,
+  regionStyle,
+  viewport,
+  showSnow,
+  zoomScale,
+  terrain,
+  climate,
+  canvasRoadSegments,
+  outGlyphs,
+  placedCells,
+  startIndex = 0,
+  initialCount = 0,
+  maxGlyphs = Number.POSITIVE_INFINITY
+}) {
+  let placedCount = initialCount;
+  for (let index = 0; index < anchors.length && placedCount < maxGlyphs; index += 1) {
+    const anchor = anchors[index];
+    if (placedCells.has(anchor.cell)) {
+      continue;
+    }
+    const glyph = buildMountainGlyph(
+      anchor,
+      regionId,
+      startIndex + index,
+      regionStyle,
+      viewport,
+      showSnow,
+      zoomScale
+    );
+    const fitted = fitMountainGlyphToLand(glyph, terrain, climate, viewport);
+    if (fitted && !mountainGlyphNearRoad(fitted, canvasRoadSegments)) {
+      outGlyphs.push(fitted);
+      placedCells.add(anchor.cell);
+      placedCount += 1;
+    }
+  }
+  return placedCount;
+}
+
 function getMountainRegionStyle(regionId, aspect = 1) {
   const profile = glyphNoise(regionId * 941 + 17);
   const shape = glyphNoise(regionId * 569 + 91);
@@ -220,6 +290,12 @@ function getMountainRegionStyle(regionId, aspect = 1) {
     leanAmount: 0.24,
     positionJitter: 0.62 + shape * 0.3
   };
+}
+
+function getTargetMountainAnchorCount(regionSize, anchorDivisor) {
+  const baseTarget = Math.round(regionSize / anchorDivisor);
+  const softCap = Math.round(Math.sqrt(regionSize) * 2.7 + regionSize * 0.03);
+  return clamp(baseTarget, 5, Math.max(10, softCap));
 }
 
 function buildRoadSegments(roads) {

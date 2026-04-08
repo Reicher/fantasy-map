@@ -383,8 +383,10 @@ function offsetPointLeft(points, index, offsetDistance) {
     return { x: current.x, y: current.y };
   }
 
-  const normalX = -tangentY / tangentLength;
-  const normalY = tangentX / tangentLength;
+  // In our map/screen space, +y points downward, so "left of travel"
+  // is the tangent rotated -90deg (dy, -dx).
+  const normalX = tangentY / tangentLength;
+  const normalY = -tangentX / tangentLength;
 
   return {
     x: current.x + normalX * offsetDistance,
@@ -412,8 +414,8 @@ function offsetSamplePointLeft(points, sample, offsetDistance) {
     return sample.point;
   }
 
-  const normalX = -tangentY / tangentLength;
-  const normalY = tangentX / tangentLength;
+  const normalX = tangentY / tangentLength;
+  const normalY = -tangentX / tangentLength;
   return {
     x: sample.point.x + normalX * offsetDistance,
     y: sample.point.y + normalY * offsetDistance,
