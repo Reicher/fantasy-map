@@ -3,161 +3,191 @@ export const MAP_HEIGHT = 220;
 export const RENDER_WIDTH = 1200;
 export const RENDER_HEIGHT = 840;
 
-function numberParam(defaultValue, min, max, formatLabel, extra = {}) {
-  return {
-    type: "number",
-    default: defaultValue,
-    min,
-    max,
-    formatLabel,
-    ...extra,
-  };
-}
+export const DEFAULT_PARAMS = {
+  seed: "saltwind-01",
+  mapSize: 58,
+  mountainousness: 54,
+  cityDensity: 20,
+  riverAmount: 56,
+  lakeAmount: 56,
+  lakeSize: 52,
+  coastComplexity: 62,
+  edgeDetail: 300,
+  minBiomeSize: 15,
+  renderScale: 150,
+  fogVisionRadius: 18,
+  temperatureBias: 50,
+  moistureBias: 50,
+  coastalBias: 50,
+};
 
-const labelPercent = (value) => `${value}%`;
-const labelRoundedPercent = (value) => `${Math.round(value)}%`;
-const labelClimateTemperature = (value) =>
-  value < 25
-    ? "Arktisk"
-    : value < 42
-      ? "Kallare"
-      : value < 58
-        ? "Normal"
-        : value < 75
-          ? "Varmare"
-          : "Tropisk";
-const labelClimateMoisture = (value) =>
-  value < 20
-    ? "Ökenlik"
-    : value < 40
-      ? "Torrt"
-      : value < 60
-        ? "Normal"
-        : value < 80
-          ? "Fuktigt"
-          : "Regnigt";
-const labelCoastalBias = (value) =>
-  value < 20
-    ? "Inlandskt"
-    : value < 40
-      ? "Blandat inland"
-      : value < 60
-        ? "Blandat"
-        : value < 80
-          ? "Kustbetonat"
-          : "Kustbefolkat";
-const labelRoadShortcut = (value) =>
-  value < 20
-    ? "Sällan"
-    : value < 45
-      ? "Försiktigt"
-      : value < 70
-        ? "Balans"
-        : value < 90
-          ? "Ofta"
-          : "Väldigt ofta";
-const labelRoadReuse = (value) =>
-  value < 20
-    ? "Spritt nät"
-    : value < 45
-      ? "Lätt spritt"
-      : value < 70
-        ? "Balans"
-        : value < 90
-          ? "Tydliga leder"
-          : "Starka huvudleder";
-const labelRoadCityAvoidance = (value) =>
-  value < 20
-    ? "Lågt"
-    : value < 45
-      ? "Måttligt"
-      : value < 70
-        ? "Tydligt"
-        : value < 90
-        ? "Högt"
-          : "Max";
-const uiMeta = (label, tab, order) => ({
-  ui: {
-    label,
-    tab,
-    order,
-  },
-});
-
-const NUMERIC_PARAM_SCHEMA = {
-  mapSize: numberParam(58, 10, 100, labelPercent, uiMeta("Kartstorlek", "karta", 10)),
-  coastComplexity: numberParam(62, 0, 100, labelPercent, uiMeta("Kustlinje", "karta", 20)),
-  mountainousness: numberParam(54, 0, 100, labelPercent, uiMeta("Bergighet", "karta", 30)),
-  temperatureBias: numberParam(50, 0, 100, labelClimateTemperature, uiMeta("Klimat", "karta", 40)),
-  moistureBias: numberParam(50, 0, 100, labelClimateMoisture, uiMeta("Fuktighet", "karta", 50)),
-  riverAmount: numberParam(56, 0, 100, labelPercent, uiMeta("Floder", "vatten", 10)),
-  lakeAmount: numberParam(56, 0, 100, labelPercent, uiMeta("Sjömängd", "vatten", 20)),
-  lakeSize: numberParam(52, 0, 100, labelPercent, uiMeta("Sjöstorlek", "vatten", 30)),
-  cityDensity: numberParam(20, 0, 100, labelPercent, uiMeta("POI-täthet", "poi", 10)),
-  coastalBias: numberParam(50, 0, 100, labelCoastalBias, uiMeta("Vattennära bias", "poi", 20)),
-  poiSettlementWeight: numberParam(62, 0, 100, labelRoundedPercent, uiMeta("Andel bosättningar", "poi", 30)),
-  poiCrashSiteWeight: numberParam(28, 0, 100, labelRoundedPercent, uiMeta("Andel kraschplatser", "poi", 40)),
-  poiSignpostWeight: numberParam(24, 0, 100, labelRoundedPercent, uiMeta("Andel vägvisare", "poi", 50)),
-  roadShortcutAggression: numberParam(50, 0, 100, labelRoadShortcut, uiMeta("Genvägar mellan POI", "vagar", 10)),
-  roadReuseBias: numberParam(50, 0, 100, labelRoadReuse, uiMeta("Huvudleder", "vagar", 20)),
-  roadCityAvoidance: numberParam(50, 0, 100, labelRoadCityAvoidance, uiMeta("Undvik POI-kärnor", "vagar", 30)),
-  roadMaxConnectionsPerCity: numberParam(
-    5,
-    2,
-    8,
-    (value) => `${Math.round(value)} vägar`,
-    uiMeta("Max vägar per POI", "vagar", 40),
-  ),
-  edgeDetail: numberParam(
-    300,
-    180,
-    520,
-    (value) =>
-      `${Math.round(value)} x ${Math.round(value * (MAP_HEIGHT / MAP_WIDTH))}`,
-    {
-      ...uiMeta("Rasterupplösning", "avancerat", 10),
-      step: 10,
-    },
-  ),
-  minBiomeSize: numberParam(
-    15,
-    0,
-    30,
-    (value) => `${Math.round(value)} celler`,
-    uiMeta("Minsta biomstorlek", "avancerat", 20),
-  ),
-  renderScale: numberParam(
-    150,
-    50,
-    250,
-    (value) =>
-      `${(Math.max(50, value) / 100).toFixed(value % 100 === 0 ? 0 : 2)}x`,
-    {
-      ...uiMeta("Renderupplösning", "avancerat", 30),
-      step: 25,
-    },
-  ),
-  fogVisionRadius: numberParam(
-    18,
-    6,
-    40,
-    (value) => `${Math.round(value)} celler`,
-    uiMeta("Siktradie", "avancerat", 40),
-  ),
+export const PARAM_LABELS = {
+  mapSize: (value) => `${value}%`,
+  mountainousness: (value) => `${value}%`,
+  cityDensity: (value) => `${value}%`,
+  riverAmount: (value) => `${value}%`,
+  lakeAmount: (value) => `${value}%`,
+  lakeSize: (value) => `${value}%`,
+  coastComplexity: (value) => `${value}%`,
+  edgeDetail: (value) =>
+    `${Math.round(value)} x ${Math.round(value * (MAP_HEIGHT / MAP_WIDTH))}`,
+  minBiomeSize: (value) => `${Math.round(value)} celler`,
+  renderScale: (value) =>
+    `${(Math.max(50, value) / 100).toFixed(value % 100 === 0 ? 0 : 2)}x`,
+  fogVisionRadius: (value) => `${Math.round(value)} celler`,
+  temperatureBias: (value) =>
+    value < 25
+      ? "Arktisk"
+      : value < 42
+        ? "Kallare"
+        : value < 58
+          ? "Normal"
+          : value < 75
+            ? "Varmare"
+            : "Tropisk",
+  moistureBias: (value) =>
+    value < 20
+      ? "Ökenlik"
+      : value < 40
+        ? "Torrt"
+        : value < 60
+          ? "Normal"
+          : value < 80
+            ? "Fuktigt"
+            : "Regnigt",
+  coastalBias: (value) =>
+    value < 20
+      ? "Inlandskt"
+      : value < 40
+        ? "Blandat inland"
+        : value < 60
+          ? "Blandat"
+          : value < 80
+            ? "Kustbetonat"
+            : "Kustbefolkat",
 };
 
 export const PARAM_SCHEMA = {
-  seed: { type: "string", default: "saltwind-01" },
-  ...NUMERIC_PARAM_SCHEMA,
+  seed: {
+    type: "string",
+  },
+  mapSize: {
+    type: "number",
+    min: 10,
+    max: 100,
+    step: 1,
+    formatLabel: PARAM_LABELS.mapSize,
+    ui: { label: "Kartstorlek", tab: "karta", order: 10 },
+  },
+  mountainousness: {
+    type: "number",
+    min: 0,
+    max: 100,
+    step: 1,
+    formatLabel: PARAM_LABELS.mountainousness,
+    ui: { label: "Bergighet", tab: "karta", order: 20 },
+  },
+  edgeDetail: {
+    type: "number",
+    min: 180,
+    max: 520,
+    step: 1,
+    formatLabel: PARAM_LABELS.edgeDetail,
+    ui: { label: "Kantdjup", tab: "karta", order: 30 },
+  },
+  minBiomeSize: {
+    type: "number",
+    min: 0,
+    max: 20,
+    step: 1,
+    formatLabel: PARAM_LABELS.minBiomeSize,
+    ui: { label: "Minsta biom", tab: "karta", order: 40 },
+  },
+  coastComplexity: {
+    type: "number",
+    min: 0,
+    max: 100,
+    step: 1,
+    formatLabel: PARAM_LABELS.coastComplexity,
+    ui: { label: "Kustkomplexitet", tab: "karta", order: 50 },
+  },
+  riverAmount: {
+    type: "number",
+    min: 0,
+    max: 100,
+    step: 1,
+    formatLabel: PARAM_LABELS.riverAmount,
+    ui: { label: "Flodmängd", tab: "vatten", order: 10 },
+  },
+  lakeAmount: {
+    type: "number",
+    min: 0,
+    max: 100,
+    step: 1,
+    formatLabel: PARAM_LABELS.lakeAmount,
+    ui: { label: "Sjöantal", tab: "vatten", order: 20 },
+  },
+  lakeSize: {
+    type: "number",
+    min: 0,
+    max: 100,
+    step: 1,
+    formatLabel: PARAM_LABELS.lakeSize,
+    ui: { label: "Sjöstorlek", tab: "vatten", order: 30 },
+  },
+  cityDensity: {
+    type: "number",
+    min: 0,
+    max: 100,
+    step: 1,
+    formatLabel: PARAM_LABELS.cityDensity,
+    ui: { label: "POI-täthet", tab: "poi", order: 10 },
+  },
+  renderScale: {
+    type: "number",
+    min: 50,
+    max: 250,
+    step: 1,
+    formatLabel: PARAM_LABELS.renderScale,
+    ui: { label: "Render-skala", tab: "avancerat", order: 10 },
+  },
+  fogVisionRadius: {
+    type: "number",
+    min: 6,
+    max: 40,
+    step: 1,
+    formatLabel: PARAM_LABELS.fogVisionRadius,
+    ui: { label: "Sikt (fog)", tab: "avancerat", order: 20 },
+  },
+  temperatureBias: {
+    type: "number",
+    min: 0,
+    max: 100,
+    step: 1,
+    formatLabel: PARAM_LABELS.temperatureBias,
+    ui: { label: "Temperatur", tab: "avancerat", order: 30 },
+  },
+  moistureBias: {
+    type: "number",
+    min: 0,
+    max: 100,
+    step: 1,
+    formatLabel: PARAM_LABELS.moistureBias,
+    ui: { label: "Fuktighet", tab: "avancerat", order: 40 },
+  },
+  coastalBias: {
+    type: "number",
+    min: 0,
+    max: 100,
+    step: 1,
+    formatLabel: PARAM_LABELS.coastalBias,
+    ui: { label: "Kustbias", tab: "avancerat", order: 50 },
+  },
 };
 
 export const PARAM_KEYS = Object.keys(PARAM_SCHEMA);
 export const NUMERIC_PARAM_KEYS = PARAM_KEYS.filter(
-  (key) => PARAM_SCHEMA[key].type === "number",
-);
-
-export const DEFAULT_PARAMS = Object.freeze(
-  Object.fromEntries(PARAM_KEYS.map((key) => [key, PARAM_SCHEMA[key].default])),
+  (key) => PARAM_SCHEMA[key]?.type === "number",
 );
 
 export const BIOME_KEYS = {

@@ -5,7 +5,7 @@ import {
   getValidTargetIds,
   sampleTravelBiomeBandPoints,
 } from "../game/travel.js?v=20260409c";
-import { createJourneyScene } from "../game/journeyScene.js?v=20260409t";
+import { createJourneyScene } from "../game/journeyScene.js?v=20260409w";
 import {
   renderPlayWorldDynamic,
   renderPlayWorldStatic,
@@ -15,7 +15,7 @@ import { createPlayCamera as buildPlayCamera } from "./cameraState.js?v=20260407
 import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260408a";
 import { createMapAtlasCacheManager } from "./mapAtlasCache.js?v=20260408h";
 import { createPlayController } from "./playController.js?v=20260409a";
-import { createPlaySubViewController } from "./playSubView.js?v=20260409b";
+import { createPlaySubViewController } from "./playSubView.js?v=20260409d";
 import {
   createTransitionController,
   waitForNextPaintIfActive,

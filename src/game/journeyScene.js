@@ -50,6 +50,8 @@ const SIGNPOST_UPWARD_OFFSET_PX = 18;
 const IDLE_PREVIEW_POINT_COUNT = 14;
 const IDLE_PREVIEW_SPAN_MIN = 14;
 const IDLE_PREVIEW_SPAN_MAX = 34;
+const GROUND_TOP_FRAC = 0.67;
+const OCEAN_HORIZON_TOP_FRAC = 0.45;
 
 // Sky colour presets used by the time-of-day interpolator.
 const DAY_SKY_TOP_RGB = [140, 197, 236];
@@ -84,9 +86,15 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     cachedW: 0,
     cachedH: 0,
     idleKey: null,
+    presentationSnapshot: {
+      viewW: 0,
+      viewH: 0,
+      startMarkerCanvasX: null,
+      destMarkerCanvasX: null,
+    },
   };
 
-  return { update, reset, getDebugSnapshot };
+  return { update, reset, getDebugSnapshot, getPresentationSnapshot };
 
   // -------------------------------------------------------------------------
 
@@ -186,6 +194,12 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     state.cachedW = 0;
     state.cachedH = 0;
     state.idleKey = null;
+    state.presentationSnapshot = {
+      viewW: 0,
+      viewH: 0,
+      startMarkerCanvasX: null,
+      destMarkerCanvasX: null,
+    };
     if (ctx) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
@@ -199,6 +213,10 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       routePx: s?.routePx ?? 0,
       groundSegs: s?.layerSegments?.ground?.length ?? 0,
     };
+  }
+
+  function getPresentationSnapshot() {
+    return { ...state.presentationSnapshot };
   }
 
   // -------------------------------------------------------------------------
@@ -274,7 +292,15 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     // paints over this; flat terrain (plains, ocean biome) lets it show through.
     drawOceanHorizon(ctx, viewW, viewH, skyState);
 
-    if (!strip) return;
+    if (!strip) {
+      state.presentationSnapshot = {
+        viewW,
+        viewH,
+        startMarkerCanvasX: null,
+        destMarkerCanvasX: null,
+      };
+      return;
+    }
 
     const groundTopY = strip.layers.ground.topY;
 
@@ -304,7 +330,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     drawGroundTrees(ctx, strip, scrollX, playerX, viewW);
 
     // 8. POI markers – behind the player but above all background layers
-    drawPoiMarkers(
+    const markerSnapshot = drawPoiMarkers(
       ctx,
       strip,
       scrollX,
@@ -315,6 +341,12 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       playState,
       world,
     );
+    state.presentationSnapshot = {
+      viewW,
+      viewH,
+      startMarkerCanvasX: markerSnapshot.startMarkerCanvasX,
+      destMarkerCanvasX: markerSnapshot.destMarkerCanvasX,
+    };
 
     // 9. Player (fixed – behind foreground so foreground overlaps lower body)
     drawPlayerFigure(
@@ -358,8 +390,10 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
    * (plains, desert, ocean) let it show through near the horizon.
    */
   function drawOceanHorizon(ctx, viewW, viewH, skyState) {
-    const top    = Math.round(viewH * 0.42); // matches silhouetteZoneTop in strip
-    const bottom = Math.round(viewH * 0.67); // matches groundTopY in strip
+    // Keep ocean base aligned with ground top, but drop the visible horizon
+    // slightly to place the sea lower in frame.
+    const top = Math.round(viewH * OCEAN_HORIZON_TOP_FRAC);
+    const bottom = Math.round(viewH * GROUND_TOP_FRAC);
     const h = bottom - top;
     const horizon = skyState.horizonRgb;
     const daylight = skyState.daylight;
@@ -735,6 +769,11 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
         : PLAYER_VISUAL_HEIGHT_PX,
       verticalOffsetPx: destSignpost ? SIGNPOST_UPWARD_OFFSET_PX : 0,
     });
+
+    return {
+      startMarkerCanvasX: startCanvasX,
+      destMarkerCanvasX: destCanvasX,
+    };
   }
 
   function drawTreeDecorationsForLayer(
@@ -1019,7 +1058,7 @@ function createSkyState(timeOfDayHours, viewW, viewH) {
   const hour = normalizeTimeOfDayHours(
     Number.isFinite(timeOfDayHours) ? timeOfDayHours : DEFAULT_TIME_OF_DAY_HOURS,
   );
-  const horizonY = Math.round(viewH * 0.67);
+  const horizonY = Math.round(viewH * GROUND_TOP_FRAC);
   const orbitCenterX = viewW / 2;
   const orbitRadiusX = Math.max(80, viewW * 0.5 - Math.max(18, viewW * 0.02));
   const orbitRadiusY = Math.max(64, horizonY - Math.max(54, viewH * 0.065));

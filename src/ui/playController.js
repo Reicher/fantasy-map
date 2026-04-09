@@ -1,6 +1,7 @@
 import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
 import { createViewport } from "../render/renderer.js?v=20260409a";
 import { findPlayablePoiAtWorldPoint } from "../game/playQueries.js?v=20260409b";
+import { advanceTimeOfDayHours } from "../game/timeOfDay.js";
 import { getPoiTitle } from "../poi/poiModel.js";
 
 export function createPlayController({
@@ -238,6 +239,19 @@ export function createPlayController({
 
       const delta = timestamp - state.lastTravelTick;
       state.lastTravelTick = timestamp;
+      const isJourney = state.playState?.viewMode === "journey";
+      const isTraveling = Boolean(state.playState?.travel);
+
+      if (isTraveling) {
+        state.playState = {
+          ...state.playState,
+          timeOfDayHours: advanceTimeOfDayHours(
+            state.playState?.timeOfDayHours,
+            delta,
+          ),
+        };
+      }
+
       if (state.playState?.travel) {
         state.playState = profiler.measure("advance-travel", () =>
           advanceTravel(state.playState, state.currentWorld, delta),
@@ -248,7 +262,6 @@ export function createPlayController({
         viewMode: state.playState?.viewMode ?? "unknown",
         traveling: state.playState?.travel ? "yes" : "no",
       });
-      const isJourney = state.playState?.viewMode === "journey";
       const shouldRenderMapFrame =
         !isJourney &&
         (timestamp - lastRenderedAt >= 66 || !state.playState.travel);

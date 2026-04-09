@@ -2,7 +2,7 @@ import {
   NUMERIC_PARAM_KEYS,
   PARAM_KEYS,
   PARAM_SCHEMA,
-} from "../config.js?v=20260409a";
+} from "../config.js?v=20260409b";
 
 const TAB_ORDER = ["karta", "vatten", "poi", "vagar", "avancerat"];
 const TAB_LABELS = {

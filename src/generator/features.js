@@ -5,15 +5,19 @@ import { describePoi } from "../poi/poiModel.js";
 const DEFAULT_POI_WEIGHT = 50;
 
 export function buildFeatureCatalog(world, names) {
+  const poiName =
+    typeof names?.pointOfInterestName === "function"
+      ? (kind, key) => names.pointOfInterestName(kind, key)
+      : (_kind, key) => key;
   const roadDegreeByCityId = buildRoadDegreeByCityId(
     world.network,
     world.cities.length,
   );
-  const settlementPois = buildSettlementPois(world, names, roadDegreeByCityId);
+  const settlementPois = buildSettlementPois(world, poiName, roadDegreeByCityId);
   const signpostPois = buildDedicatedSignpostPois(world, settlementPois);
   const crashSitePois = buildDedicatedCrashSitePois(
     world,
-    names,
+    poiName,
     settlementPois,
     signpostPois,
   );
@@ -34,14 +38,14 @@ export function buildFeatureCatalog(world, names) {
   };
 }
 
-function buildSettlementPois(world, names, roadDegreeByCityId) {
+function buildSettlementPois(world, poiName, roadDegreeByCityId) {
   const descriptor = describePoi({ marker: "settlement", roadDegree: 0 });
 
   return world.cities.map((city) => {
     const roadDegree = roadDegreeByCityId[city.id] ?? 0;
     const name = String(city.name ?? "").trim()
       ? city.name
-      : names.pointOfInterestName("settlement", `settlement-${city.id}`);
+      : poiName("settlement", `settlement-${city.id}`);
     const enriched = {
       ...city,
       name,
@@ -176,7 +180,7 @@ function buildDedicatedSignpostPois(world, settlementPois) {
   });
 }
 
-function buildDedicatedCrashSitePois(world, names, settlementPois, signpostPois) {
+function buildDedicatedCrashSitePois(world, poiName, settlementPois, signpostPois) {
   const roads = world.roads?.roads ?? [];
   if (!roads.length) {
     return [];
@@ -323,7 +327,7 @@ function buildDedicatedCrashSitePois(world, names, settlementPois, signpostPois)
     cell: entry.cell,
     x: entry.x,
     y: entry.y,
-    name: names.pointOfInterestName("crash-site", `crash-${entry.cell}-${index}`),
+    name: poiName("crash-site", `crash-${entry.cell}-${index}`),
     marker: descriptor.marker,
     kind: descriptor.kind,
     roadDegree: entry.degree,

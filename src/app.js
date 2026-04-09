@@ -2,7 +2,7 @@ import {
   DEFAULT_PARAMS,
   RENDER_HEIGHT,
   RENDER_WIDTH,
-} from "./config.js?v=20260408b";
+} from "./config.js?v=20260409b";
 import {
   generateWorld,
   normalizeParams,
@@ -27,7 +27,7 @@ import { createPlayProfiler } from "./ui/playProfiler.js?v=20260403a";
 import { updateStats } from "./ui/statsPanel.js";
 import { createEditorSession } from "./ui/editorSession.js?v=20260409a";
 import { clearHover } from "./ui/hoverPanel.js?v=20260408a";
-import { createPlaySession } from "./ui/playSession.js?v=20260409a";
+import { createPlaySession } from "./ui/playSession.js?v=20260409d";
 import {
   createTransitionController,
   waitForNextPaintIfActive,
@@ -47,6 +47,12 @@ const refs = {
   playJourneyPanel: document.querySelector("#play-journey-panel"),
   playJourneyCanvas: document.querySelector("#play-journey-canvas"),
   playMapLegend: document.querySelector("#play-map-legend"),
+  playBottomHud: document.querySelector("#play-bottom-hud"),
+  playLocationLine: document.querySelector("#play-location-line"),
+  playSwitchModeButton: document.querySelector("#play-switch-mode"),
+  playSettingsButton: document.querySelector("#play-settings"),
+  playArrivalCue: document.querySelector("#play-arrival-cue"),
+  playArrivalCueText: document.querySelector("#play-arrival-cue-text"),
   playToggleBiomeLabelsButton: document.querySelector(
     "#play-toggle-biome-labels",
   ),
@@ -54,8 +60,6 @@ const refs = {
     "#play-toggle-city-labels",
   ),
   playToggleHoverButton: document.querySelector("#play-toggle-hover"),
-  playJourneyTitle: document.querySelector("#play-journey-title"),
-  playJourneySubtitle: document.querySelector("#play-journey-subtitle"),
   tooltip: document.querySelector("#tooltip"),
   statsContainer: document.querySelector("#stats"),
   toggleBiomeLabelsButton: document.querySelector("#toggle-biome-labels"),
@@ -197,6 +201,23 @@ refs.playToggleHoverButton.addEventListener("click", () => {
   }
   playSession.updatePlaySubView();
 });
+
+if (refs.playSwitchModeButton) {
+  refs.playSwitchModeButton.addEventListener("click", () => {
+    if (state.currentMode !== "play" || !state.playState) {
+      return;
+    }
+    playSession.setPlayViewMode(
+      state.playState.viewMode === "journey" ? "map" : "journey",
+    );
+  });
+}
+
+if (refs.playSettingsButton) {
+  refs.playSettingsButton.addEventListener("click", () => {
+    // Placeholder for future settings.
+  });
+}
 
 for (const button of [refs.zoom1Button, refs.zoom2Button, refs.zoom3Button]) {
   if (!button) continue;
