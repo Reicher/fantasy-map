@@ -11,15 +11,6 @@ import { drawPoiMarkerGlyph } from "../../render/poiGlyph.js?v=20260408b";
 
 const SNOW_GROUND_RGB = WORLD_RGB.snow;
 
-// ---------------------------------------------------------------------------
-// Biome color helpers
-// ---------------------------------------------------------------------------
-
-export function getBiomeColor(biomeKey) {
-  const normalizedKey = normalizeBiomeKey(biomeKey);
-  return getBiomeBaseHex(normalizedKey ?? "plains");
-}
-
 /** Returns the depth-tinted biome colour as an [r, g, b] array.
  * Near = darker, warmer, richer. Far = lighter, cooler, atmospheric haze. */
 export function getBiomeLayerColorRgb(
@@ -267,7 +258,7 @@ export function rgbToCss(rgb) {
   return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
 }
 
-export function hash01(text) {
+function hash01(text) {
   let hash = 2166136261;
   for (let index = 0; index < text.length; index += 1) {
     hash ^= text.charCodeAt(index);

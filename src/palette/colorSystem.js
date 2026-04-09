@@ -1,13 +1,13 @@
 import { BIOME_INFO, BIOME_KEYS } from "../config.js";
 
-export const BIOME_BASE_HEX_BY_ID = Object.fromEntries(
+const BIOME_BASE_HEX_BY_ID = Object.fromEntries(
   Object.entries(BIOME_INFO).map(([id, info]) => [
     Number(id),
     info.color.toLowerCase(),
   ]),
 );
 
-export const BIOME_BASE_HEX_BY_NAME = Object.fromEntries(
+const BIOME_BASE_HEX_BY_NAME = Object.fromEntries(
   Object.values(BIOME_INFO).map((info) => [info.key, info.color.toLowerCase()]),
 );
 
@@ -108,7 +108,7 @@ const BIOME_TONE_PALETTE_BY_NAME = {
   ],
 };
 
-export function normalizeAlpha(alpha) {
+function normalizeAlpha(alpha) {
   let best = ALPHA_VALUES[0];
   let bestDist = Number.POSITIVE_INFINITY;
   for (const candidate of ALPHA_VALUES) {
@@ -121,7 +121,7 @@ export function normalizeAlpha(alpha) {
   return best;
 }
 
-export function clampByte(value) {
+function clampByte(value) {
   return Math.max(0, Math.min(255, Math.round(value)));
 }
 
@@ -165,7 +165,7 @@ function resolveBiomeName(biomeKeyOrName) {
   return biomeKeyOrName ?? null;
 }
 
-export function capToPalette(rgb, palette) {
+function capToPalette(rgb, palette) {
   const [r, g, b] = rgb;
   let best = palette[0];
   let bestDistance = Number.POSITIVE_INFINITY;

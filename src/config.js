@@ -91,16 +91,8 @@ const NUMERIC_PARAM_SCHEMA = {
   temperatureBias: numberParam(50, 0, 100, labelClimateTemperature, uiMeta("Klimat", "karta", 40)),
   moistureBias: numberParam(50, 0, 100, labelClimateMoisture, uiMeta("Fuktighet", "karta", 50)),
   riverAmount: numberParam(56, 0, 100, labelPercent, uiMeta("Floder", "vatten", 10)),
-  lakeAmount: numberParam(56, 0, 100, labelPercent, {
-    ...uiMeta("Sjömängd", "vatten", 20),
-    legacyFallbackKey: "waterRichness",
-    legacyDefault: 56,
-  }),
-  lakeSize: numberParam(52, 0, 100, labelPercent, {
-    ...uiMeta("Sjöstorlek", "vatten", 30),
-    legacyFallbackKey: "waterRichness",
-    legacyDefault: 56,
-  }),
+  lakeAmount: numberParam(56, 0, 100, labelPercent, uiMeta("Sjömängd", "vatten", 20)),
+  lakeSize: numberParam(52, 0, 100, labelPercent, uiMeta("Sjöstorlek", "vatten", 30)),
   cityDensity: numberParam(20, 0, 100, labelPercent, uiMeta("POI-täthet", "poi", 10)),
   coastalBias: numberParam(50, 0, 100, labelCoastalBias, uiMeta("Vattennära bias", "poi", 20)),
   poiSettlementWeight: numberParam(62, 0, 100, labelRoundedPercent, uiMeta("Andel bosättningar", "poi", 30)),

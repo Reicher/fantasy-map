@@ -7,7 +7,7 @@ export function setElementVisible(element, visible, displayValue = "block") {
   element.style.display = visible ? displayValue : "none";
 }
 
-export function waitForNextPaint(frames = 1) {
+function waitForNextPaint(frames = 1) {
   return new Promise((resolve) => {
     const totalFrames = Math.max(0, Math.floor(frames));
     let remainingFrames = totalFrames;

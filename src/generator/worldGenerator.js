@@ -26,18 +26,8 @@ export function normalizeParams(input) {
       continue;
     }
 
-    const baseFallback = schema.default;
-    const legacyFallback =
-      schema.legacyFallbackKey &&
-      source[key] == null &&
-      schema.legacyFallbackKey in source
-        ? asNumber(
-            source[schema.legacyFallbackKey],
-            schema.legacyDefault ?? baseFallback,
-          )
-        : baseFallback;
     normalized[key] = clamp(
-      asNumber(source[key], legacyFallback),
+      asNumber(source[key], schema.default),
       schema.min,
       schema.max,
     );
