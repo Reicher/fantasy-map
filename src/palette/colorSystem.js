@@ -1,17 +1,14 @@
 import { BIOME_INFO, BIOME_KEYS } from "../config.js";
 
-export const BIOME_BASE_HEX_BY_ID = Object.freeze(
-  Object.fromEntries(
-    Object.entries(BIOME_INFO)
-      .map(([id, info]) => [Number(id), info.color.toLowerCase()]),
-  ),
+export const BIOME_BASE_HEX_BY_ID = Object.fromEntries(
+  Object.entries(BIOME_INFO).map(([id, info]) => [
+    Number(id),
+    info.color.toLowerCase(),
+  ]),
 );
 
-export const BIOME_BASE_HEX_BY_NAME = Object.freeze(
-  Object.fromEntries(
-    Object.values(BIOME_INFO)
-      .map((info) => [info.key, info.color.toLowerCase()]),
-  ),
+export const BIOME_BASE_HEX_BY_NAME = Object.fromEntries(
+  Object.values(BIOME_INFO).map((info) => [info.key, info.color.toLowerCase()]),
 );
 
 export const ALPHA = Object.freeze({
@@ -36,25 +33,24 @@ const ALPHA_VALUES = Object.freeze(
   [...new Set(Object.values(ALPHA))].sort((a, b) => a - b),
 );
 
-export const WORLD_RGB = Object.freeze({
-  ocean: Object.freeze([138, 160, 168]),
-  lakeFrozen: Object.freeze([228, 233, 236]),
-  mountain: Object.freeze([193, 181, 163]),
-  snow: Object.freeze([244, 243, 238]),
-});
+export const WORLD_RGB = {
+  ocean: [138, 160, 168],
+  lakeFrozen: [228, 233, 236],
+  mountain: [193, 181, 163],
+  snow: [244, 243, 238],
+};
 
-export const DEPTH_SHADE_BY_LAYER = Object.freeze({
-  foreground: Object.freeze({ target: Object.freeze([18, 14, 8]), amount: 0.42 }),
-  near1: Object.freeze({ target: Object.freeze([28, 22, 14]), amount: 0.32 }),
-  near2: Object.freeze({ target: Object.freeze([45, 42, 35]), amount: 0.18 }),
-  mid: Object.freeze({ target: Object.freeze([152, 158, 168]), amount: 0.32 }),
-  far: Object.freeze({ target: Object.freeze([192, 200, 214]), amount: 0.54 }),
-  ground: Object.freeze({ target: null, amount: 0 }),
-});
+export const DEPTH_SHADE_BY_LAYER = {
+  foreground: { target: [18, 14, 8], amount: 0.42 },
+  near1: { target: [28, 22, 14], amount: 0.32 },
+  near2: { target: [45, 42, 35], amount: 0.18 },
+  mid: { target: [152, 158, 168], amount: 0.32 },
+  far: { target: [192, 200, 214], amount: 0.54 },
+  ground: { target: null, amount: 0 },
+};
 
 // Hard cap palette for world-rendered colors (<= 45 entries).
-export const GAME_PALETTE_RGB = Object.freeze(
-  [
+export const GAME_PALETTE_RGB = [
     [18, 14, 8],
     [28, 22, 14],
     [45, 42, 35],
@@ -99,19 +95,18 @@ export const GAME_PALETTE_RGB = Object.freeze(
     [174, 178, 161],
     [148, 133, 108],
     [129, 112, 93],
-  ].map((rgb) => Object.freeze(rgb)),
-);
+];
 
-const BIOME_TONE_PALETTE_BY_NAME = Object.freeze({
-  forest: Object.freeze([
-    Object.freeze([95, 123, 85]),
-    Object.freeze([125, 144, 101]),
-  ]),
-  rainforest: Object.freeze([
-    Object.freeze([80, 97, 66]),
-    Object.freeze([95, 123, 85]),
-  ]),
-});
+const BIOME_TONE_PALETTE_BY_NAME = {
+  forest: [
+    [95, 123, 85],
+    [125, 144, 101],
+  ],
+  rainforest: [
+    [80, 97, 66],
+    [95, 123, 85],
+  ],
+};
 
 export function normalizeAlpha(alpha) {
   let best = ALPHA_VALUES[0];

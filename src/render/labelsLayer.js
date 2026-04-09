@@ -21,7 +21,7 @@ export function drawLabels(ctx, world, viewport, options = {}) {
       world,
       viewport,
       mapPlacedBoxes,
-      options,
+      visiblePoiIds,
       discoveredCells,
     );
 
@@ -58,7 +58,7 @@ function reservePoiCollisionBoxesForMapNames(
   world,
   viewport,
   placedBoxes,
-  options,
+  visiblePoiIds,
   discoveredCells,
 ) {
   const pois = world.geometry.labels.pointsOfInterest;
@@ -66,7 +66,6 @@ function reservePoiCollisionBoxesForMapNames(
     return placedBoxes.length;
   }
 
-  const visiblePoiIds = resolveVisiblePoiIdsForLabels(options);
   const allowedIds = visiblePoiIds ? new Set(visiblePoiIds) : null;
   const markerScale = getPoiCollisionScale(viewport);
   const iconLift = markerScale * 7.2;

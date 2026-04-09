@@ -114,12 +114,12 @@ function pickMountainBackdropColor(region, world, regionCells, showSnow) {
     showSnow
   );
 
-  return quantizeRgb([
+  const [r, g, b] = capToGamePalette([
     Math.round(borrowed[0] * 0.9 + 214 * 0.1),
     Math.round(borrowed[1] * 0.9 + 205 * 0.1),
     Math.round(borrowed[2] * 0.9 + 191 * 0.1),
-    255
   ]);
+  return [r, g, b, 255];
 }
 
 function getLakeFillColor(world, lake, showSnow) {
@@ -380,11 +380,6 @@ function pointNoise(x, y, index) {
   let state = hashSeed(`loop:${x},${y},${index}`);
   state = nextHash(state);
   return state / 4294967295;
-}
-
-function quantizeRgb(color) {
-  const capped = capToGamePalette(color);
-  return [capped[0], capped[1], capped[2], color[3] ?? 255];
 }
 
 function colorToRgba(color) {
