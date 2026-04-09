@@ -674,7 +674,7 @@ function selectRiverSources({
 
   candidateSources.sort((a, b) => b.score - a.score);
   const selectedSources = [];
-  const riverAmountFactor = sliderFactor(params.riverAmount ?? 56, 0.78);
+  const riverAmountFactor = sliderFactor(params.riverAmount, 0.78);
   const targetSources = clamp(
     Math.round(
       (candidateSources.length / 1500) * (1.4 + riverAmountFactor * 15.5),

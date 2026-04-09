@@ -450,7 +450,7 @@ function revealAroundPosition(world, discoveredCells, position) {
     return false;
   }
 
-  const baseRadius = Math.max(1, Number(world.params?.fogVisionRadius ?? 18));
+  const baseRadius = Math.max(1, world.params.fogVisionRadius);
   const radius = Math.max(1, Math.round(baseRadius * 1.5));
   const radiusSq = (radius + 0.35) * (radius + 0.35);
   const minX = Math.max(0, Math.floor(position.x - radius));

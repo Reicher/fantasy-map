@@ -12,6 +12,7 @@ import {
   getFormValues,
   hydrateForm,
   randomSeed,
+  renderControlsFromSchema,
   setSeedValue,
   updateLabels,
 } from "./ui/controls.js?v=20260408b";
@@ -27,7 +28,10 @@ import { updateStats } from "./ui/statsPanel.js";
 import { createEditorSession } from "./ui/editorSession.js?v=20260408j";
 import { clearHover } from "./ui/hoverPanel.js?v=20260408a";
 import { createPlaySession } from "./ui/playSession.js?v=20260408m";
-import { waitForNextPaint } from "./ui/viewState.js?v=20260403a";
+import {
+  createTransitionController,
+  waitForNextPaintIfActive,
+} from "./ui/viewState.js?v=20260403a";
 
 const EDITOR_SETTINGS_STORAGE_KEY = "fantasy-map.editor.settings.v1";
 
@@ -69,23 +73,6 @@ const refs = {
   enterPlayButton: document.querySelector("#enter-play"),
 };
 
-// --- Tab switching ---------------------------------------------------
-const tabButtons = document.querySelectorAll(".tab-btn");
-const tabPanelEls = document.querySelectorAll(".tab-panel");
-function setActiveTab(tabName) {
-  for (const btn of tabButtons) {
-    btn.dataset.active = String(btn.dataset.tab === tabName);
-  }
-  for (const panel of tabPanelEls) {
-    panel.hidden = panel.dataset.tabPanel !== tabName;
-  }
-}
-setActiveTab("karta");
-for (const btn of tabButtons) {
-  btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
-}
-// ---------------------------------------------------------------------
-
 const initialMode = inferInitialMode();
 
 refs.canvas.width = RENDER_WIDTH;
@@ -123,9 +110,9 @@ const state = {
   pendingInteractiveRender: false,
   playAnimationFrame: null,
   lastTravelTick: 0,
-  generateRunId: 0,
   playProfiler: createPlayProfiler(),
 };
+const generateTransition = createTransitionController();
 
 const editorSession = createEditorSession({
   refs,
@@ -144,6 +131,7 @@ const initialParams = persistedParams ?? {
   ...DEFAULT_PARAMS,
   seed: randomSeed(),
 };
+renderControlsFromSchema(refs.form, { initialTab: "karta" });
 hydrateForm(initialParams);
 bindRangeLabels();
 syncLabelButtons();
@@ -288,7 +276,7 @@ window.addEventListener("keydown", (event) => {
 });
 
 async function generateAndRender() {
-  const runId = ++state.generateRunId;
+  const runId = generateTransition.begin();
   const params = normalizeParams(getFormValues(refs.form));
   persistEditorParams(params);
   state.currentRenderScale = params.renderScale;
@@ -296,8 +284,7 @@ async function generateAndRender() {
   state.editorLoading = state.currentMode === "editor";
   state.playLoading = state.currentMode === "play";
   syncModeUi();
-  await waitForNextPaint(1);
-  if (runId !== state.generateRunId) {
+  if (!(await waitForNextPaintIfActive(generateTransition, runId, 1))) {
     return;
   }
 
@@ -316,8 +303,7 @@ async function generateAndRender() {
   updateStats(refs.statsContainer, state.currentWorld.stats);
   syncViewUi();
 
-  await waitForNextPaint(1);
-  if (runId !== state.generateRunId) {
+  if (!(await waitForNextPaintIfActive(generateTransition, runId, 1))) {
     return;
   }
 
@@ -325,8 +311,7 @@ async function generateAndRender() {
   state.playLoading = false;
   syncModeUi();
 
-  await waitForNextPaint(1);
-  if (runId !== state.generateRunId) {
+  if (!(await waitForNextPaintIfActive(generateTransition, runId, 1))) {
     return;
   }
 

@@ -100,10 +100,10 @@ function buildRoadDegreeByCityId(network, cityCount) {
   return degrees;
 }
 
-function buildPoiPreferenceWeights(params = {}) {
-  const settlement = clamp(Number(params.poiSettlementWeight ?? 62), 0, 100) / 50;
-  const crashSite = clamp(Number(params.poiCrashSiteWeight ?? 28), 0, 100) / 50;
-  const signpost = clamp(Number(params.poiSignpostWeight ?? 24), 0, 100) / 50;
+function buildPoiPreferenceWeights(params) {
+  const settlement = clamp(params.poiSettlementWeight, 0, 100) / 50;
+  const crashSite = clamp(params.poiCrashSiteWeight, 0, 100) / 50;
+  const signpost = clamp(params.poiSignpostWeight, 0, 100) / 50;
 
   return {
     settlement: Math.max(0, settlement),
@@ -342,7 +342,7 @@ function buildDedicatedSignpostPois(world, cityPois) {
   }
 
   const signpostWeight = clamp(
-    Number(world.params?.poiSignpostWeight ?? 24),
+    world.params.poiSignpostWeight,
     0,
     100,
   );

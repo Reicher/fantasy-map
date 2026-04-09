@@ -2,7 +2,6 @@ import { BIOME_KEYS } from "../config.js";
 import { buildRoadNetwork } from "./network.js?v=20260401i";
 import { clamp, coordsOf, dedupeCells, distance, forEachNeighbor, indexOf } from "../utils.js";
 
-const DEFAULT_MAX_ROADS_PER_CITY = 5;
 const DEFAULT_LAND_NEAREST_NEIGHBORS = 4;
 const DEFAULT_LAND_REDUNDANCY_RATIO = 1.75;
 const DEFAULT_LAND_EXTRA_LINK_FACTOR = 0;
@@ -35,17 +34,17 @@ const BIOME_TRAVEL_COST = {
   [BIOME_KEYS.MOUNTAIN]: 9.5
 };
 
-function resolveRoadSettings(params = {}) {
-  const shortcut = clamp(Number(params.roadShortcutAggression ?? 50), 0, 100) / 100;
-  const reuse = clamp(Number(params.roadReuseBias ?? 50), 0, 100) / 100;
-  const cityAvoidance = clamp(Number(params.roadCityAvoidance ?? 50), 0, 100) / 100;
+function resolveRoadSettings(params) {
+  const shortcut = clamp(params.roadShortcutAggression, 0, 100) / 100;
+  const reuse = clamp(params.roadReuseBias, 0, 100) / 100;
+  const cityAvoidance = clamp(params.roadCityAvoidance, 0, 100) / 100;
   const shortcutDelta = shortcut - 0.5;
   const reuseDelta = reuse - 0.5;
   const cityAvoidanceDelta = cityAvoidance - 0.5;
 
   return {
     maxRoadsPerCity: clamp(
-      Math.round(Number(params.roadMaxConnectionsPerCity ?? DEFAULT_MAX_ROADS_PER_CITY)),
+      Math.round(params.roadMaxConnectionsPerCity),
       2,
       8
     ),
@@ -118,7 +117,7 @@ export function generateRoads(world) {
   const { width, height, size, isLand, mountainField } = terrain;
   const { biome } = climate;
   const { lakeIdByCell, riverStrength } = hydrology;
-  const roadSettings = resolveRoadSettings(world.params ?? {});
+  const roadSettings = resolveRoadSettings(world.params);
 
   if (cities.length < 2) {
     return {

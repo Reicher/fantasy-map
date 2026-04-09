@@ -1,12 +1,15 @@
 import { BIOME_INFO } from "../../config.js";
+import {
+  DEPTH_SHADE_BY_LAYER,
+  WORLD_RGB,
+  capToBiomePalette,
+  getBiomeBaseHex,
+  hexToRgb,
+  mixRgb,
+} from "../../palette/colorSystem.js";
 import { drawPoiMarkerGlyph } from "../../render/poiGlyph.js?v=20260408b";
 
-const BIOME_COLOR_BY_KEY = Object.fromEntries(
-  Object.values(BIOME_INFO)
-    .filter((entry) => entry?.key && entry?.color)
-    .map((entry) => [entry.key, entry.color]),
-);
-const SNOW_GROUND_RGB = [244, 243, 238];
+const SNOW_GROUND_RGB = WORLD_RGB.snow;
 
 // ---------------------------------------------------------------------------
 // Biome color helpers
@@ -14,7 +17,7 @@ const SNOW_GROUND_RGB = [244, 243, 238];
 
 export function getBiomeColor(biomeKey) {
   const normalizedKey = normalizeBiomeKey(biomeKey);
-  return BIOME_COLOR_BY_KEY[normalizedKey] ?? "#b9b27f";
+  return getBiomeBaseHex(normalizedKey ?? "plains");
 }
 
 /** Returns the depth-tinted biome colour as an [r, g, b] array.
@@ -24,28 +27,21 @@ export function getBiomeLayerColorRgb(
   layerDepth,
   { isSnow = false } = {},
 ) {
+  const normalizedBiome = normalizeBiomeKey(biomeKey) ?? "plains";
   if (isSnow && layerDepth === "ground") {
     return SNOW_GROUND_RGB;
   }
 
-  const hex = getBiomeColor(biomeKey);
+  const hex = getBiomeBaseHex(normalizedBiome);
   const base = hexToRgb(hex);
-  switch (layerDepth) {
-    // Close layers: mix toward deep warm shadow for strong presence
-    case "foreground":
-      return mixRgb(base, [18, 14,  8], 0.42);
-    case "near1":
-      return mixRgb(base, [28, 22, 14], 0.32);
-    case "near2":
-      return mixRgb(base, [45, 42, 35], 0.18);
-    // Distant layers: mix toward cool light atmospheric haze so they recede
-    case "mid":
-      return mixRgb(base, [152, 158, 168], 0.32);
-    case "far":
-      return mixRgb(base, [192, 200, 214], 0.54);
-    default:
-      return base; // "ground": raw biome colour
+  const shade = DEPTH_SHADE_BY_LAYER[layerDepth] ?? DEPTH_SHADE_BY_LAYER.ground;
+  if (!shade.target) {
+    return capToBiomePalette(base, normalizedBiome);
   }
+  return capToBiomePalette(
+    mixRgb(base, shade.target, shade.amount),
+    normalizedBiome,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -265,21 +261,6 @@ export function normalizeBiomeKey(biomeKey) {
     return BIOME_INFO[biomeKey]?.key ?? null;
   }
   return biomeKey ?? null;
-}
-
-export function hexToRgb(hex) {
-  const value = hex.replace("#", "");
-  return [
-    Number.parseInt(value.slice(0, 2), 16),
-    Number.parseInt(value.slice(2, 4), 16),
-    Number.parseInt(value.slice(4, 6), 16),
-  ];
-}
-
-export function mixRgb(base, target, amount) {
-  return base.map((channel, index) =>
-    Math.round(channel * (1 - amount) + target[index] * amount),
-  );
 }
 
 export function rgbToCss(rgb) {

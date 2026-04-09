@@ -6,21 +6,31 @@ import {
   sampleTravelBiomeBandPoints,
 } from "../game/travel.js?v=20260408a";
 import { createJourneyScene } from "../game/journeyScene.js?v=20260408b";
-import { renderPlayWorldDynamic } from "../render/renderer.js?v=20260408l";
+import {
+  renderPlayWorldDynamic,
+  renderPlayWorldStatic,
+} from "../render/renderer.js?v=20260408l";
 import { inspectWorldAt } from "../inspector.js?v=20260408b";
 import { createPlayCamera as buildPlayCamera } from "./cameraState.js?v=20260407a";
 import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260408a";
-import { createPlayMapCacheManager } from "./playMapCache.js?v=20260408j";
+import { createMapAtlasCacheManager } from "./mapAtlasCache.js?v=20260408h";
 import { createPlayController } from "./playController.js?v=20260408j";
 import { createPlaySubViewController } from "./playSubView.js?v=20260408c";
-import { waitForNextPaint } from "./viewState.js?v=20260403a";
+import {
+  createTransitionController,
+  waitForNextPaintIfActive,
+} from "./viewState.js?v=20260403a";
 
 export function createPlaySession({ refs, state, syncModeUi }) {
-  let playModeTransitionId = 0;
-  const playMapCache = createPlayMapCacheManager({
-    playCanvas: refs.playCanvas,
+  const playModeTransition = createTransitionController();
+  const playMapCache = createMapAtlasCacheManager({
+    canvas: refs.playCanvas,
     getWorld: () => state.currentWorld,
     getCameraState: createPlayCamera,
+    renderStaticScene: renderPlayWorldStatic,
+    getStaticKey(renderOptions = {}) {
+      return `snow:${renderOptions.showSnow ? 1 : 0}`;
+    },
   });
 
   const journeyScene = createJourneyScene({
@@ -78,31 +88,31 @@ export function createPlaySession({ refs, state, syncModeUi }) {
 
     if (state.playState.viewMode === "map") {
       state.playProfiler.measure("play-map-render", () => {
-        const validCityIds = getValidTargetIds(state.playState);
-        const visibleCityIds = getVisibleCityIds(
+        const validPoiIds = getValidTargetIds(state.playState);
+        const visiblePoiIds = getVisiblePoiIds(
           state.currentWorld,
           state.playState,
-          validCityIds,
+          validPoiIds,
         );
         const renderOptions = {
           showSnow: state.renderOptions.showSnow,
           showBiomeLabels: state.playMapOptions.showBiomeLabels,
           showPoiLabels: state.playMapOptions.showPoiLabels,
-          poiLabelIds: visibleCityIds,
+          visiblePoiIds,
           discoveredCells: state.playState.discoveredCells,
           cameraState: createPlayCamera(),
           playerStart: state.playState.position,
           fogOfWar: {
             enabled: true,
             playState: state.playState,
-            radiusCells: state.currentWorld.params?.fogVisionRadius ?? 18,
+            radiusCells: state.currentWorld.params.fogVisionRadius,
           },
-          cityOverlay: {
-            validCityIds,
-            visibleCityIds,
+          poiOverlay: {
+            validPoiIds,
+            visiblePoiIds,
             onlyValid: true,
-            hoveredCityId: state.playState.hoveredCityId,
-            pressedCityId: state.playState.pressedCityId,
+            hoveredPoiId: state.playState.hoveredCityId,
+            pressedPoiId: state.playState.pressedCityId,
           },
           travelDebug:
             state.playMapOptions.debugTravelSampling && state.playState.travel
@@ -161,7 +171,7 @@ export function createPlaySession({ refs, state, syncModeUi }) {
       return;
     }
 
-    const transitionId = ++playModeTransitionId;
+    const transitionId = playModeTransition.begin();
     state.currentMode = "play";
     state.playLoading = true;
     state.editorLoading = false;
@@ -178,24 +188,27 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     clearHover(refs.playTooltip);
     syncModeUi();
 
-    await waitForNextPaint(1);
-    if (transitionId !== playModeTransitionId) {
+    if (
+      !(await waitForNextPaintIfActive(playModeTransition, transitionId, 1))
+    ) {
       return;
     }
 
     renderPlayWorld();
     playController.ensureAnimation();
 
-    await waitForNextPaint(1);
-    if (transitionId !== playModeTransitionId) {
+    if (
+      !(await waitForNextPaintIfActive(playModeTransition, transitionId, 1))
+    ) {
       return;
     }
 
     state.playLoading = false;
     syncModeUi();
 
-    await waitForNextPaint(1);
-    if (transitionId !== playModeTransitionId) {
+    if (
+      !(await waitForNextPaintIfActive(playModeTransition, transitionId, 1))
+    ) {
       return;
     }
 
@@ -210,8 +223,8 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     );
   }
 
-  function getVisibleCityIds(world, playState, validCityIds) {
-    const visibleIds = new Set(validCityIds);
+  function getVisiblePoiIds(world, playState, validPoiIds) {
+    const visibleIds = new Set(validPoiIds);
 
     if (playState?.currentCityId != null) {
       visibleIds.add(playState.currentCityId);
@@ -222,7 +235,7 @@ export function createPlaySession({ refs, state, syncModeUi }) {
       return Array.from(visibleIds);
     }
 
-    const pointsOfInterest = world.features?.pointsOfInterest ?? world.cities ?? [];
+    const pointsOfInterest = world.features.pointsOfInterest;
     for (const poi of pointsOfInterest) {
       if (!poi) {
         continue;

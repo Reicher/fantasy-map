@@ -1,6 +1,7 @@
 import { BIOME_KEYS } from "../config.js";
 import { isSnowCell } from "../generator/surfaceModel.js?v=20260402b";
 import { clamp, coordsOf } from "../utils.js";
+import { MOUNTAIN_COLORS } from "./colorTokens.js";
 import { glyphNoise } from "./hash.js";
 
 const MOUNTAIN_ROAD_ANCHOR_EXCLUSION_RADIUS = 1.12;
@@ -320,13 +321,13 @@ export function drawMountainGlyph(ctx, glyph) {
   const ridgeDip = baseDipY - height * (0.05 + glyph.noise * 0.04);
   const fillGradient = ctx.createLinearGradient(x, peakY, x, baseY + height * 0.18);
   if (glyph.snowSurface) {
-    fillGradient.addColorStop(0, "rgba(246, 244, 239, 0.98)");
-    fillGradient.addColorStop(0.62, "rgba(235, 233, 228, 0.94)");
-    fillGradient.addColorStop(1, "rgba(229, 227, 222, 0.88)");
+    fillGradient.addColorStop(0, MOUNTAIN_COLORS.gradient.snow.top);
+    fillGradient.addColorStop(0.62, MOUNTAIN_COLORS.gradient.snow.mid);
+    fillGradient.addColorStop(1, MOUNTAIN_COLORS.gradient.snow.bottom);
   } else {
-    fillGradient.addColorStop(0, "rgba(134, 128, 121, 0.96)");
-    fillGradient.addColorStop(0.62, "rgba(114, 108, 102, 0.9)");
-    fillGradient.addColorStop(1, "rgba(121, 115, 108, 0.58)");
+    fillGradient.addColorStop(0, MOUNTAIN_COLORS.gradient.rock.top);
+    fillGradient.addColorStop(0.62, MOUNTAIN_COLORS.gradient.rock.mid);
+    fillGradient.addColorStop(1, MOUNTAIN_COLORS.gradient.rock.bottom);
   }
 
   ctx.fillStyle = fillGradient;
@@ -338,7 +339,7 @@ export function drawMountainGlyph(ctx, glyph) {
   ctx.closePath();
   ctx.fill();
 
-  ctx.strokeStyle = glyph.snowSurface ? "rgba(107, 102, 94, 0.84)" : "rgba(64, 56, 47, 0.9)";
+  ctx.strokeStyle = glyph.snowSurface ? MOUNTAIN_COLORS.ridge.snow : MOUNTAIN_COLORS.ridge.rock;
   ctx.lineWidth = 0.75 + height * 0.018;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
@@ -349,7 +350,7 @@ export function drawMountainGlyph(ctx, glyph) {
   ctx.quadraticCurveTo(x + width * (0.11 + (1 - shoulder) * 0.08), peakY + height * (0.19 + glyph.body * 0.04), rightX, rightFootY);
   ctx.stroke();
 
-  ctx.strokeStyle = glyph.snowSurface ? "rgba(186, 183, 177, 0.5)" : "rgba(116, 112, 108, 0.42)";
+  ctx.strokeStyle = glyph.snowSurface ? MOUNTAIN_COLORS.detail.snow : MOUNTAIN_COLORS.detail.rock;
   ctx.lineWidth = 0.28 + height * 0.008;
   ctx.beginPath();
   ctx.moveTo(leftX + width * (0.3 + shoulder * 0.16), leftFootY + height * 0.04);
@@ -405,7 +406,7 @@ function drawMountainSnowCap(ctx, geometry) {
   const leftInset = width * 0.01;
   const rightInset = width * 0.01;
 
-  ctx.fillStyle = "rgba(245, 241, 233, 0.95)";
+  ctx.fillStyle = MOUNTAIN_COLORS.snowCap;
   ctx.beginPath();
   ctx.moveTo(peakX, peakY + height * 0.05);
   ctx.lineTo(leftBase.x + leftInset, leftBase.y);

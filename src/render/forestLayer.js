@@ -6,7 +6,7 @@ import { glyphNoise } from "./hash.js";
 export function collectForestRenderGlyphs(world, viewport, options = {}) {
   const showSnow = options.showSnow !== false;
   const regionFeatureById = new Map(world.features.biomeRegions.map((region) => [region.id, region]));
-  const roadSegments = buildCanvasRoadSegments(world.geometry?.roads ?? [], viewport);
+  const roadSegments = buildCanvasRoadSegments(world.geometry.roads, viewport);
   const entries = [];
 
   for (const region of world.geometry.biomes) {

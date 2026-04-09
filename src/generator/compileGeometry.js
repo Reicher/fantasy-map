@@ -100,16 +100,11 @@ function compileLabelGeometry(world) {
     y: poi.y + 0.5,
   }));
 
-  const cities = pointsOfInterest.filter(
-    (poi) => String(poi.name ?? "").trim().length > 0,
-  );
-
   return {
     biomeRegions,
     mountainRegions,
     lakes,
     pointsOfInterest,
-    cities,
   };
 }
 

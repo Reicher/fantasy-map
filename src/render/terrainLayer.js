@@ -1,5 +1,13 @@
-import { BIOME_INFO, BIOME_KEYS } from "../config.js";
+import { BIOME_KEYS } from "../config.js";
 import { isFrozenLake, isSnowCell } from "../generator/surfaceModel.js?v=20260402b";
+import {
+  ALPHA,
+  WORLD_RGB,
+  capToBiomePalette,
+  capToGamePalette,
+  getBiomeBaseRgb,
+  rgbToRgbaString,
+} from "../palette/colorSystem.js";
 import { clamp, coordsOf, forEachNeighbor, indexOf } from "../utils.js";
 import { COAST } from "./constants.js";
 import { hashSeed, nextHash } from "./hash.js";
@@ -35,7 +43,13 @@ export function drawTerrainRaster(ctx, world, viewport, options = {}) {
 
   if (showSnow) {
     for (const snowRegion of world.geometry.snowRegions ?? []) {
-      fillLoops(ctx, snowRegion.loops, viewport, "rgba(244, 243, 238, 0.99)", 1.15);
+      fillLoops(
+        ctx,
+        snowRegion.loops,
+        viewport,
+        rgbToRgbaString(WORLD_RGB.snow, ALPHA.snowFill),
+        1.15
+      );
     }
   }
 
@@ -100,12 +114,12 @@ function pickMountainBackdropColor(region, world, regionCells, showSnow) {
     showSnow
   );
 
-  return [
+  return quantizeRgb([
     Math.round(borrowed[0] * 0.9 + 214 * 0.1),
     Math.round(borrowed[1] * 0.9 + 205 * 0.1),
     Math.round(borrowed[2] * 0.9 + 191 * 0.1),
     255
-  ];
+  ]);
 }
 
 function getLakeFillColor(world, lake, showSnow) {
@@ -114,7 +128,7 @@ function getLakeFillColor(world, lake, showSnow) {
   }
 
   if (isFrozenLake(world.climate, world.terrain, lake, showSnow)) {
-    return [228, 233, 236, 255];
+    return [...WORLD_RGB.lakeFrozen, 255];
   }
 
   return pickCellColor(BIOME_KEYS.LAKE, 0.18, 0, 0, 0.5, 0.7, 0.5, false);
@@ -133,7 +147,7 @@ export function drawTerrainTextures(ctx, world, viewport, options = {}) {
   const snowLoops = showSnow ? (geometry.snowRegions ?? []).flatMap((region) => region.loops) : [];
 
     drawTerrainTexturePass(ctx, viewport, desertLoops, () => {
-    ctx.strokeStyle = "rgba(165, 136, 86, 0.42)";
+    ctx.strokeStyle = rgbToRgbaString([165, 136, 86], ALPHA.medium);
     ctx.lineWidth = 0.9;
     for (let y = startY; y <= endY; y += 1) {
       for (let x = startX; x <= endX; x += 1) {
@@ -141,14 +155,14 @@ export function drawTerrainTextures(ctx, world, viewport, options = {}) {
         if (climate.biome[cell] !== BIOME_KEYS.DESERT) {
           continue;
         }
-        drawTerrainTextureCell(ctx, viewport, cell, x, y, terrain.width, BIOME_KEYS.DESERT);
+        drawTerrainTextureCell(ctx, viewport, cell, x, y, BIOME_KEYS.DESERT);
       }
     }
   });
 
   if (snowLoops.length > 0) {
     drawTerrainTexturePass(ctx, viewport, snowLoops, () => {
-      ctx.strokeStyle = "rgba(181, 188, 196, 0.52)";
+      ctx.strokeStyle = rgbToRgbaString([181, 188, 196], ALPHA.strong);
       ctx.lineWidth = 0.85;
       for (let y = startY; y <= endY; y += 1) {
         for (let x = startX; x <= endX; x += 1) {
@@ -165,7 +179,7 @@ export function drawTerrainTextures(ctx, world, viewport, options = {}) {
           ) {
             continue;
           }
-          drawTerrainTextureCell(ctx, viewport, cell, x, y, terrain.width, "snow");
+          drawTerrainTextureCell(ctx, viewport, cell, x, y, "snow");
         }
       }
     });
@@ -173,11 +187,19 @@ export function drawTerrainTextures(ctx, world, viewport, options = {}) {
 }
 
 export function drawShorelines(ctx, geometry, viewport) {
-  strokeLoops(ctx, geometry.coastlineLoops ?? [], viewport, "rgba(126, 104, 72, 0.26)", 2.6, null, 0.75);
+  strokeLoops(
+    ctx,
+    geometry.coastlineLoops ?? [],
+    viewport,
+    rgbToRgbaString([126, 104, 72], ALPHA.subtle),
+    2.6,
+    null,
+    0.75
+  );
   strokeLoops(ctx, geometry.coastlineLoops ?? [], viewport, COAST, 1.45, null, 0.5);
   const lakeLoops = (geometry.lakes ?? []).flatMap((lake) => lake.loops);
-  strokeLoops(ctx, lakeLoops, viewport, "rgba(104, 118, 126, 0.24)", 1.8, null, 0.45);
-  strokeLoops(ctx, lakeLoops, viewport, "rgba(69, 92, 101, 0.72)", 0.95, null, 0.3);
+  strokeLoops(ctx, lakeLoops, viewport, rgbToRgbaString([104, 118, 126], ALPHA.subtle), 1.8, null, 0.45);
+  strokeLoops(ctx, lakeLoops, viewport, rgbToRgbaString([69, 92, 101], ALPHA.vivid), 0.95, null, 0.3);
 }
 
 export function drawBiomeBorders(ctx, geometry, viewport) {
@@ -190,7 +212,7 @@ export function drawBiomeBorders(ctx, geometry, viewport) {
       ctx,
       region.loops,
       viewport,
-      "rgba(90, 73, 49, 0.16)",
+      rgbToRgbaString([90, 73, 49], ALPHA.soft),
       0.75,
       null,
       0.18
@@ -200,16 +222,16 @@ export function drawBiomeBorders(ctx, geometry, viewport) {
 }
 
 function pickCellColor(biomeKey, elevation, mountain, riverStrength, temperature, moisture, provinceField, showSnow) {
-  const info = BIOME_INFO[biomeKey];
-  if (!info) {
+  const baseColor = getBiomeBaseRgb(biomeKey);
+  if (!baseColor) {
     return [0, 0, 0, 255];
   }
 
   if (biomeKey === BIOME_KEYS.OCEAN) {
-    return [138, 160, 168, 255];
+    return [...WORLD_RGB.ocean, 255];
   }
 
-  const [r, g, b] = hexToRgb(info.color);
+  const [r, g, b] = baseColor;
   let mix = 0.1 + elevation * 0.14 + mountain * 0.06;
   if (biomeKey === BIOME_KEYS.LAKE) {
     mix = 0.02;
@@ -237,14 +259,15 @@ function pickCellColor(biomeKey, elevation, mountain, riverStrength, temperature
   );
 
   if (biomeKey === BIOME_KEYS.MOUNTAIN) {
-    return [193, 181, 163, 255];
+    return [...WORLD_RGB.mountain, 255];
   }
 
   if (isSnowCell(biomeKey, elevation, mountain, temperature, showSnow)) {
-    return [244, 243, 238, 255];
+    return [...WORLD_RGB.snow, 255];
   }
 
-  return [rr, gg, bb, 255];
+  const capped = capToBiomePalette([rr, gg, bb], biomeKey);
+  return [capped[0], capped[1], capped[2], 255];
 }
 
 function fillLoops(ctx, loops, viewport, fillStyle, sealWidth = 1.2) {
@@ -359,13 +382,9 @@ function pointNoise(x, y, index) {
   return state / 4294967295;
 }
 
-function hexToRgb(hex) {
-  const value = hex.replace("#", "");
-  return [
-    Number.parseInt(value.slice(0, 2), 16),
-    Number.parseInt(value.slice(2, 4), 16),
-    Number.parseInt(value.slice(4, 6), 16)
-  ];
+function quantizeRgb(color) {
+  const capped = capToGamePalette(color);
+  return [capped[0], capped[1], capped[2], color[3] ?? 255];
 }
 
 function colorToRgba(color) {
@@ -416,7 +435,7 @@ function drawTerrainTexturePass(ctx, viewport, loops, drawFn) {
   ctx.restore();
 }
 
-function drawTerrainTextureCell(ctx, viewport, cell, x, y, width, type) {
+function drawTerrainTextureCell(ctx, viewport, cell, x, y, type) {
   let state = hashSeed(`terrain-texture:${cell}`);
   state = nextHash(state);
   const chance = (state % 1000) / 1000;

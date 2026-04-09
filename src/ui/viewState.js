@@ -24,3 +24,25 @@ export function waitForNextPaint(frames = 1) {
     requestAnimationFrame(step);
   });
 }
+
+export function createTransitionController() {
+  let token = 0;
+  return {
+    begin() {
+      token += 1;
+      return token;
+    },
+    isActive(activeToken) {
+      return activeToken === token;
+    },
+  };
+}
+
+export async function waitForNextPaintIfActive(
+  transitionController,
+  activeToken,
+  frames = 1,
+) {
+  await waitForNextPaint(frames);
+  return transitionController.isActive(activeToken);
+}

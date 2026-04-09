@@ -1,4 +1,5 @@
 import { BIOME_KEYS } from "../config.js";
+import { LABEL_COLORS } from "./colorTokens.js";
 
 export function drawLabels(ctx, world, viewport, options = {}) {
   const {
@@ -8,6 +9,7 @@ export function drawLabels(ctx, world, viewport, options = {}) {
   } = options;
   const placedBoxes = [];
   const regionLabelSettings = getRegionLabelSettings(viewport);
+  const visiblePoiIds = resolveVisiblePoiIdsForLabels(options);
   const opacity = 0.9;
 
   ctx.save();
@@ -46,13 +48,7 @@ export function drawLabels(ctx, world, viewport, options = {}) {
   }
 
   if (showPoiLabels) {
-    drawPoiLabels(
-      ctx,
-      world,
-      viewport,
-      placedBoxes,
-      options.poiLabelIds ?? null,
-    );
+    drawPoiLabels(ctx, world, viewport, placedBoxes, visiblePoiIds);
   }
 
   ctx.restore();
@@ -65,7 +61,7 @@ function reservePoiCollisionBoxesForMapNames(
   options,
   discoveredCells,
 ) {
-  const pois = world.geometry?.labels?.pointsOfInterest ?? [];
+  const pois = world.geometry.labels.pointsOfInterest;
   if (!pois.length) {
     return placedBoxes.length;
   }
@@ -116,19 +112,12 @@ function reservePoiCollisionBoxesForMapNames(
   return placedBoxes.length;
 }
 
-function resolveVisiblePoiIdsForLabels(options = {}) {
-  return (
-    options.cityOverlay?.visiblePoiIds ??
-    options.cityOverlay?.visibleCityIds ??
-    options.visiblePoiIds ??
-    options.visibleCityIds ??
-    options.poiLabelIds ??
-    null
-  );
-}
-
 function getPoiCollisionScale(viewport) {
   return Math.max(2.1, Math.min(6.2, viewport.zoom * 1.32));
+}
+
+function resolveVisiblePoiIdsForLabels(options = {}) {
+  return options.poiOverlay?.visiblePoiIds ?? options.visiblePoiIds ?? null;
 }
 
 function drawLakeLabels(ctx, world, viewport, placedBoxes, settings, discoveredCells) {
@@ -164,8 +153,8 @@ function drawLakeLabels(ctx, world, viewport, placedBoxes, settings, discoveredC
 
     placedBoxes.push(box);
     ctx.lineWidth = 4;
-    ctx.strokeStyle = "rgba(237, 233, 224, 0.82)";
-    ctx.fillStyle = "rgba(71, 92, 109, 0.84)";
+    ctx.strokeStyle = LABEL_COLORS.lake.stroke;
+    ctx.fillStyle = LABEL_COLORS.lake.fill;
     ctx.strokeText(label, point.x, point.y);
     ctx.fillText(label, point.x, point.y);
   }
@@ -362,8 +351,7 @@ function isWorldPointDiscovered(world, discoveredCells, point) {
 
 function drawPoiLabels(ctx, world, viewport, placedBoxes, visiblePoiIds = null) {
   const allowedIds = visiblePoiIds ? new Set(visiblePoiIds) : null;
-  const namedPois =
-    world.geometry.labels.pointsOfInterest ?? world.geometry.labels.cities ?? [];
+  const namedPois = world.geometry.labels.pointsOfInterest;
 
   ctx.save();
   ctx.textAlign = "left";
@@ -397,8 +385,8 @@ function drawPoiLabels(ctx, world, viewport, placedBoxes, visiblePoiIds = null) 
 
     placedBoxes.push(box);
     ctx.lineWidth = 3.5;
-    ctx.strokeStyle = "rgba(243, 234, 214, 0.92)";
-    ctx.fillStyle = "rgba(58, 45, 29, 0.92)";
+    ctx.strokeStyle = LABEL_COLORS.poi.stroke;
+    ctx.fillStyle = LABEL_COLORS.poi.fill;
     ctx.strokeText(poi.name, labelX, labelY);
     ctx.fillText(poi.name, labelX, labelY);
   }
@@ -439,8 +427,8 @@ function getRegionLabelSettings(viewport) {
 function getMountainLabelStyle(fontSize) {
   return {
     font: `600 ${fontSize}px Baskerville, "Palatino Linotype", Georgia, serif`,
-    fillStyle: "rgba(88, 78, 68, 0.88)",
-    strokeStyle: "rgba(244, 235, 218, 0.88)",
+    fillStyle: LABEL_COLORS.mountainRegion.fill,
+    strokeStyle: LABEL_COLORS.mountainRegion.stroke,
     lineWidth: 4.6
   };
 }
@@ -450,44 +438,44 @@ function getBiomeLabelStyle(biome, fontSize) {
     case BIOME_KEYS.FOREST:
       return {
         font: `italic ${fontSize}px "Palatino Linotype", Baskerville, Georgia, serif`,
-        fillStyle: "rgba(64, 79, 50, 0.84)",
-        strokeStyle: "rgba(244, 238, 224, 0.86)",
+        fillStyle: LABEL_COLORS.biome.forest.fill,
+        strokeStyle: LABEL_COLORS.biome.forest.stroke,
         lineWidth: 4.1
       };
     case BIOME_KEYS.RAINFOREST:
       return {
         font: `600 italic ${fontSize}px "Palatino Linotype", Baskerville, Georgia, serif`,
-        fillStyle: "rgba(48, 66, 38, 0.88)",
-        strokeStyle: "rgba(244, 239, 226, 0.88)",
+        fillStyle: LABEL_COLORS.biome.rainforest.fill,
+        strokeStyle: LABEL_COLORS.biome.rainforest.stroke,
         lineWidth: 4.2
       };
     case BIOME_KEYS.DESERT:
       return {
         font: `italic ${fontSize}px Baskerville, "Palatino Linotype", Georgia, serif`,
-        fillStyle: "rgba(124, 92, 50, 0.82)",
-        strokeStyle: "rgba(246, 236, 212, 0.82)",
+        fillStyle: LABEL_COLORS.biome.desert.fill,
+        strokeStyle: LABEL_COLORS.biome.desert.stroke,
         lineWidth: 4
       };
     case BIOME_KEYS.TUNDRA:
       return {
         font: `italic ${fontSize}px Georgia, Baskerville, "Palatino Linotype", serif`,
-        fillStyle: "rgba(88, 90, 98, 0.82)",
-        strokeStyle: "rgba(245, 241, 233, 0.88)",
+        fillStyle: LABEL_COLORS.biome.tundra.fill,
+        strokeStyle: LABEL_COLORS.biome.tundra.stroke,
         lineWidth: 4.15
       };
     case BIOME_KEYS.HIGHLANDS:
       return {
         font: `600 italic ${fontSize}px Baskerville, "Palatino Linotype", Georgia, serif`,
-        fillStyle: "rgba(92, 69, 49, 0.84)",
-        strokeStyle: "rgba(244, 235, 214, 0.84)",
+        fillStyle: LABEL_COLORS.biome.highlands.fill,
+        strokeStyle: LABEL_COLORS.biome.highlands.stroke,
         lineWidth: 4.2
       };
     case BIOME_KEYS.PLAINS:
     default:
       return {
         font: `italic ${fontSize}px Baskerville, "Palatino Linotype", Georgia, serif`,
-        fillStyle: "rgba(74, 58, 37, 0.8)",
-        strokeStyle: "rgba(244, 235, 214, 0.84)",
+        fillStyle: LABEL_COLORS.biome.plains.fill,
+        strokeStyle: LABEL_COLORS.biome.plains.stroke,
         lineWidth: 4.2
       };
   }

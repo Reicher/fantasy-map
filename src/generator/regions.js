@@ -2,11 +2,11 @@ import { BIOME_INFO, BIOME_KEYS } from "../config.js";
 import { centroidFromCells, coordsOf, forEachNeighbor, indexOf } from "../utils.js";
 import { expandRegionIds, floodFillByKey, floodFillRegions } from "./grid.js";
 
-export function buildRegions(terrain, climate, hydrology, params = {}) {
+export function buildRegions(terrain, climate, hydrology, params) {
   const { width, height, size, isLand, mountainField } = terrain;
   const { biome } = climate;
   const { lakeIdByCell } = hydrology;
-  const minBiomeSize = Math.max(0, Math.round(Number(params.minBiomeSize ?? 4)));
+  const minBiomeSize = Math.max(0, Math.round(params.minBiomeSize));
 
   collapseDiagonalBiomeSingletons(width, height, isLand, lakeIdByCell, biome, 2);
   if (minBiomeSize > 0) {

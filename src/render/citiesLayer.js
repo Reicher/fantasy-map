@@ -1,25 +1,12 @@
 import { drawPoiMarkerGlyph } from "./poiGlyph.js?v=20260408b";
 
-export function drawCities(ctx, cities, viewport, options = {}) {
-  drawPointsOfInterest(ctx, cities, viewport, options);
-}
-
-export function drawPointsOfInterest(
-  ctx,
-  pointsOfInterest,
-  viewport,
-  options = {},
-) {
-  const validIds = new Set(options.validCityIds ?? options.validPoiIds ?? []);
+export function drawCities(ctx, pointsOfInterest, viewport, options = {}) {
+  const validIds = new Set(options.validPoiIds ?? []);
   const visibleIds = new Set(
-    options.visibleCityIds ??
-      options.visiblePoiIds ??
-      options.validCityIds ??
-      options.validPoiIds ??
-      [],
+    options.visiblePoiIds ?? options.validPoiIds ?? [],
   );
-  const hoveredId = options.hoveredCityId ?? options.hoveredPoiId ?? null;
-  const pressedId = options.pressedCityId ?? options.pressedPoiId ?? null;
+  const hoveredId = options.hoveredPoiId ?? null;
+  const pressedId = options.pressedPoiId ?? null;
   const onlyValid = options.onlyValid === true;
   const symbolScale = getPoiZoomScale(viewport);
 

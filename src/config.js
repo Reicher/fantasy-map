@@ -74,53 +74,83 @@ const labelRoadCityAvoidance = (value) =>
       : value < 70
         ? "Tydligt"
         : value < 90
-          ? "Högt"
+        ? "Högt"
           : "Max";
+const uiMeta = (label, tab, order) => ({
+  ui: {
+    label,
+    tab,
+    order,
+  },
+});
 
 const NUMERIC_PARAM_SCHEMA = {
-  mapSize: numberParam(58, 10, 100, labelPercent),
-  mountainousness: numberParam(54, 0, 100, labelPercent),
-  cityDensity: numberParam(20, 0, 100, labelPercent),
-  riverAmount: numberParam(56, 0, 100, labelPercent),
+  mapSize: numberParam(58, 10, 100, labelPercent, uiMeta("Kartstorlek", "karta", 10)),
+  coastComplexity: numberParam(62, 0, 100, labelPercent, uiMeta("Kustlinje", "karta", 20)),
+  mountainousness: numberParam(54, 0, 100, labelPercent, uiMeta("Bergighet", "karta", 30)),
+  temperatureBias: numberParam(50, 0, 100, labelClimateTemperature, uiMeta("Klimat", "karta", 40)),
+  moistureBias: numberParam(50, 0, 100, labelClimateMoisture, uiMeta("Fuktighet", "karta", 50)),
+  riverAmount: numberParam(56, 0, 100, labelPercent, uiMeta("Floder", "vatten", 10)),
   lakeAmount: numberParam(56, 0, 100, labelPercent, {
+    ...uiMeta("Sjömängd", "vatten", 20),
     legacyFallbackKey: "waterRichness",
     legacyDefault: 56,
   }),
   lakeSize: numberParam(52, 0, 100, labelPercent, {
+    ...uiMeta("Sjöstorlek", "vatten", 30),
     legacyFallbackKey: "waterRichness",
     legacyDefault: 56,
   }),
-  coastComplexity: numberParam(62, 0, 100, labelPercent),
+  cityDensity: numberParam(20, 0, 100, labelPercent, uiMeta("POI-täthet", "poi", 10)),
+  coastalBias: numberParam(50, 0, 100, labelCoastalBias, uiMeta("Vattennära bias", "poi", 20)),
+  poiSettlementWeight: numberParam(62, 0, 100, labelRoundedPercent, uiMeta("Andel bosättningar", "poi", 30)),
+  poiCrashSiteWeight: numberParam(28, 0, 100, labelRoundedPercent, uiMeta("Andel kraschplatser", "poi", 40)),
+  poiSignpostWeight: numberParam(24, 0, 100, labelRoundedPercent, uiMeta("Andel vägvisare", "poi", 50)),
+  roadShortcutAggression: numberParam(50, 0, 100, labelRoadShortcut, uiMeta("Genvägar mellan POI", "vagar", 10)),
+  roadReuseBias: numberParam(50, 0, 100, labelRoadReuse, uiMeta("Huvudleder", "vagar", 20)),
+  roadCityAvoidance: numberParam(50, 0, 100, labelRoadCityAvoidance, uiMeta("Undvik POI-kärnor", "vagar", 30)),
+  roadMaxConnectionsPerCity: numberParam(
+    5,
+    2,
+    8,
+    (value) => `${Math.round(value)} vägar`,
+    uiMeta("Max vägar per POI", "vagar", 40),
+  ),
   edgeDetail: numberParam(
     300,
     180,
     520,
     (value) =>
       `${Math.round(value)} x ${Math.round(value * (MAP_HEIGHT / MAP_WIDTH))}`,
+    {
+      ...uiMeta("Rasterupplösning", "avancerat", 10),
+      step: 10,
+    },
   ),
-  minBiomeSize: numberParam(15, 0, 30, (value) => `${Math.round(value)} celler`),
+  minBiomeSize: numberParam(
+    15,
+    0,
+    30,
+    (value) => `${Math.round(value)} celler`,
+    uiMeta("Minsta biomstorlek", "avancerat", 20),
+  ),
   renderScale: numberParam(
     150,
     50,
     250,
     (value) =>
       `${(Math.max(50, value) / 100).toFixed(value % 100 === 0 ? 0 : 2)}x`,
+    {
+      ...uiMeta("Renderupplösning", "avancerat", 30),
+      step: 25,
+    },
   ),
-  fogVisionRadius: numberParam(18, 6, 40, (value) => `${Math.round(value)} celler`),
-  temperatureBias: numberParam(50, 0, 100, labelClimateTemperature),
-  moistureBias: numberParam(50, 0, 100, labelClimateMoisture),
-  coastalBias: numberParam(50, 0, 100, labelCoastalBias),
-  poiSettlementWeight: numberParam(62, 0, 100, labelRoundedPercent),
-  poiCrashSiteWeight: numberParam(28, 0, 100, labelRoundedPercent),
-  poiSignpostWeight: numberParam(24, 0, 100, labelRoundedPercent),
-  roadShortcutAggression: numberParam(50, 0, 100, labelRoadShortcut),
-  roadReuseBias: numberParam(50, 0, 100, labelRoadReuse),
-  roadCityAvoidance: numberParam(50, 0, 100, labelRoadCityAvoidance),
-  roadMaxConnectionsPerCity: numberParam(
-    5,
-    2,
-    8,
-    (value) => `${Math.round(value)} vägar`,
+  fogVisionRadius: numberParam(
+    18,
+    6,
+    40,
+    (value) => `${Math.round(value)} celler`,
+    uiMeta("Siktradie", "avancerat", 40),
   ),
 };
 

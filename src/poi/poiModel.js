@@ -80,12 +80,7 @@ export function normalizePoiMarker(marker) {
   return POI_MARKERS.includes(marker) ? marker : "settlement";
 }
 
-export function pickPoiMarker(rng, input = {}, legacyMaxRoadDegree = 1) {
-  const context =
-    typeof input === "number"
-      ? { roadDegree: input, maxRoadDegree: legacyMaxRoadDegree }
-      : input;
-
+export function pickPoiMarker(rng, context = {}) {
   const roadDegree = Math.max(0, Number(context.roadDegree ?? 0));
   const maxRoadDegree = Math.max(1, Number(context.maxRoadDegree ?? 1));
   const allowSignpost = context.allowSignpost ?? true;

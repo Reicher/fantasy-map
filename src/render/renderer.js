@@ -73,8 +73,8 @@ function renderScene(canvas, world, options = {}, scene = {}) {
   const ctx = canvas.getContext("2d");
   const viewport =
     options.viewport ?? createViewport(world, options.cameraState);
-  const { terrain, hydrology, climate, regions, cities, geometry } = world;
-  const pointsOfInterest = world.features?.pointsOfInterest ?? cities;
+  const { terrain, hydrology, climate, regions, geometry } = world;
+  const pointsOfInterest = world.features.pointsOfInterest;
   const renderWidth = options.renderWidth ?? RENDER_WIDTH;
   const renderHeight = options.renderHeight ?? RENDER_HEIGHT;
   const scaleX = canvas.width / renderWidth;
@@ -178,7 +178,7 @@ function renderScene(canvas, world, options = {}, scene = {}) {
     drawLabels(ctx, world, viewport, options);
   }
   if (showCities) {
-    drawCities(ctx, pointsOfInterest, viewport, options.cityOverlay ?? {});
+    drawCities(ctx, pointsOfInterest, viewport, options.poiOverlay ?? {});
   }
   if (showFogOfWar && options.fogOfWar?.enabled) {
     drawFogOfWar(ctx, world, viewport, options.fogOfWar);
@@ -202,7 +202,7 @@ function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
   const ctx = canvas.getContext("2d");
   const viewport =
     options.viewport ?? createViewport(world, options.cameraState);
-  const pointsOfInterest = world.features?.pointsOfInterest ?? world.cities;
+  const pointsOfInterest = world.features.pointsOfInterest;
   const renderWidth = options.renderWidth ?? RENDER_WIDTH;
   const renderHeight = options.renderHeight ?? RENDER_HEIGHT;
   const scaleX = canvas.width / renderWidth;
@@ -234,7 +234,7 @@ function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
     drawLabels(ctx, world, viewport, options);
   }
   if (showCities) {
-    drawCities(ctx, pointsOfInterest, viewport, options.cityOverlay ?? {});
+    drawCities(ctx, pointsOfInterest, viewport, options.poiOverlay ?? {});
   }
   ctx.restore();
   if (showPlayerMarker) {

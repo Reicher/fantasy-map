@@ -18,7 +18,7 @@ export function drawFogOfWar(ctx, world, viewport, fogState = {}) {
 
   overlayCtx.fillStyle = "rgba(108, 106, 101, 0.96)";
   overlayCtx.fillRect(0, 0, overlay.width, overlay.height);
-  drawFogTexture(overlayCtx, world.params?.seed ?? "fog");
+  drawFogTexture(overlayCtx, world.params.seed);
 
   overlayCtx.save();
   overlayCtx.globalCompositeOperation = "destination-out";

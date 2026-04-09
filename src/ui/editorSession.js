@@ -9,13 +9,31 @@ import {
 } from "./cameraState.js?v=20260407a";
 import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260408a";
 import { attachEditorController } from "./editorController.js?v=20260407a";
-import { createEditorMapCacheManager } from "./editorMapCache.js?v=20260408j";
+import { renderEditorWorld } from "../render/renderer.js?v=20260408l";
+import { createMapAtlasCacheManager } from "./mapAtlasCache.js?v=20260408h";
 
 export function createEditorSession({ refs, state, syncViewUi }) {
-  const mapCache = createEditorMapCacheManager({
+  const mapCache = createMapAtlasCacheManager({
     canvas: refs.canvas,
     getWorld: () => state.currentWorld,
     getCameraState: () => state.cameraState,
+    renderStaticScene: renderEditorWorld,
+    getStaticKey(renderOptions = {}) {
+      return [
+        renderOptions.showSnow ? 1 : 0,
+        renderOptions.showBiomeLabels ? 1 : 0,
+        renderOptions.showPoiLabels ? 1 : 0,
+      ].join(":");
+    },
+    getAtlasPadding(world, cameraState) {
+      const zoom = cameraState?.zoom ?? 1;
+      const visibleWidth = world.terrain.width / zoom;
+      const visibleHeight = world.terrain.height / zoom;
+      return {
+        x: Math.max(12, visibleWidth * 0.24),
+        y: Math.max(10, visibleHeight * 0.24),
+      };
+    },
   });
 
   attachEditorController({
