@@ -1,4 +1,4 @@
-import { describePlayHud } from "../game/playViewText.js?v=20260409c";
+import { describePlayHud } from "../game/playViewText.js?v=20260409f";
 import { getPoiTitle } from "../poi/poiModel.js";
 import { setElementVisible } from "./viewState.js?v=20260403a";
 
@@ -144,7 +144,8 @@ export function createPlaySubViewController({
     if (cueKey && shownArrivalCueKeys.has(cueKey)) {
       return;
     }
-    const pois = world?.pointsOfInterest ?? world?.cities;
+    const pois =
+      world?.features?.pointsOfInterest ?? world?.pointsOfInterest ?? world?.cities;
     const poi = targetPoiId == null ? null : pois?.[targetPoiId];
     const title = poi ? getPoiTitle(poi) : "";
     if (!title) {

@@ -3,6 +3,7 @@ export function buildRoadPlanningState({
   roads = [],
   width,
   seedCityIds = new Set(),
+  blockedSourceCityIds = new Set(),
 }) {
   const { activeCityIds, activeRoadIndices } = buildActiveConnectivity(
     cities,
@@ -22,6 +23,7 @@ export function buildRoadPlanningState({
     activeCityIds,
     activeRoadIndices,
     width,
+    blockedSourceCityIds,
   });
   const sourceCells = new Set(sourceSeedCostByCell.keys());
 
@@ -96,12 +98,16 @@ function buildSourceSeedCosts({
   activeCityIds,
   activeRoadIndices,
   width,
+  blockedSourceCityIds,
 }) {
   const sourceSeedCostByCell = new Map();
   const roadAdjacency = new Map();
 
   // Active city cells are always valid seeds.
   for (const cityId of activeCityIds) {
+    if (blockedSourceCityIds.has(cityId)) {
+      continue;
+    }
     const city = cities[cityId];
     if (!city || city.cell == null) {
       continue;
@@ -137,8 +143,8 @@ function classifyAttachmentSource(cell, neighbors, width) {
   const degree = neighbors.size;
 
   if (degree >= 4) {
-    // Keep true crossroads uncommon so T-joins dominate.
-    return { include: isCellSelected(cell, 8), cost: 0.64 };
+    // Favor crossroads as reliable attachment hubs.
+    return { include: isCellSelected(cell, 4), cost: 0.48 };
   }
 
   if (degree === 3) {
@@ -146,22 +152,22 @@ function classifyAttachmentSource(cell, neighbors, width) {
     if (shape === "t") {
       return { include: true, cost: 0.04 };
     }
-    // Y junctions are allowed, but uncommon.
-    return { include: isCellSelected(cell, 20), cost: 1.22 };
+    // Y junctions are allowed, but should be clearly rarer than T joins.
+    return { include: isCellSelected(cell, 40), cost: 1.52 };
   }
 
   if (degree === 2) {
     const straightness = computeStraightness(cell, [...neighbors], width);
     if (straightness >= 0.94) {
-      return { include: isCellSelected(cell, 5), cost: 0.3 };
+      return { include: isCellSelected(cell, 4), cost: 0.26 };
     }
-    // Bent two-way points are a common source of fork-shaped joins, so we
-    // only keep a sparse subset as valid seeds.
-    return { include: isCellSelected(cell, 48), cost: 1.34 };
+    // Bent two-way points are a common source of fork-shaped joins, so keep
+    // these very sparse as valid seeds.
+    return { include: isCellSelected(cell, 80), cost: 1.72 };
   }
 
   // Dead-end attachment is possible, but should be very rare.
-  return { include: isCellSelected(cell, 72), cost: 1.5 };
+  return { include: isCellSelected(cell, 104), cost: 2.04 };
 }
 
 function classifyThreeWayShape(centerCell, neighborCells, width) {

@@ -17,13 +17,13 @@ import {
   buildJourneyStrip,
   extendStripWithTravel,
   PARALLAX_SPEED,
-} from "./journey/journeyStrip.js?v=20260409q";
-import { buildTravelBiomeBandSegments } from "./travel.js?v=20260409c";
+} from "./journey/journeyStrip.js?v=20260409r";
+import { buildTravelBiomeBandSegments } from "./travel.js?v=20260409f";
 import {
   drawPoiMarkerOnCanvas,
   drawJourneyTreeOnCanvas,
   drawPlayerFigure,
-} from "./journey/journeyStyle.js?v=20260409l";
+} from "./journey/journeyStyle.js?v=20260409o";
 import {
   DEFAULT_TIME_OF_DAY_HOURS,
   normalizeTimeOfDayHours,
@@ -38,13 +38,16 @@ const PLAYER_X_FRAC = 0.22;
 
 // Player's feet vertical position (fraction of canvas height).
 // Should sit slightly below the ground top edge.
-const PLAYER_FEET_Y_FRAC = 0.8;
+const PLAYER_FEET_Y_FRAC = 0.83;
 
 // Walk animation frame toggle interval
 const WALK_FRAME_MS = 220;
 
 const POI_MARKER_SCALE = 1.35;
-const PLAYER_VISUAL_HEIGHT_PX = 55;
+const SETTLEMENT_VISUAL_HEIGHT_PX = 472;
+const CRASH_SITE_VISUAL_HEIGHT_PX = 216;
+const SETTLEMENT_UPWARD_OFFSET_PX = 30;
+const CRASH_SITE_UPWARD_OFFSET_PX = 13;
 const SIGNPOST_VISUAL_HEIGHT_PX = 104;
 const SIGNPOST_UPWARD_OFFSET_PX = 18;
 const IDLE_PREVIEW_POINT_COUNT = 14;
@@ -65,6 +68,15 @@ const NIGHT_SKY_BOTTOM_RGB = [49, 70, 104];
 // fades toward the sky horizon colour. 0 = none, 1 = full sky colour.
 const LAYER_HAZE = { far: 0.42, mid: 0.20, near2: 0.07, near1: 0, foreground: 0 };
 const TAU = Math.PI * 2;
+const SKY_BODY_SPRITE_CHROMA_TOLERANCE = 24;
+const SKY_BODY_SIZE_MULTIPLIER = {
+  sun: 1.75,
+  moon: 1.85,
+};
+const JOURNEY_SKY_BODIES_SPRITESHEET = createSkyBodiesSpritesheetImage(
+  new URL("../assets/journey/sun-moon-icons.png", import.meta.url).href,
+);
+let journeySkyBodySprites = null;
 
 // ---------------------------------------------------------------------------
 // Factory
@@ -106,6 +118,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     const isTraveling = Boolean(playState?.travel);
     const showSnow = options.showSnow !== false;
     const worldSnapshot = options.world ?? getWorld();
+    const logStripSummary = options.debug === true;
 
     // Rebuild strip only when a new travel starts (key changes to a non-null value).
     // When travel ends (key → null) we keep the existing strip so the scene
@@ -126,13 +139,13 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
         state.strip = buildJourneyStrip(playState.travel, viewW, viewH, {
           showSnow,
         });
-        printStripSummary(state.strip, "New strip");
+        printStripSummary(state.strip, "New strip", logStripSummary);
       } else {
         // Subsequent journey – extend the existing strip seamlessly from the current dest
         extendStripWithTravel(state.strip, playState.travel, viewW, viewH, {
           showSnow,
         });
-        printStripSummary(state.strip, "Extended strip");
+        printStripSummary(state.strip, "Extended strip", logStripSummary);
       }
       state.lastTravel = playState.travel;
       state.travelKey = nextKey;
@@ -156,7 +169,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       state.lastShowSnow = showSnow;
       state.cachedW = viewW;
       state.cachedH = viewH;
-      printStripSummary(state.strip, "Idle preview strip");
+      printStripSummary(state.strip, "Idle preview strip", logStripSummary);
     } else if (dimensionsChanged || snowModeChanged) {
       // Canvas resized or snow mode changed – rebuild with the same travel data if we have it.
       if (state.lastTravel) {
@@ -166,6 +179,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
         printStripSummary(
           state.strip,
           snowModeChanged ? "Rebuilt strip (snow mode)" : "Rebuilt strip (resize)",
+          logStripSummary,
         );
       }
       state.lastShowSnow = showSnow;
@@ -739,13 +753,21 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     const speed = PARALLAX_SPEED.ground;
     const layerStripLeft = scrollX * speed - playerX;
     const markerY = groundTopY + Math.round((viewH - groundTopY) * 0.15);
+    const pois =
+      world?.features?.pointsOfInterest ?? world?.pointsOfInterest ?? world?.cities ?? [];
 
     const startCanvasX = strip.startMarkerStripX - layerStripLeft;
     const destCanvasX = strip.destMarkerStripX - layerStripLeft;
-    const startMarker =
-      world?.cities?.[activeTravel?.startCityId ?? -1]?.marker ?? "settlement";
-    const destMarker =
-      world?.cities?.[activeTravel?.targetCityId ?? -1]?.marker ?? "settlement";
+    const startPoiId = activeTravel?.startPoiId ?? activeTravel?.startCityId ?? null;
+    const destPoiId = activeTravel?.targetPoiId ?? activeTravel?.targetCityId ?? null;
+    const startPoi =
+      startPoiId == null
+        ? null
+        : pois[startPoiId] ?? world?.cities?.[startPoiId] ?? null;
+    const destPoi =
+      destPoiId == null ? null : pois[destPoiId] ?? world?.cities?.[destPoiId] ?? null;
+    const startMarker = startPoi?.marker ?? "settlement";
+    const destMarker = destPoi?.marker ?? "settlement";
     const startSignpost = startMarker === "signpost";
     const destSignpost = destMarker === "signpost";
 
@@ -754,20 +776,34 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       scale: POI_MARKER_SCALE,
       highlighted: false,
       groundY: playerFeetY,
+      variantSeed: startPoi?.id ?? startPoiId ?? "start",
       minVisualHeightPx: startSignpost
         ? SIGNPOST_VISUAL_HEIGHT_PX
-        : PLAYER_VISUAL_HEIGHT_PX,
-      verticalOffsetPx: startSignpost ? SIGNPOST_UPWARD_OFFSET_PX : 0,
+        : startMarker === "crash-site"
+          ? CRASH_SITE_VISUAL_HEIGHT_PX
+          : SETTLEMENT_VISUAL_HEIGHT_PX,
+      verticalOffsetPx: startSignpost
+        ? SIGNPOST_UPWARD_OFFSET_PX
+        : startMarker === "crash-site"
+          ? CRASH_SITE_UPWARD_OFFSET_PX
+          : SETTLEMENT_UPWARD_OFFSET_PX,
     });
     drawPoiMarkerOnCanvas(ctx, destCanvasX, markerY, {
       marker: destMarker,
       scale: POI_MARKER_SCALE,
       highlighted: true,
       groundY: playerFeetY,
+      variantSeed: destPoi?.id ?? destPoiId ?? "dest",
       minVisualHeightPx: destSignpost
         ? SIGNPOST_VISUAL_HEIGHT_PX
-        : PLAYER_VISUAL_HEIGHT_PX,
-      verticalOffsetPx: destSignpost ? SIGNPOST_UPWARD_OFFSET_PX : 0,
+        : destMarker === "crash-site"
+          ? CRASH_SITE_VISUAL_HEIGHT_PX
+          : SETTLEMENT_VISUAL_HEIGHT_PX,
+      verticalOffsetPx: destSignpost
+        ? SIGNPOST_UPWARD_OFFSET_PX
+        : destMarker === "crash-site"
+          ? CRASH_SITE_UPWARD_OFFSET_PX
+          : SETTLEMENT_UPWARD_OFFSET_PX,
     });
 
     return {
@@ -915,7 +951,8 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
 // Strip summary – printed once per strip build/extend
 // ---------------------------------------------------------------------------
 
-function printStripSummary(strip, label) {
+function printStripSummary(strip, label, enabled = false) {
+  if (!enabled) return;
   const layerOrder = ["ground", "near1", "near2", "mid", "far", "foreground"];
   console.group(
     `[Journey] ${label} — route ${Math.round(strip.routePx)}px, total ${strip.totalStripPx}px`,
@@ -936,8 +973,9 @@ function printStripSummary(strip, label) {
 function travelKey(travel) {
   if (!travel) return null;
   return [
-    travel.startCityId ?? "-",
-    travel.targetCityId ?? "-",
+    travel.startPoiId ?? travel.startCityId ?? "-",
+    travel.targetPoiId ?? travel.targetCityId ?? "-",
+    travel.routeType ?? "-",
     (travel.totalLength ?? 0).toFixed(2),
     travel.biomeSegments?.length ?? 0,
     travel.biomeBandSegments?.near?.segments?.length ?? 0,
@@ -995,10 +1033,12 @@ function createIdlePreviewTravel(world, playState) {
     ? buildTravelBiomeBandSegments(world, points)
     : createEmptyBiomeBands();
 
-  const cityId = playState?.currentCityId ?? null;
+  const poiId = playState?.currentPoiId ?? playState?.currentCityId ?? null;
   return {
-    startCityId: cityId,
-    targetCityId: cityId,
+    startCityId: poiId,
+    targetCityId: poiId,
+    startPoiId: poiId,
+    targetPoiId: poiId,
     routeType: "idle-preview",
     points,
     segmentLengths,
@@ -1150,6 +1190,8 @@ function drawSun(ctx, skyState) {
   ctx.arc(sun.x, sun.y, glowRadius, 0, TAU);
   ctx.fill();
 
+  if (drawSkyBodySprite(ctx, sun, "sun")) return;
+
   ctx.fillStyle = `rgba(255, 242, 201, ${0.72 + sun.visible * 0.22})`;
   ctx.beginPath();
   ctx.arc(sun.x, sun.y, sun.radius, 0, TAU);
@@ -1175,6 +1217,8 @@ function drawMoon(ctx, skyState) {
   ctx.arc(moon.x, moon.y, glowRadius, 0, TAU);
   ctx.fill();
 
+  if (drawSkyBodySprite(ctx, moon, "moon")) return;
+
   ctx.fillStyle = `rgba(235, 243, 255, ${0.44 + moon.visible * 0.5})`;
   ctx.beginPath();
   ctx.arc(moon.x, moon.y, moon.radius, 0, TAU);
@@ -1189,4 +1233,156 @@ function drawNightVeil(ctx, viewW, viewH, skyState) {
   veil.addColorStop(1, `rgba(8, 14, 26, ${alpha})`);
   ctx.fillStyle = veil;
   ctx.fillRect(0, 0, viewW, viewH);
+}
+
+function drawSkyBodySprite(ctx, body, kind) {
+  const sprite = getSkyBodySprite(kind);
+  if (!sprite || sprite.width <= 0 || sprite.height <= 0) return false;
+  const sizeMultiplier = SKY_BODY_SIZE_MULTIPLIER[kind] ?? 1.75;
+  const targetHeight = Math.max(
+    22,
+    Math.round(body.radius * 2 * sizeMultiplier),
+  );
+  const targetWidth = Math.max(
+    22,
+    Math.round(targetHeight * (sprite.width / sprite.height)),
+  );
+  const drawLeft = Math.round(body.x - targetWidth * 0.5);
+  const drawTop = Math.round(body.y - targetHeight * 0.5);
+
+  ctx.save();
+  ctx.globalAlpha = clamp01(0.12 + body.visible * 1.05);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(sprite, drawLeft, drawTop, targetWidth, targetHeight);
+  ctx.restore();
+  return true;
+}
+
+function createSkyBodiesSpritesheetImage(src) {
+  if (typeof Image !== "function") return null;
+  const image = new Image();
+  image.decoding = "async";
+  image.src = src;
+  return image;
+}
+
+function getSkyBodySprite(kind) {
+  const sprites = getSkyBodySprites();
+  return sprites?.[kind] ?? null;
+}
+
+function getSkyBodySprites() {
+  if (journeySkyBodySprites) return journeySkyBodySprites;
+  const sheet = JOURNEY_SKY_BODIES_SPRITESHEET;
+  if (
+    !sheet ||
+    !sheet.complete ||
+    sheet.naturalWidth <= 0 ||
+    sheet.naturalHeight <= 0
+  ) {
+    return null;
+  }
+  journeySkyBodySprites = sliceSkyBodySpritesheet(sheet);
+  return journeySkyBodySprites;
+}
+
+function sliceSkyBodySpritesheet(sheetImage) {
+  const sourceW = sheetImage.naturalWidth;
+  const sourceH = sheetImage.naturalHeight;
+  if (sourceW <= 0 || sourceH <= 0) return null;
+  const splitX = Math.floor(sourceW / 2);
+  if (splitX <= 0 || splitX >= sourceW) return null;
+
+  const sunSprite = extractSkyBodySprite(sheetImage, 0, splitX, sourceH);
+  const moonSprite = extractSkyBodySprite(
+    sheetImage,
+    splitX,
+    sourceW - splitX,
+    sourceH,
+  );
+  if (!sunSprite && !moonSprite) return null;
+  return { sun: sunSprite, moon: moonSprite };
+}
+
+function extractSkyBodySprite(sheetImage, sx, sw, sh) {
+  if (typeof document === "undefined") return null;
+  if (sw <= 0 || sh <= 0) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = sw;
+  canvas.height = sh;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.drawImage(sheetImage, sx, 0, sw, sh, 0, 0, sw, sh);
+  const imageData = ctx.getImageData(0, 0, sw, sh);
+  const pixels = imageData.data;
+  const keySampleX = Math.min(1, sw - 1);
+  const keySampleY = Math.min(1, sh - 1);
+  const keyIndex = (keySampleY * sw + keySampleX) * 4;
+  const keyR = pixels[keyIndex];
+  const keyG = pixels[keyIndex + 1];
+  const keyB = pixels[keyIndex + 2];
+  for (let index = 0; index < pixels.length; index += 4) {
+    const dr = pixels[index] - keyR;
+    const dg = pixels[index + 1] - keyG;
+    const db = pixels[index + 2] - keyB;
+    if (Math.hypot(dr, dg, db) <= SKY_BODY_SPRITE_CHROMA_TOLERANCE) {
+      pixels[index + 3] = 0;
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+
+  const bounds = findOpaqueBounds(imageData, 3);
+  if (!bounds) return null;
+
+  const trimmed = document.createElement("canvas");
+  trimmed.width = bounds.width;
+  trimmed.height = bounds.height;
+  const trimmedCtx = trimmed.getContext("2d");
+  if (!trimmedCtx) return canvas;
+  trimmedCtx.drawImage(
+    canvas,
+    bounds.x,
+    bounds.y,
+    bounds.width,
+    bounds.height,
+    0,
+    0,
+    bounds.width,
+    bounds.height,
+  );
+  return trimmed;
+}
+
+function findOpaqueBounds(imageData, padding = 0) {
+  const pixels = imageData.data;
+  const width = imageData.width;
+  const height = imageData.height;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const alpha = pixels[(y * width + x) * 4 + 3];
+      if (alpha <= 8) continue;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+  }
+  if (maxX < minX || maxY < minY) return null;
+  const pad = Math.max(0, Math.floor(padding));
+  const x = Math.max(0, minX - pad);
+  const y = Math.max(0, minY - pad);
+  const ex = Math.min(width - 1, maxX + pad);
+  const ey = Math.min(height - 1, maxY + pad);
+  return {
+    x,
+    y,
+    width: Math.max(1, ex - x + 1),
+    height: Math.max(1, ey - y + 1),
+  };
 }

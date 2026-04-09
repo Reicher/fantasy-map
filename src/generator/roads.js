@@ -1,6 +1,6 @@
 import { BIOME_KEYS } from "../config.js";
 import { buildRoadNetwork } from "./network.js?v=20260401i";
-import { buildRoadPlanningState } from "./roadPlanning.js?v=20260401a";
+import { buildRoadPlanningState } from "./roadPlanning.js?v=20260409a";
 import { clamp, coordsOf, distance, forEachNeighbor, indexOf } from "../utils.js";
 
 const BIOME_TRAVEL_COST = {
@@ -15,11 +15,52 @@ const BIOME_TRAVEL_COST = {
   [BIOME_KEYS.MOUNTAIN]: 4.8
 };
 
+const DEFAULT_ROAD_SHORTCUT_AGGRESSION = 50;
+const DEFAULT_ROAD_REUSE_BIAS = 50;
+const DEFAULT_ROAD_CITY_AVOIDANCE = 50;
+const DEFAULT_ROAD_MAX_CONNECTIONS_PER_CITY = 5;
+
+function resolveRoadSettings(params = {}) {
+  const shortcut01 =
+    clamp(
+      Number(params.roadShortcutAggression ?? DEFAULT_ROAD_SHORTCUT_AGGRESSION),
+      0,
+      100,
+    ) / 100;
+  const reuse01 =
+    clamp(Number(params.roadReuseBias ?? DEFAULT_ROAD_REUSE_BIAS), 0, 100) /
+    100;
+  const cityAvoidance01 =
+    clamp(
+      Number(params.roadCityAvoidance ?? DEFAULT_ROAD_CITY_AVOIDANCE),
+      0,
+      100,
+    ) / 100;
+
+  return {
+    maxConnectionsPerCity: clamp(
+      Math.round(
+        Number(
+          params.roadMaxConnectionsPerCity ?? DEFAULT_ROAD_MAX_CONNECTIONS_PER_CITY,
+        ),
+      ),
+      2,
+      8,
+    ),
+    targetCityScoreWeight: lerp(0.22, 0.88, shortcut01),
+    onRoadReuseMultiplier: lerp(0.3, 0.12, reuse01),
+    touchingRoadReuseMultiplier: lerp(0.62, 0.34, reuse01),
+    cityProximityRadius: Math.round(lerp(2, 9, cityAvoidance01)),
+    cityProximityPenalty: lerp(0.4, 10.8, cityAvoidance01),
+  };
+}
+
 export function generateRoads(world) {
   const { params, terrain, climate, hydrology, cities } = world;
   const { width, height, size, isLand, elevation, mountainField } = terrain;
   const { biome } = climate;
   const { lakeIdByCell, riverStrength } = hydrology;
+  const roadSettings = resolveRoadSettings(params);
 
   if (cities.length < 2) {
     return {
@@ -30,8 +71,16 @@ export function generateRoads(world) {
   }
 
   const baseCost = buildRoadBaseCost(size, isLand, lakeIdByCell, biome, elevation, mountainField);
+  const cityProximityPenalty = buildCityProximityPenaltyField({
+    width,
+    height,
+    size,
+    cities,
+    roadSettings,
+  });
   const cityByCell = buildCityByCell(cities);
   const roadUsage = new Uint16Array(size);
+  const cityConnectionCounts = new Uint16Array(cities.length);
   const roads = [];
   const seedCityIds = new Set();
   let componentCount = 0;
@@ -47,7 +96,11 @@ export function generateRoads(world) {
       cities,
       roads,
       width,
-      seedCityIds
+      seedCityIds,
+      blockedSourceCityIds: collectBlockedSourceCityIds(
+        cityConnectionCounts,
+        roadSettings.maxConnectionsPerCity,
+      ),
     });
     if (planning.pendingCityIds.size === 0) {
       break;
@@ -62,9 +115,16 @@ export function generateRoads(world) {
       riverStrength,
       roadUsage,
       baseCost,
-      sources: planning.sourceCells
+      sources: planning.sourceCells,
+      cityProximityPenalty,
+      roadSettings,
     });
-    const target = pickNextRoadTarget(cities, planning.pendingCityIds, search.distance);
+    const target = pickNextRoadTarget(
+      cities,
+      planning.pendingCityIds,
+      search.distance,
+      roadSettings,
+    );
 
     if (!target) {
       const hub = pickRoadHub(cities, planning.pendingCityIds);
@@ -90,6 +150,7 @@ export function generateRoads(world) {
       cost: target.cost
     });
     markRoadUsage(path, roadUsage);
+    markRoadConnectionCounts(cityConnectionCounts, target.city.id, fromCityId);
   }
 
   const seaRoutes = buildSeaRoutes({
@@ -152,7 +213,7 @@ function pickRoadHub(cities, allowedCityIds) {
   return best.city;
 }
 
-function pickNextRoadTarget(cities, remainingCityIds, distances) {
+function pickNextRoadTarget(cities, remainingCityIds, distances, roadSettings) {
   let best = null;
 
   for (const cityId of remainingCityIds) {
@@ -162,7 +223,7 @@ function pickNextRoadTarget(cities, remainingCityIds, distances) {
       continue;
     }
 
-    const score = cost - city.score * 0.4;
+    const score = cost - city.score * roadSettings.targetCityScoreWeight;
     if (!best || score < best.score) {
       best = { city, cost, score };
     }
@@ -519,6 +580,79 @@ function markRoadUsage(path, roadUsage) {
   }
 }
 
+function markRoadConnectionCounts(cityConnectionCounts, cityIdA, cityIdB) {
+  if (Number.isInteger(cityIdA) && cityIdA >= 0) {
+    cityConnectionCounts[cityIdA] = Math.min(
+      65535,
+      cityConnectionCounts[cityIdA] + 1,
+    );
+  }
+  if (Number.isInteger(cityIdB) && cityIdB >= 0) {
+    cityConnectionCounts[cityIdB] = Math.min(
+      65535,
+      cityConnectionCounts[cityIdB] + 1,
+    );
+  }
+}
+
+function collectBlockedSourceCityIds(
+  cityConnectionCounts,
+  maxConnectionsPerCity,
+) {
+  const blocked = new Set();
+  for (let cityId = 0; cityId < cityConnectionCounts.length; cityId += 1) {
+    if (cityConnectionCounts[cityId] >= maxConnectionsPerCity) {
+      blocked.add(cityId);
+    }
+  }
+  return blocked;
+}
+
+function buildCityProximityPenaltyField({
+  width,
+  height,
+  size,
+  cities,
+  roadSettings,
+}) {
+  const radius = Math.max(0, roadSettings.cityProximityRadius ?? 0);
+  const maxPenalty = Math.max(0, roadSettings.cityProximityPenalty ?? 0);
+  const penalty = new Float32Array(size);
+
+  if (radius <= 1 || maxPenalty <= 0 || cities.length === 0) {
+    return penalty;
+  }
+
+  for (const city of cities) {
+    if (city?.x == null || city?.y == null) {
+      continue;
+    }
+
+    const cx = Math.round(city.x);
+    const cy = Math.round(city.y);
+    const minY = Math.max(0, cy - radius);
+    const maxY = Math.min(height - 1, cy + radius);
+    const minX = Math.max(0, cx - radius);
+    const maxX = Math.min(width - 1, cx + radius);
+
+    for (let y = minY; y <= maxY; y += 1) {
+      for (let x = minX; x <= maxX; x += 1) {
+        const dist = distance(cx, cy, x, y);
+        if (dist < 0.5 || dist > radius) {
+          continue;
+        }
+
+        const t = 1 - dist / radius;
+        const amount = maxPenalty * Math.pow(t, 1.5);
+        const cell = indexOf(x, y, width);
+        penalty[cell] += amount;
+      }
+    }
+  }
+
+  return penalty;
+}
+
 function dedupePath(path) {
   const deduped = [];
   for (const cell of path) {
@@ -543,7 +677,19 @@ function reconstructPath(start, previous) {
   return path;
 }
 
-function runRoadSearch({ width, height, size, isLand, lakeIdByCell, riverStrength, roadUsage, baseCost, sources }) {
+function runRoadSearch({
+  width,
+  height,
+  size,
+  isLand,
+  lakeIdByCell,
+  riverStrength,
+  roadUsage,
+  baseCost,
+  sources,
+  cityProximityPenalty,
+  roadSettings,
+}) {
   const distanceField = new Float32Array(size);
   distanceField.fill(Number.POSITIVE_INFINITY);
   const previous = new Int32Array(size);
@@ -568,7 +714,7 @@ function runRoadSearch({ width, height, size, isLand, lakeIdByCell, riverStrengt
     }
 
     const [x, y] = coordsOf(current, width);
-    forEachNeighbor(width, height, x, y, true, (nx, ny, ox, oy) => {
+    forEachNeighbor(width, height, x, y, false, (nx, ny, ox, oy) => {
       const neighbor = indexOf(nx, ny, width);
       const stepCost = computeStepCost(
         current,
@@ -578,7 +724,9 @@ function runRoadSearch({ width, height, size, isLand, lakeIdByCell, riverStrengt
         lakeIdByCell,
         riverStrength,
         roadUsage,
-        baseCost
+        baseCost,
+        cityProximityPenalty,
+        roadSettings
       );
       if (!Number.isFinite(stepCost)) {
         return;
@@ -599,7 +747,18 @@ function runRoadSearch({ width, height, size, isLand, lakeIdByCell, riverStrengt
   };
 }
 
-function computeStepCost(current, neighbor, diagonal, isLand, lakeIdByCell, riverStrength, roadUsage, baseCost) {
+function computeStepCost(
+  current,
+  neighbor,
+  diagonal,
+  isLand,
+  lakeIdByCell,
+  riverStrength,
+  roadUsage,
+  baseCost,
+  cityProximityPenalty,
+  roadSettings,
+) {
   if (!isLand[neighbor] || lakeIdByCell[neighbor] >= 0) {
     return Number.POSITIVE_INFINITY;
   }
@@ -613,14 +772,19 @@ function computeStepCost(current, neighbor, diagonal, isLand, lakeIdByCell, rive
   if (riverPenalty > 0.06) {
     cost += 3.6 + clamp(riverPenalty, 0, 4) * 4.8;
   }
+  cost += ((cityProximityPenalty[current] ?? 0) + (cityProximityPenalty[neighbor] ?? 0)) * 0.5;
 
   if (roadUsage[current] > 0 && roadUsage[neighbor] > 0) {
-    cost *= 0.18;
+    cost *= roadSettings.onRoadReuseMultiplier;
   } else if (roadUsage[current] > 0 || roadUsage[neighbor] > 0) {
-    cost *= 0.46;
+    cost *= roadSettings.touchingRoadReuseMultiplier;
   }
 
   return cost;
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * clamp(t, 0, 1);
 }
 
 class MinHeap {

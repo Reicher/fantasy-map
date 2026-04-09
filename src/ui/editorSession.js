@@ -9,10 +9,10 @@ import {
 } from "./cameraState.js?v=20260407a";
 import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260408a";
 import { attachEditorController } from "./editorController.js?v=20260409a";
-import { renderEditorWorld } from "../render/renderer.js?v=20260409a";
+import { renderEditorWorld } from "../render/renderer.js?v=20260409c";
 import { createMapAtlasCacheManager } from "./mapAtlasCache.js?v=20260408h";
-import { createPlayState } from "../game/travel.js?v=20260409b";
-import { findPoiAtWorldPoint } from "../game/playQueries.js?v=20260409a";
+import { createPlayState } from "../game/travel.js?v=20260409f";
+import { findPoiAtWorldPoint } from "../game/playQueries.js?v=20260409e";
 
 export function createEditorSession({ refs, state, syncViewUi }) {
   const mapCache = createMapAtlasCacheManager({
@@ -192,6 +192,7 @@ export function createEditorSession({ refs, state, syncViewUi }) {
     const worldPoint = state.currentViewport.canvasToWorld(canvasX, canvasY);
     const poiIds = new Set(
       (state.currentWorld.features?.pointsOfInterest ?? state.currentWorld.cities)
+        .filter((poi) => poi && poi.id != null)
         .map((poi) => poi.id),
     );
     return findPoiAtWorldPoint(
@@ -207,7 +208,10 @@ export function createEditorSession({ refs, state, syncViewUi }) {
       return false;
     }
 
-    const pois = state.currentWorld.pointsOfInterest ?? state.currentWorld.cities;
+    const pois =
+      state.currentWorld.features?.pointsOfInterest ??
+      state.currentWorld.pointsOfInterest ??
+      state.currentWorld.cities;
     const poi = pois[poiId];
     if (!poi) {
       return false;
@@ -230,7 +234,10 @@ export function createEditorSession({ refs, state, syncViewUi }) {
 
     const currentPoiId = state.playState?.currentPoiId ?? state.playState?.currentCityId;
     if (currentPoiId != null) {
-      const pois = state.currentWorld?.pointsOfInterest ?? state.currentWorld?.cities;
+      const pois =
+        state.currentWorld?.features?.pointsOfInterest ??
+        state.currentWorld?.pointsOfInterest ??
+        state.currentWorld?.cities;
       const poi = pois?.[currentPoiId];
       if (poi) {
         return {

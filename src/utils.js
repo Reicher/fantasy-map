@@ -102,16 +102,6 @@ export function sliderFactor(value, curve) {
   return clamp(Math.pow(clamp(value / 100, 0, 1), curve), 0, 1);
 }
 
-export function dedupeCells(cells) {
-  const deduped = [];
-  for (const cell of cells) {
-    if (deduped[deduped.length - 1] !== cell) {
-      deduped.push(cell);
-    }
-  }
-  return deduped;
-}
-
 export function titleCase(text) {
   return text
     .split(" ")

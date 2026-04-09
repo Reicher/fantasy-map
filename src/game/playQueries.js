@@ -1,18 +1,18 @@
 import { clamp } from "../utils.js";
 
 export function regionAtCell(world, cell) {
-  if (cell == null || cell < 0) {
+  if (!world || cell == null || cell < 0) {
     return null;
   }
-  const regionId = world.features.indices.biomeRegionId[cell];
+  const regionId = world.features?.indices?.biomeRegionId?.[cell];
   if (regionId == null || regionId < 0) {
     return null;
   }
-  return world.features.biomeRegions[regionId] ?? null;
+  return world.features?.biomeRegions?.[regionId] ?? null;
 }
 
 export function regionAtPosition(world, position) {
-  if (!world || !position) {
+  if (!world || !position || !world.terrain) {
     return null;
   }
   const x = clamp(Math.floor(position.x), 0, world.terrain.width - 1);
@@ -22,35 +22,16 @@ export function regionAtPosition(world, position) {
 
 export function findPlayablePoiAtWorldPoint(
   world,
-  playState,
   validPoiIds,
   worldX,
   worldY,
   radius = 6.4,
 ) {
-  if (!world || !playState || validPoiIds.size === 0) {
+  if (!world || !validPoiIds || validPoiIds.size === 0) {
     return null;
   }
 
   return findPoiAtWorldPoint(world, validPoiIds, worldX, worldY, radius);
-}
-
-export function findPlayableCityAtWorldPoint(
-  world,
-  playState,
-  validCityIds,
-  worldX,
-  worldY,
-  radius = 6.4,
-) {
-  return findPlayablePoiAtWorldPoint(
-    world,
-    playState,
-    validCityIds,
-    worldX,
-    worldY,
-    radius,
-  );
 }
 
 export function findPoiAtWorldPoint(
@@ -65,7 +46,10 @@ export function findPoiAtWorldPoint(
   }
 
   let best = null;
-  const pois = world.pointsOfInterest ?? world.cities;
+  const pois = world.features?.pointsOfInterest ?? world.pointsOfInterest ?? world.cities;
+  if (!pois) {
+    return null;
+  }
 
   for (const poiId of candidatePoiIds) {
     const poi = pois[poiId];

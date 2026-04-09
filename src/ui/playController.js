@@ -1,6 +1,6 @@
 import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
-import { createViewport } from "../render/renderer.js?v=20260409a";
-import { findPlayablePoiAtWorldPoint } from "../game/playQueries.js?v=20260409b";
+import { createViewport } from "../render/renderer.js?v=20260409c";
+import { findPlayablePoiAtWorldPoint } from "../game/playQueries.js?v=20260409e";
 import { advanceTimeOfDayHours } from "../game/timeOfDay.js";
 import { getPoiTitle } from "../poi/poiModel.js";
 
@@ -40,16 +40,21 @@ export function createPlayController({
       : findPlayablePoiAtEvent(event);
 
     if (hoveredPoiId != null) {
-      const pois = state.currentWorld.pointsOfInterest ?? state.currentWorld.cities;
+      const pois =
+        state.currentWorld.features?.pointsOfInterest ?? state.currentWorld.cities;
       const poi = pois[hoveredPoiId];
-      showHoverHit(
-        {
-          title: getPoiTitle(poi),
-        },
-        tooltip,
-        event.clientX,
-        event.clientY,
-      );
+      if (poi) {
+        showHoverHit(
+          {
+            title: getPoiTitle(poi),
+          },
+          tooltip,
+          event.clientX,
+          event.clientY,
+        );
+      } else {
+        clearHover(tooltip);
+      }
     } else if (state.playMapOptions?.showHoverInspector) {
       const hit = inspectWorldAt(
         state.currentWorld,
@@ -140,6 +145,7 @@ export function createPlayController({
   playCanvas.addEventListener("pointerup", (event) => {
     if (
       state.currentMode !== "play" ||
+      event.button !== 0 ||
       !state.playState ||
       state.playState.viewMode !== "map" ||
       state.playState.travel
@@ -198,7 +204,11 @@ export function createPlayController({
   };
 
   function findPlayablePoiAtEvent(event) {
-    const validPoiIds = new Set(getValidTargetIds(state.playState));
+    const validPoiIds = new Set(
+      getValidTargetIds(state.playState, state.currentWorld).filter(
+        (poiId) => poiId != null,
+      ),
+    );
     if (validPoiIds.size === 0) {
       return null;
     }
@@ -210,7 +220,6 @@ export function createPlayController({
     const worldPoint = viewport.canvasToWorld(canvasX, canvasY);
     return findPlayablePoiAtWorldPoint(
       state.currentWorld,
-      state.playState,
       validPoiIds,
       worldPoint.x,
       worldPoint.y,

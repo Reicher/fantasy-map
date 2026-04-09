@@ -8,7 +8,7 @@ import { generateHydrology } from "./hydrology.js?v=20260407a";
 import { buildWorldNetwork } from "./network.js?v=20260401i";
 import { applyFeatureNames } from "./nameFeatures.js";
 import { buildRegions } from "./regions.js?v=20260402c";
-import { generateRoads } from "./roads.js?v=20260403c";
+import { generateRoads } from "./roads.js?v=20260409a";
 import { buildSurfaceGeometry } from "./surface.js?v=20260403b";
 import { generateTerrain } from "./terrain.js?v=20260401i";
 import { buildTravelGraph } from "./travelGraph.js?v=20260401a";
@@ -32,6 +32,18 @@ export function normalizeParams(input) {
     temperatureBias: clamp(asNumber(input.temperatureBias, 50), 0, 100),
     moistureBias: clamp(asNumber(input.moistureBias, 50), 0, 100),
     coastalBias: clamp(asNumber(input.coastalBias, 50), 0, 100),
+    roadShortcutAggression: clamp(
+      asNumber(input.roadShortcutAggression, 50),
+      0,
+      100,
+    ),
+    roadReuseBias: clamp(asNumber(input.roadReuseBias, 50), 0, 100),
+    roadCityAvoidance: clamp(asNumber(input.roadCityAvoidance, 50), 0, 100),
+    roadMaxConnectionsPerCity: clamp(
+      asNumber(input.roadMaxConnectionsPerCity, 5),
+      2,
+      8,
+    ),
   };
 }
 

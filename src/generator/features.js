@@ -181,7 +181,9 @@ function buildDedicatedSignpostPois(world, settlementPois) {
 }
 
 function buildDedicatedCrashSitePois(world, poiName, settlementPois, signpostPois) {
-  const roads = world.roads?.roads ?? [];
+  const roads = (world.roads?.roads ?? []).filter(
+    (road) => (road?.type ?? "road") === "road",
+  );
   if (!roads.length) {
     return [];
   }
@@ -194,87 +196,24 @@ function buildDedicatedCrashSitePois(world, poiName, settlementPois, signpostPoi
     return [];
   }
 
-  const { width } = world.terrain;
   const roadCellAdjacency = buildRoadCellAdjacency(roads);
-  const seenCells = new Set();
-  const candidates = [];
-  const rng = createRng(`${world.params.seed}::poi-crash-candidates`);
-
-  for (const road of roads) {
-    const cells = road.cells ?? [];
-    if (cells.length < 4) {
-      continue;
-    }
-
-    for (let index = 0; index < cells.length; index += 1) {
-      const cell = cells[index];
-      if (seenCells.has(cell)) {
-        continue;
-      }
-      seenCells.add(cell);
-
-      const isEndpoint = index === 0 || index === cells.length - 1;
-      const distanceToRoadEnd = Math.min(index, cells.length - 1 - index);
-      if (!isEndpoint && distanceToRoadEnd < 2) {
-        continue;
-      }
-
-      const degree = roadCellAdjacency.get(cell)?.size ?? 0;
-      if (degree <= 0) {
-        continue;
-      }
-
-      const [x, y] = coordsOf(cell, width);
-      const nearestSettlementDistance = getNearestPointDistance(x, y, settlementPois);
-      const nearestSignpostDistance = getNearestPointDistance(x, y, signpostPois);
-
-      const elevation = world.terrain.elevation[cell] ?? 0;
-      const mountainField = world.terrain.mountainField[cell] ?? 0;
-      const moisture = world.climate.moisture[cell] ?? 0.5;
-      const ruggedness = clamp(mountainField * 0.72 + elevation * 0.48, 0, 1);
-      const dryness = clamp(1 - moisture, 0, 1);
-      const settlementSpacingScore = clamp(
-        (nearestSettlementDistance - 2.4) / 10.5,
-        0,
-        1,
-      );
-      const signpostSpacingScore = clamp(
-        (nearestSignpostDistance - 1.8) / 8.5,
-        0,
-        1,
-      );
-      const interiorScore = clamp(
-        distanceToRoadEnd / Math.max(2, Math.round(cells.length * 0.35)),
-        0,
-      1,
-      );
-      const degreeScore =
-        degree === 2 ? 1 : degree === 3 ? 0.45 : degree >= 4 ? 0.22 : 0.18;
-      const endpointPenalty = isEndpoint ? 0.82 : 0;
-      const score =
-        interiorScore * 1.2 +
-        degreeScore * 0.88 +
-        ruggedness * 0.46 +
-        settlementSpacingScore * 0.48 +
-        signpostSpacingScore * 0.38 +
-        dryness * 0.26 -
-        endpointPenalty +
-        rng.range(-0.08, 0.08);
-      if (score < 0.16) {
-        continue;
-      }
-
-      candidates.push({
-        id: cell,
-        cell,
-        x,
-        y,
-        degree,
-        isEndpoint,
-        score,
-      });
-    }
-  }
+  const corridorCandidates = collectCrashCorridorCandidates(
+    world,
+    settlementPois,
+    signpostPois,
+    roadCellAdjacency,
+  );
+  const genericCandidates = collectGenericCrashCandidates(
+    world,
+    roads,
+    settlementPois,
+    signpostPois,
+    roadCellAdjacency,
+  );
+  const candidates = mergeCrashCandidates([
+    ...corridorCandidates,
+    ...genericCandidates,
+  ]);
 
   if (!candidates.length) {
     return [];
@@ -299,15 +238,17 @@ function buildDedicatedCrashSitePois(world, poiName, settlementPois, signpostPoi
     target,
     seedKey: `${world.params.seed}::poi-crash-select`,
     anchorPoints: [...settlementPois, ...signpostPois],
-    desiredSpacing: lerp(11.6, 7.1, crashWeight),
+    desiredSpacing: lerp(11.6, 7.6, crashWeight),
     initialStats: { endpointCount: 0 },
     scoreCandidate(candidate, context) {
       const endpointShare =
         context.stats.endpointCount / Math.max(1, context.target);
       const endpointPenalty =
         candidate.isEndpoint ? 1.2 + endpointShare * 1.4 : 0;
+      const corridorBoost = candidate.isCorridorCandidate ? 0.84 : 0;
       return (
         candidate.score +
+        corridorBoost +
         context.spreadScore * 1.1 -
         context.crowdingPenalty * 1.28 -
         endpointPenalty
@@ -544,6 +485,327 @@ function getNearestPointDistance(x, y, points) {
     }
   }
   return best;
+}
+
+function collectCrashCorridorCandidates(
+  world,
+  settlementPois,
+  signpostPois,
+  roadCellAdjacency,
+) {
+  const routes = buildAnchorNeighborRoutes(
+    [...settlementPois, ...signpostPois],
+    roadCellAdjacency,
+  );
+  if (!routes.length) {
+    return [];
+  }
+
+  const { width } = world.terrain;
+  const candidates = [];
+  const longRouteThreshold = 18;
+  const veryLongRouteThreshold = 36;
+
+  for (const route of routes) {
+    const span = route.cells.length;
+    if (span < longRouteThreshold) {
+      continue;
+    }
+
+    const placementFractions =
+      span >= veryLongRouteThreshold ? [0.33, 0.67] : [0.5];
+    for (const fraction of placementFractions) {
+      const roughIndex = Math.round((span - 1) * fraction);
+      const cell = findBestCrashCellNearIndex(
+        route.cells,
+        roughIndex,
+        roadCellAdjacency,
+      );
+      if (cell == null) {
+        continue;
+      }
+
+      const [x, y] = coordsOf(cell, width);
+      const degree = roadCellAdjacency.get(cell)?.size ?? 0;
+      const nearestSettlementDistance = getNearestPointDistance(
+        x,
+        y,
+        settlementPois,
+      );
+      const nearestSignpostDistance = getNearestPointDistance(x, y, signpostPois);
+      const elevation = world.terrain.elevation[cell] ?? 0;
+      const mountainField = world.terrain.mountainField[cell] ?? 0;
+      const ruggedness = clamp(mountainField * 0.7 + elevation * 0.45, 0, 1);
+      const spacingScore = clamp((nearestSettlementDistance - 2.2) / 12, 0, 1);
+      const signpostSpacing = clamp((nearestSignpostDistance - 1.8) / 9.5, 0, 1);
+      const spanScore = clamp((span - longRouteThreshold) / 28, 0, 1);
+      const degreeScore =
+        degree === 2 ? 1 : degree === 3 ? 0.55 : degree >= 4 ? 0.28 : 0.16;
+      const score =
+        spanScore * 1.15 +
+        degreeScore * 0.9 +
+        ruggedness * 0.34 +
+        spacingScore * 0.45 +
+        signpostSpacing * 0.36;
+      if (score < 0.18) {
+        continue;
+      }
+
+      candidates.push({
+        id: cell,
+        cell,
+        x,
+        y,
+        degree,
+        isEndpoint: false,
+        isCorridorCandidate: true,
+        score,
+      });
+    }
+  }
+
+  return candidates;
+}
+
+function collectGenericCrashCandidates(
+  world,
+  roads,
+  settlementPois,
+  signpostPois,
+  roadCellAdjacency,
+) {
+  const { width } = world.terrain;
+  const seenCells = new Set();
+  const candidates = [];
+  const rng = createRng(`${world.params.seed}::poi-crash-candidates`);
+
+  for (const road of roads) {
+    const cells = road.cells ?? [];
+    if (cells.length < 4) {
+      continue;
+    }
+
+    for (let index = 0; index < cells.length; index += 1) {
+      const cell = cells[index];
+      if (seenCells.has(cell)) {
+        continue;
+      }
+      seenCells.add(cell);
+
+      const isEndpoint = index === 0 || index === cells.length - 1;
+      const distanceToRoadEnd = Math.min(index, cells.length - 1 - index);
+      if (!isEndpoint && distanceToRoadEnd < 2) {
+        continue;
+      }
+
+      const degree = roadCellAdjacency.get(cell)?.size ?? 0;
+      if (degree <= 0) {
+        continue;
+      }
+
+      const [x, y] = coordsOf(cell, width);
+      const nearestSettlementDistance = getNearestPointDistance(
+        x,
+        y,
+        settlementPois,
+      );
+      const nearestSignpostDistance = getNearestPointDistance(x, y, signpostPois);
+      const elevation = world.terrain.elevation[cell] ?? 0;
+      const mountainField = world.terrain.mountainField[cell] ?? 0;
+      const moisture = world.climate.moisture[cell] ?? 0.5;
+      const ruggedness = clamp(mountainField * 0.72 + elevation * 0.48, 0, 1);
+      const dryness = clamp(1 - moisture, 0, 1);
+      const settlementSpacingScore = clamp(
+        (nearestSettlementDistance - 2.4) / 10.5,
+        0,
+        1,
+      );
+      const signpostSpacingScore = clamp(
+        (nearestSignpostDistance - 1.8) / 8.5,
+        0,
+        1,
+      );
+      const interiorScore = clamp(
+        distanceToRoadEnd / Math.max(2, Math.round(cells.length * 0.35)),
+        0,
+        1,
+      );
+      const degreeScore =
+        degree === 2 ? 1 : degree === 3 ? 0.45 : degree >= 4 ? 0.22 : 0.18;
+      const endpointPenalty = isEndpoint ? 0.82 : 0;
+      const score =
+        interiorScore * 1.2 +
+        degreeScore * 0.88 +
+        ruggedness * 0.46 +
+        settlementSpacingScore * 0.48 +
+        signpostSpacingScore * 0.38 +
+        dryness * 0.26 -
+        endpointPenalty +
+        rng.range(-0.08, 0.08);
+      if (score < 0.16) {
+        continue;
+      }
+
+      candidates.push({
+        id: cell,
+        cell,
+        x,
+        y,
+        degree,
+        isEndpoint,
+        isCorridorCandidate: false,
+        score,
+      });
+    }
+  }
+
+  return candidates;
+}
+
+function mergeCrashCandidates(candidates) {
+  const byCell = new Map();
+
+  for (const candidate of candidates) {
+    if (!candidate || candidate.cell == null) {
+      continue;
+    }
+    const existing = byCell.get(candidate.cell);
+    if (!existing || candidate.score > existing.score) {
+      byCell.set(candidate.cell, candidate);
+      continue;
+    }
+    if (candidate.isCorridorCandidate && !existing.isCorridorCandidate) {
+      byCell.set(candidate.cell, {
+        ...existing,
+        isCorridorCandidate: true,
+      });
+    }
+  }
+
+  return [...byCell.values()];
+}
+
+function buildAnchorNeighborRoutes(anchorPois, roadCellAdjacency) {
+  const validAnchors = anchorPois.filter((poi) => Number.isInteger(poi?.cell));
+  if (!validAnchors.length || !roadCellAdjacency.size) {
+    return [];
+  }
+
+  const anchorIdsByCell = new Map();
+  for (const anchor of validAnchors) {
+    let ids = anchorIdsByCell.get(anchor.cell);
+    if (!ids) {
+      ids = [];
+      anchorIdsByCell.set(anchor.cell, ids);
+    }
+    ids.push(anchor.id);
+  }
+
+  const routeByPairKey = new Map();
+  for (const anchor of validAnchors) {
+    const sourceCell = anchor.cell;
+    const queue = [sourceCell];
+    let queueIndex = 0;
+    const visited = new Set([sourceCell]);
+    const previousByCell = new Map();
+
+    while (queueIndex < queue.length) {
+      const current = queue[queueIndex];
+      queueIndex += 1;
+
+      for (const nextCell of roadCellAdjacency.get(current) ?? []) {
+        if (visited.has(nextCell)) {
+          continue;
+        }
+
+        visited.add(nextCell);
+        previousByCell.set(nextCell, current);
+
+        const neighborAnchorIds = anchorIdsByCell.get(nextCell) ?? [];
+        const targetAnchorIds = neighborAnchorIds.filter(
+          (anchorId) => anchorId !== anchor.id,
+        );
+        if (targetAnchorIds.length > 0) {
+          const cells = reconstructCellPath(sourceCell, nextCell, previousByCell);
+          if (cells.length >= 2) {
+            for (const targetAnchorId of targetAnchorIds) {
+              setBestAnchorRoute(
+                routeByPairKey,
+                anchor.id,
+                targetAnchorId,
+                cells,
+              );
+            }
+          }
+          continue;
+        }
+
+        queue.push(nextCell);
+      }
+    }
+  }
+
+  return [...routeByPairKey.values()];
+}
+
+function reconstructCellPath(startCell, endCell, previousByCell) {
+  const cells = [endCell];
+  let cursor = endCell;
+  while (cursor !== startCell) {
+    cursor = previousByCell.get(cursor);
+    if (cursor == null) {
+      return [];
+    }
+    cells.push(cursor);
+  }
+  cells.reverse();
+  return cells;
+}
+
+function setBestAnchorRoute(routeByPairKey, a, b, cells) {
+  const low = Math.min(a, b);
+  const high = Math.max(a, b);
+  const key = `${low}:${high}`;
+  const existing = routeByPairKey.get(key);
+  if (existing && existing.cells.length <= cells.length) {
+    return;
+  }
+  routeByPairKey.set(key, {
+    a: low,
+    b: high,
+    cells,
+  });
+}
+
+function findBestCrashCellNearIndex(cells, centerIndex, roadCellAdjacency) {
+  if (!cells.length) {
+    return null;
+  }
+  const minIndex = 2;
+  const maxIndex = Math.max(minIndex, cells.length - 3);
+  const clampedCenter = clamp(centerIndex, minIndex, maxIndex);
+  const maxOffset = 5;
+  let best = null;
+
+  for (let offset = 0; offset <= maxOffset; offset += 1) {
+    for (const signedOffset of offset === 0 ? [0] : [-offset, offset]) {
+      const index = clampedCenter + signedOffset;
+      if (index < minIndex || index > maxIndex) {
+        continue;
+      }
+      const cell = cells[index];
+      const degree = roadCellAdjacency.get(cell)?.size ?? 0;
+      const centeredness = 1 - Math.abs(signedOffset) / (maxOffset + 1);
+      const degreeScore =
+        degree === 2 ? 1 : degree === 3 ? 0.5 : degree >= 4 ? 0.2 : 0;
+      const score = degreeScore * 1.2 + centeredness * 0.8;
+      if (!best || score > best.score) {
+        best = { cell, score };
+      }
+    }
+  }
+
+  return best?.cell ?? cells[clampedCenter] ?? null;
 }
 
 function getEdgeLength(links, linkId) {

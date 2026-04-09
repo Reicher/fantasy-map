@@ -27,7 +27,8 @@ export function buildCityCandidates({
   rng,
   coastalBias = 50,
 }) {
-  const coastalWeight = 0.34 * clamp(coastalBias / 50, 0, 2);
+  const coastalBias01 = clamp(coastalBias / 100, 0, 1);
+  const coastalWeight = 0.16 + coastalBias01 * 0.56;
   const candidates = [];
   let habitableArea = 0;
 
@@ -52,9 +53,9 @@ export function buildCityCandidates({
     const flatness = clamp(1 - elevation[index], 0, 1);
     const waterBonus =
       (coastal ? coastalWeight : 0) +
-      nearWater * 0.12 +
-      clamp(riverStrength[index] / 3.2, 0, 1) * (0.14 + inlandness * 0.14) +
-      (inlandWater ? 0.16 + inlandness * 0.08 : 0);
+      nearWater * (0.16 + coastalBias01 * 0.14) +
+      clamp(riverStrength[index] / 3.2, 0, 1) * (0.16 + inlandness * 0.15) +
+      (inlandWater ? 0.17 + inlandness * 0.08 : 0);
     const inlandBonus =
       (!coastal ? inlandness * 0.025 : 0) +
       (dryInland ? 0.03 + inlandness * 0.03 : 0) +
@@ -63,11 +64,16 @@ export function buildCityCandidates({
       mountainField[index] < 0.22
         ? 0.02
         : 0);
+    const farWaterPenalty =
+      !coastal && waterDistance[index] >= 5
+        ? (0.03 + coastalBias01 * 0.09) *
+          clamp((waterDistance[index] - 4) / 6, 0, 1)
+        : 0;
     const remotePenalty =
       coastDistance[index] > 16 &&
       waterDistance[index] > 6 &&
       mountainField[index] > 0.2
-        ? 0.08
+        ? 0.08 + coastalBias01 * 0.07
         : 0;
     const score =
       habitability * 0.4 +
@@ -76,6 +82,7 @@ export function buildCityCandidates({
       flatness * 0.18 +
       moisture[index] * 0.1 +
       inlandness * 0.02 -
+      farWaterPenalty -
       mountainField[index] * 0.24 -
       remotePenalty +
       oddballBoost +

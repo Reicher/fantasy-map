@@ -14,17 +14,37 @@ const SNOW_GROUND_RGB = WORLD_RGB.snow;
 const JOURNEY_SIGNPOST_IMAGE = createJourneySignpostImage();
 const JOURNEY_SIGNPOST_MIN_HEIGHT_PX = 104;
 const JOURNEY_SIGNPOST_VERTICAL_OFFSET_PX = 18;
+const JOURNEY_POI_MIN_HEIGHT_BY_MARKER = {
+  settlement: 118,
+  "crash-site": 108,
+};
+const JOURNEY_POI_WIDTH_SCALE_BY_MARKER = {
+  settlement: 1,
+  "crash-site": 0.88,
+};
+const JOURNEY_POI_SPRITESHEET_BY_MARKER = {
+  settlement: createJourneySpritesheet(
+    new URL("../../assets/journey/settlement-pois.png", import.meta.url).href,
+  ),
+  "crash-site": createJourneySpritesheet(
+    new URL("../../assets/journey/crash-site-pois.png", import.meta.url).href,
+  ),
+};
+const JOURNEY_POI_VARIANT_COUNT_BY_MARKER = {
+  settlement: 3,
+  "crash-site": 4,
+};
 const JOURNEY_TREE_SPRITESHEET_BY_FAMILY = {
-  pine: createJourneyTreeSpritesheet(
+  pine: createJourneySpritesheet(
     new URL("../../assets/journey/journey-pines.png", import.meta.url).href,
   ),
-  dead: createJourneyTreeSpritesheet(
+  dead: createJourneySpritesheet(
     new URL("../../assets/journey/journey-dead-trees.png", import.meta.url).href,
   ),
-  cactus: createJourneyTreeSpritesheet(
+  cactus: createJourneySpritesheet(
     new URL("../../assets/journey/journey-cacti.png", import.meta.url).href,
   ),
-  tuft: createJourneyTreeSpritesheet(
+  tuft: createJourneySpritesheet(
     new URL("../../assets/journey/journey-plains-tufts.png", import.meta.url).href,
   ),
 };
@@ -34,12 +54,13 @@ const JOURNEY_TREE_VARIANT_COUNT_BY_FAMILY = {
   cactus: 2,
   tuft: 4,
 };
-const TREE_CHROMA_TOLERANCE = 24;
+const SPRITE_CHROMA_TOLERANCE = 24;
 const SNOW_AFFECTED_LAYERS = new Set(["ground", "near1", "near2", "foreground"]);
 const JOURNEY_NEAR_LIGHTEN_FRAC = {
   near1: 0.08,
   near2: 0.16,
 };
+const journeyPoiVariantsByMarker = new Map();
 const journeyTreeVariantsByFamily = new Map();
 
 /** Returns the depth-tinted biome colour as an [r, g, b] array.
@@ -264,6 +285,18 @@ export function drawPoiMarkerOnCanvas(
     return;
   }
 
+  if (
+    drawJourneyPoiImage(ctx, x, y, marker, {
+      highlighted: options.highlighted ?? true,
+      groundY: options.groundY,
+      minVisualHeightPx: options.minVisualHeightPx,
+      variantSeed: options.variantSeed,
+      verticalOffsetPx: options.verticalOffsetPx,
+    })
+  ) {
+    return;
+  }
+
   drawPoiMarkerGlyph(ctx, x, y, options.marker, {
     scale: options.scale ?? 1.25,
     highlighted: options.highlighted ?? true,
@@ -394,6 +427,73 @@ function drawJourneySignpostImage(
   ctx.restore();
 }
 
+function drawJourneyPoiImage(
+  ctx,
+  x,
+  y,
+  marker,
+  { highlighted = true, groundY, minVisualHeightPx, variantSeed, verticalOffsetPx = 0 } = {},
+) {
+  const normalizedMarker =
+    marker === "crash-site" || marker === "settlement" ? marker : null;
+  if (!normalizedMarker) return false;
+
+  const variants = getJourneyPoiVariants(normalizedMarker);
+  if (!variants?.length) return false;
+
+  const variantIndex = resolveJourneyPoiVariantIndex(
+    normalizedMarker,
+    variantSeed,
+    variants.length,
+  );
+  const sprite = variants[variantIndex] ?? variants[0];
+  if (!sprite || sprite.width <= 0 || sprite.height <= 0) return false;
+
+  const minHeight =
+    JOURNEY_POI_MIN_HEIGHT_BY_MARKER[normalizedMarker] ??
+    JOURNEY_POI_MIN_HEIGHT_BY_MARKER.settlement;
+  const targetHeight = Math.max(
+    minHeight,
+    Math.round(minVisualHeightPx ?? minHeight),
+  );
+  const widthScale = clamp(
+    JOURNEY_POI_WIDTH_SCALE_BY_MARKER[normalizedMarker] ?? 1,
+    0.72,
+    1.2,
+    1,
+  );
+  const targetWidth = targetHeight * (sprite.width / sprite.height) * widthScale;
+  const baseGroundY = Number.isFinite(groundY) ? groundY : y;
+  const groundedY = baseGroundY - Math.max(0, Number(verticalOffsetPx));
+  const groundAnchorFrac = clamp(
+    Number(sprite.groundAnchorFrac),
+    0.55,
+    1,
+    1,
+  );
+  const drawLeft = Math.round(x - targetWidth * 0.5);
+  const drawTop = Math.round(groundedY - targetHeight * groundAnchorFrac);
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  if (highlighted) {
+    ctx.shadowColor = "rgba(255, 208, 128, 0.28)";
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 1;
+  }
+  ctx.drawImage(
+    sprite,
+    drawLeft,
+    drawTop,
+    Math.round(targetWidth),
+    Math.round(targetHeight),
+  );
+  ctx.restore();
+  return true;
+}
+
 function createJourneySignpostImage() {
   if (typeof Image !== "function") return null;
   const image = new Image();
@@ -402,12 +502,35 @@ function createJourneySignpostImage() {
   return image;
 }
 
-function createJourneyTreeSpritesheet(src) {
+function createJourneySpritesheet(src) {
   if (typeof Image !== "function") return null;
   const image = new Image();
   image.decoding = "async";
   image.src = src;
   return image;
+}
+
+function getJourneyPoiVariants(marker) {
+  if (journeyPoiVariantsByMarker.has(marker)) {
+    return journeyPoiVariantsByMarker.get(marker);
+  }
+  const sheet = JOURNEY_POI_SPRITESHEET_BY_MARKER[marker];
+  const variantCount = JOURNEY_POI_VARIANT_COUNT_BY_MARKER[marker];
+  if (
+    !sheet ||
+    !sheet.complete ||
+    sheet.naturalWidth <= 0 ||
+    sheet.naturalHeight <= 0
+  ) {
+    return null;
+  }
+  const variants = sliceJourneyPoiVariants(
+    sheet,
+    variantCount,
+    marker,
+  );
+  journeyPoiVariantsByMarker.set(marker, variants);
+  return variants;
 }
 
 function getJourneyTreeVariants(treeFamily = "pine") {
@@ -425,15 +548,16 @@ function getJourneyTreeVariants(treeFamily = "pine") {
   ) {
     return null;
   }
-  const variants = sliceJourneyTreeVariants(
+  const variants = sliceJourneyVariants(
     sheet,
     variantCount,
+    SPRITE_CHROMA_TOLERANCE,
   );
   journeyTreeVariantsByFamily.set(family, variants);
   return variants;
 }
 
-function sliceJourneyTreeVariants(sheetImage, variantCount) {
+function sliceJourneyVariants(sheetImage, variantCount, chromaTolerance = 24) {
   if (typeof document === "undefined") return null;
   const sourceW = sheetImage.naturalWidth;
   const sourceH = sheetImage.naturalHeight;
@@ -471,19 +595,214 @@ function sliceJourneyTreeVariants(sheetImage, variantCount) {
       const dg = pixels[p + 1] - keyG;
       const db = pixels[p + 2] - keyB;
       const distance = Math.hypot(dr, dg, db);
-      if (distance <= TREE_CHROMA_TOLERANCE) {
+      if (distance <= chromaTolerance) {
         pixels[p + 3] = 0;
       }
     }
     ctx.putImageData(imageData, 0, 0);
-    canvas.groundAnchorFrac = computeTreeGroundAnchorFrac(imageData, sourceH);
+    canvas.groundAnchorFrac = computeSpriteGroundAnchorFrac(imageData, sourceH);
     variants.push(canvas);
   }
 
   return variants;
 }
 
-function computeTreeGroundAnchorFrac(imageData, frameHeight) {
+function sliceJourneyPoiVariants(sheetImage, variantCount, marker) {
+  if (typeof document === "undefined") return null;
+  const sourceW = sheetImage.naturalWidth;
+  const sourceH = sheetImage.naturalHeight;
+  if (sourceW <= 0 || sourceH <= 0 || variantCount <= 0) return null;
+
+  const sourceCanvas = document.createElement("canvas");
+  sourceCanvas.width = sourceW;
+  sourceCanvas.height = sourceH;
+  const sourceCtx = sourceCanvas.getContext("2d");
+  if (!sourceCtx) return null;
+  sourceCtx.drawImage(sheetImage, 0, 0);
+
+  const sourceData = sourceCtx.getImageData(0, 0, sourceW, sourceH);
+  const pixels = sourceData.data;
+  const corner = sourceCtx.getImageData(1, 1, 1, 1).data;
+  const keyR = corner[0];
+  const keyG = corner[1];
+  const keyB = corner[2];
+  for (let p = 0; p < pixels.length; p += 4) {
+    const dr = pixels[p] - keyR;
+    const dg = pixels[p + 1] - keyG;
+    const db = pixels[p + 2] - keyB;
+    if (Math.hypot(dr, dg, db) <= SPRITE_CHROMA_TOLERANCE) {
+      pixels[p + 3] = 0;
+    }
+  }
+  sourceCtx.putImageData(sourceData, 0, 0);
+
+  if (marker === "crash-site") {
+    const gridVariants = sliceJourneyVariantsFromGrid(
+      sourceCanvas,
+      2,
+      2,
+      variantCount,
+    );
+    if (gridVariants.length === variantCount) {
+      return gridVariants;
+    }
+  }
+
+  const columnHasOpaque = new Array(sourceW).fill(false);
+  for (let x = 0; x < sourceW; x += 1) {
+    for (let y = 0; y < sourceH; y += 1) {
+      const alpha = pixels[(y * sourceW + x) * 4 + 3];
+      if (alpha > 8) {
+        columnHasOpaque[x] = true;
+        break;
+      }
+    }
+  }
+
+  const clusters = detectOpaqueColumnClusters(
+    columnHasOpaque,
+    variantCount,
+    marker,
+  );
+  if (clusters.length !== variantCount) {
+    return sliceJourneyVariants(
+      sheetImage,
+      variantCount,
+      SPRITE_CHROMA_TOLERANCE,
+    );
+  }
+
+  const padXByMarker = marker === "settlement" ? 20 : 16;
+  const variants = [];
+  for (const cluster of clusters) {
+    const sx = Math.max(0, cluster.start - padXByMarker);
+    const ex = Math.min(sourceW - 1, cluster.end + padXByMarker);
+    const sw = Math.max(1, ex - sx + 1);
+    const canvas = document.createElement("canvas");
+    canvas.width = sw;
+    canvas.height = sourceH;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) continue;
+    ctx.drawImage(
+      sourceCanvas,
+      sx,
+      0,
+      sw,
+      sourceH,
+      0,
+      0,
+      sw,
+      sourceH,
+    );
+    const imageData = ctx.getImageData(0, 0, sw, sourceH);
+    canvas.groundAnchorFrac = computeSpriteGroundAnchorFrac(imageData, sourceH);
+    variants.push(canvas);
+  }
+
+  return variants;
+}
+
+function sliceJourneyVariantsFromGrid(
+  sourceCanvas,
+  columns,
+  rows,
+  expectedCount,
+) {
+  const sourceW = sourceCanvas.width;
+  const sourceH = sourceCanvas.height;
+  if (
+    sourceW <= 0 ||
+    sourceH <= 0 ||
+    columns <= 0 ||
+    rows <= 0 ||
+    expectedCount <= 0
+  ) {
+    return [];
+  }
+
+  const variants = [];
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < columns; col += 1) {
+      const sx = Math.round((col * sourceW) / columns);
+      const ex = Math.round(((col + 1) * sourceW) / columns);
+      const sy = Math.round((row * sourceH) / rows);
+      const ey = Math.round(((row + 1) * sourceH) / rows);
+      const sw = Math.max(1, ex - sx);
+      const sh = Math.max(1, ey - sy);
+      const canvas = document.createElement("canvas");
+      canvas.width = sw;
+      canvas.height = sh;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) continue;
+      ctx.drawImage(sourceCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+      const imageData = ctx.getImageData(0, 0, sw, sh);
+      canvas.groundAnchorFrac = computeSpriteGroundAnchorFrac(imageData, sh);
+      variants.push(canvas);
+      if (variants.length >= expectedCount) {
+        return variants;
+      }
+    }
+  }
+  return variants;
+}
+
+function detectOpaqueColumnClusters(columnHasOpaque, targetCount, marker) {
+  const width = columnHasOpaque.length;
+  if (!width) return [];
+
+  const gapMergePx = marker === "settlement" ? 28 : 22;
+  const minClusterWidth = marker === "settlement" ? 44 : 34;
+  const mergedMask = [...columnHasOpaque];
+
+  let index = 0;
+  while (index < width) {
+    if (mergedMask[index]) {
+      index += 1;
+      continue;
+    }
+    let end = index;
+    while (end < width && !mergedMask[end]) {
+      end += 1;
+    }
+    const gapSize = end - index;
+    const leftOpaque = index - 1 >= 0 && mergedMask[index - 1];
+    const rightOpaque = end < width && mergedMask[end];
+    if (leftOpaque && rightOpaque && gapSize <= gapMergePx) {
+      for (let fill = index; fill < end; fill += 1) {
+        mergedMask[fill] = true;
+      }
+    }
+    index = end;
+  }
+
+  const clusters = [];
+  index = 0;
+  while (index < width) {
+    if (!mergedMask[index]) {
+      index += 1;
+      continue;
+    }
+    let end = index;
+    while (end < width && mergedMask[end]) {
+      end += 1;
+    }
+    if (end - index >= minClusterWidth) {
+      clusters.push({ start: index, end: end - 1 });
+    }
+    index = end;
+  }
+
+  if (clusters.length <= targetCount) {
+    return clusters;
+  }
+
+  return clusters
+    .sort((a, b) => (b.end - b.start) - (a.end - a.start))
+    .slice(0, targetCount)
+    .sort((a, b) => a.start - b.start);
+}
+
+function computeSpriteGroundAnchorFrac(imageData, frameHeight) {
   const pixels = imageData.data;
   const width = imageData.width;
   const height = imageData.height;
@@ -512,6 +831,15 @@ function resolveTreeFamily(treeFamily) {
   if (treeFamily === "cactus") return "cactus";
   if (treeFamily === "tuft") return "tuft";
   return "pine";
+}
+
+function resolveJourneyPoiVariantIndex(marker, variantSeed, variantCount) {
+  const markerKey = typeof marker === "string" ? marker : "settlement";
+  const seedKey =
+    variantSeed == null || variantSeed === ""
+      ? `${markerKey}:default`
+      : `${markerKey}:${variantSeed}`;
+  return hashString(seedKey) % Math.max(1, variantCount);
 }
 
 // ---------------------------------------------------------------------------
@@ -574,12 +902,16 @@ export function rgbToCss(rgb) {
 }
 
 function hash01(text) {
+  return (hashString(text) % 100000) / 100000;
+}
+
+function hashString(text) {
   let hash = 2166136261;
   for (let index = 0; index < text.length; index += 1) {
     hash ^= text.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
-  return ((hash >>> 0) % 100000) / 100000;
+  return hash >>> 0;
 }
 
 function clamp(value, min, max, fallback = min) {

@@ -5,7 +5,7 @@ import {
   buildSilhouetteTopEdge,
   sampleSilhouetteAtX,
   rgbToCss,
-} from "./journeyStyle.js?v=20260409l";
+} from "./journeyStyle.js?v=20260409o";
 
 // ---------------------------------------------------------------------------
 // Fixed offsets for parallel sampling lines (world-space units).
@@ -151,6 +151,13 @@ const FOREGROUND_TREE_CONFIG = {
   minSinkFrac: 0.24,
   maxSinkFrac: 0.42,
 };
+const POI_DECORATION_EXCLUSION_RADIUS_BY_LAYER = Object.freeze({
+  ground: 158,
+  groundDetails: 172,
+  foreground: 228,
+  near1: 104,
+  near2: 90,
+});
 const DETAIL_THEME_BY_BIOME = {
   forest: ["tuft", "stone", "stick", "tuft"],
   rainforest: ["tuft", "tuft", "stone", "leaf"],
@@ -334,9 +341,9 @@ export function buildJourneyStrip(travel, viewW, viewH, options = {}) {
     viewH,
   };
   strip.treeDecorations = buildTreeDecorations(strip);
-  strip.groundTrees = buildGroundTrees(strip.layerSegments.ground);
-  strip.groundDetails = buildGroundDetails(strip.layerSegments.ground);
-  strip.foregroundTrees = buildForegroundTrees(strip.layerSegments.ground);
+  strip.groundTrees = buildGroundTrees(strip.layerSegments.ground, strip);
+  strip.groundDetails = buildGroundDetails(strip.layerSegments.ground, strip);
+  strip.foregroundTrees = buildForegroundTrees(strip.layerSegments.ground, strip);
   return strip;
 }
 
@@ -432,9 +439,9 @@ export function extendStripWithTravel(strip, travel, viewW, viewH, options = {})
   strip.destMarkerStripX = newDestX;
   strip.totalStripPx = Math.ceil(newDestX + extAfterPx);
   strip.treeDecorations = buildTreeDecorations(strip);
-  strip.groundTrees = buildGroundTrees(strip.layerSegments.ground);
-  strip.groundDetails = buildGroundDetails(strip.layerSegments.ground);
-  strip.foregroundTrees = buildForegroundTrees(strip.layerSegments.ground);
+  strip.groundTrees = buildGroundTrees(strip.layerSegments.ground, strip);
+  strip.groundDetails = buildGroundDetails(strip.layerSegments.ground, strip);
+  strip.foregroundTrees = buildForegroundTrees(strip.layerSegments.ground, strip);
 
   return strip;
 }
@@ -575,13 +582,14 @@ export const PARALLAX_SPEED = {
 
 function buildTreeDecorations(strip) {
   return {
-    near2: buildLayerTreeDecorations(strip.layerSegments.near2, "near2"),
-    near1: buildLayerTreeDecorations(strip.layerSegments.near1, "near1"),
+    near2: buildLayerTreeDecorations(strip.layerSegments.near2, "near2", strip),
+    near1: buildLayerTreeDecorations(strip.layerSegments.near1, "near1", strip),
   };
 }
 
-function buildGroundTrees(groundSegments) {
+function buildGroundTrees(groundSegments, strip = null) {
   if (!groundSegments?.length) return [];
+  const poiExclusionZones = createPoiDecorationExclusionZones(strip, "ground");
   const trees = [];
 
   for (const segment of groundSegments) {
@@ -624,6 +632,7 @@ function buildGroundTrees(groundSegments) {
         segStart,
         Math.min(segEnd, segStart + usableWidth * t + jitter),
       );
+      if (isInsidePoiDecorationExclusionZone(stripX, poiExclusionZones)) continue;
       const treeVisual = pickTreeVisualForBiome(
         segment.biomeKey,
         segment.isSnow,
@@ -651,8 +660,12 @@ function buildGroundTrees(groundSegments) {
   return trees;
 }
 
-function buildGroundDetails(groundSegments) {
+function buildGroundDetails(groundSegments, strip = null) {
   if (!groundSegments?.length) return [];
+  const poiExclusionZones = createPoiDecorationExclusionZones(
+    strip,
+    "groundDetails",
+  );
   const details = [];
 
   for (const segment of groundSegments) {
@@ -684,6 +697,7 @@ function buildGroundDetails(groundSegments) {
         segStart,
         Math.min(segEnd, segStart + usableWidth * t + jitter),
       );
+      if (isInsidePoiDecorationExclusionZone(stripX, poiExclusionZones)) continue;
       details.push({
         stripX,
         biomeKey: segment.biomeKey,
@@ -698,8 +712,9 @@ function buildGroundDetails(groundSegments) {
   return details;
 }
 
-function buildForegroundTrees(groundSegments) {
+function buildForegroundTrees(groundSegments, strip = null) {
   if (!groundSegments?.length) return [];
+  const poiExclusionZones = createPoiDecorationExclusionZones(strip, "foreground");
   const trees = [];
 
   for (const segment of groundSegments) {
@@ -748,6 +763,7 @@ function buildForegroundTrees(groundSegments) {
         segStart,
         Math.min(segEnd, segStart + usableWidth * t + jitter),
       );
+      if (isInsidePoiDecorationExclusionZone(stripX, poiExclusionZones)) continue;
       const treeVisual = pickTreeVisualForBiome(
         segment.biomeKey,
         segment.isSnow,
@@ -775,9 +791,10 @@ function buildForegroundTrees(groundSegments) {
   return trees;
 }
 
-function buildLayerTreeDecorations(layerSegments, layerName) {
+function buildLayerTreeDecorations(layerSegments, layerName, strip = null) {
   const config = TREE_LAYER_CONFIG[layerName];
   if (!config || !layerSegments?.length) return [];
+  const poiExclusionZones = createPoiDecorationExclusionZones(strip, layerName);
 
   const trees = [];
   for (const segment of layerSegments) {
@@ -809,6 +826,7 @@ function buildLayerTreeDecorations(layerSegments, layerName) {
       const t = (i + 0.15 + rng() * 0.7) / targetCount;
       const jitter = (rng() - 0.5) * avgSpacing * 0.2;
       const cursor = Math.max(segStart, Math.min(segEnd, segStart + usableWidth * t + jitter));
+      if (isInsidePoiDecorationExclusionZone(cursor, poiExclusionZones)) continue;
       const treeVisual = pickTreeVisualForBiome(
         segment.biomeKey,
         segment.isSnow,
@@ -954,6 +972,44 @@ function getGroundDetailMotifs(biomeKey, isSnow) {
     return ["snow-dune", "snow-dune", "pebble", "frost-tuft"];
   }
   return DETAIL_THEME_BY_BIOME[biomeKey] ?? ["tuft", "stone", "pebble", "tuft"];
+}
+
+function createPoiDecorationExclusionZones(strip, layerName) {
+  if (!strip) return [];
+  const baseRadius =
+    POI_DECORATION_EXCLUSION_RADIUS_BY_LAYER[layerName] ?? 0;
+  if (baseRadius <= 0) return [];
+  const speed = PARALLAX_SPEED[layerName] ?? 1;
+  const startX = Number(strip.startMarkerStripX);
+  const destX = Number(strip.destMarkerStripX);
+  const zones = [];
+  if (Number.isFinite(startX)) {
+    zones.push({
+      centerX: startX * speed,
+      radius: baseRadius * speed,
+    });
+  }
+  if (Number.isFinite(destX)) {
+    zones.push({
+      centerX: destX * speed,
+      radius: baseRadius * speed,
+    });
+  }
+  return zones;
+}
+
+function isInsidePoiDecorationExclusionZone(stripX, zones) {
+  if (!zones?.length || !Number.isFinite(stripX)) return false;
+  for (const zone of zones) {
+    if (!zone) continue;
+    const centerX = Number(zone.centerX);
+    const radius = Math.max(0, Number(zone.radius));
+    if (!Number.isFinite(centerX) || !Number.isFinite(radius)) continue;
+    if (Math.abs(stripX - centerX) <= radius) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function createSeededRng(initialSeed) {

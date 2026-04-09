@@ -4,18 +4,18 @@ import {
   createPlayState,
   getValidTargetIds,
   sampleTravelBiomeBandPoints,
-} from "../game/travel.js?v=20260409c";
-import { createJourneyScene } from "../game/journeyScene.js?v=20260409w";
+} from "../game/travel.js?v=20260409f";
+import { createJourneyScene } from "../game/journeyScene.js?v=20260409ac";
 import {
   renderPlayWorldDynamic,
   renderPlayWorldStatic,
-} from "../render/renderer.js?v=20260409a";
+} from "../render/renderer.js?v=20260409c";
 import { inspectWorldAt } from "../inspector.js?v=20260408b";
 import { createPlayCamera as buildPlayCamera } from "./cameraState.js?v=20260407a";
 import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260408a";
 import { createMapAtlasCacheManager } from "./mapAtlasCache.js?v=20260408h";
-import { createPlayController } from "./playController.js?v=20260409a";
-import { createPlaySubViewController } from "./playSubView.js?v=20260409d";
+import { createPlayController } from "./playController.js?v=20260409e";
+import { createPlaySubViewController } from "./playSubView.js?v=20260409g";
 import {
   createTransitionController,
   waitForNextPaintIfActive,
@@ -88,7 +88,10 @@ export function createPlaySession({ refs, state, syncModeUi }) {
 
     if (state.playState.viewMode === "map") {
       state.playProfiler.measure("play-map-render", () => {
-        const validPoiIds = getValidTargetIds(state.playState);
+        const validPoiIds = getValidTargetIds(
+          state.playState,
+          state.currentWorld,
+        );
         const visiblePoiIds = getVisiblePoiIds(
           state.currentWorld,
           state.playState,
@@ -111,8 +114,10 @@ export function createPlaySession({ refs, state, syncModeUi }) {
             validPoiIds,
             visiblePoiIds,
             onlyValid: true,
-            hoveredPoiId: state.playState.hoveredCityId,
-            pressedPoiId: state.playState.pressedCityId,
+            hoveredPoiId:
+              state.playState.hoveredPoiId ?? state.playState.hoveredCityId,
+            pressedPoiId:
+              state.playState.pressedPoiId ?? state.playState.pressedCityId,
           },
           travelDebug:
             state.playMapOptions.debugTravelSampling && state.playState.travel
@@ -152,7 +157,9 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     state.playState = {
       ...state.playState,
       viewMode: mode,
+      hoveredPoiId: mode === "map" ? state.playState.hoveredPoiId : null,
       hoveredCityId: mode === "map" ? state.playState.hoveredCityId : null,
+      pressedPoiId: null,
       pressedCityId: null,
     };
 
@@ -180,6 +187,8 @@ export function createPlaySession({ refs, state, syncModeUi }) {
       state.playState = {
         ...state.playState,
         viewMode: "map",
+        hoveredPoiId: null,
+        pressedPoiId: null,
         hoveredCityId: null,
         pressedCityId: null,
       };
@@ -225,6 +234,9 @@ export function createPlaySession({ refs, state, syncModeUi }) {
 
   function getVisiblePoiIds(world, playState, validPoiIds) {
     const visibleIds = new Set(validPoiIds);
+    if (playState?.currentPoiId != null) {
+      visibleIds.add(playState.currentPoiId);
+    }
 
     if (playState?.currentCityId != null) {
       visibleIds.add(playState.currentCityId);
@@ -235,9 +247,10 @@ export function createPlaySession({ refs, state, syncModeUi }) {
       return Array.from(visibleIds);
     }
 
-    const pointsOfInterest = world.features.pointsOfInterest;
+    const pointsOfInterest =
+      world.features?.pointsOfInterest ?? world.pointsOfInterest ?? world.cities ?? [];
     for (const poi of pointsOfInterest) {
-      if (!poi) {
+      if (!poi || !Number.isFinite(poi.x) || !Number.isFinite(poi.y)) {
         continue;
       }
       const x = Math.max(
@@ -248,7 +261,7 @@ export function createPlaySession({ refs, state, syncModeUi }) {
         0,
         Math.min(world.terrain.height - 1, Math.floor(poi.y)),
       );
-      if (discoveredCells[y * world.terrain.width + x]) {
+      if (discoveredCells[y * world.terrain.width + x] && poi.id != null) {
         visibleIds.add(poi.id);
       }
     }
