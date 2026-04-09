@@ -17,12 +17,12 @@ import {
   buildJourneyStrip,
   extendStripWithTravel,
   PARALLAX_SPEED,
-} from "./journey/journeyStrip.js?v=20260409c";
+} from "./journey/journeyStrip.js?v=20260409d";
 import {
   drawPoiMarkerOnCanvas,
   drawJourneyTreeOnCanvas,
   drawPlayerFigure,
-} from "./journey/journeyStyle.js?v=20260409c";
+} from "./journey/journeyStyle.js?v=20260409d";
 
 // ---------------------------------------------------------------------------
 // Layout
