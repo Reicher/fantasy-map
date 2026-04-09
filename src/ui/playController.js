@@ -1,6 +1,6 @@
 import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
 import { createViewport } from "../render/renderer.js?v=20260409a";
-import { findPlayableCityAtWorldPoint } from "../game/playQueries.js?v=20260408a";
+import { findPlayableCityAtWorldPoint } from "../game/playQueries.js?v=20260409a";
 import { getPoiTitle } from "../poi/poiModel.js";
 
 export function createPlayController({

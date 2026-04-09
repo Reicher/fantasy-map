@@ -17,11 +17,12 @@ import {
   buildJourneyStrip,
   extendStripWithTravel,
   PARALLAX_SPEED,
-} from "./journey/journeyStrip.js";
+} from "./journey/journeyStrip.js?v=20260409c";
 import {
   drawPoiMarkerOnCanvas,
+  drawJourneyTreeOnCanvas,
   drawPlayerFigure,
-} from "./journey/journeyStyle.js";
+} from "./journey/journeyStyle.js?v=20260409c";
 
 // ---------------------------------------------------------------------------
 // Layout
@@ -39,6 +40,8 @@ const WALK_FRAME_MS = 220;
 
 const POI_MARKER_SCALE = 1.35;
 const PLAYER_VISUAL_HEIGHT_PX = 55;
+const SIGNPOST_VISUAL_HEIGHT_PX = 84;
+const SIGNPOST_UPWARD_OFFSET_PX = 13;
 
 // Sky gradient – lighter at the horizon to reinforce atmospheric depth
 const SKY_TOP = "rgb(152, 204, 240)";
@@ -65,6 +68,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     strip: null,
     travelKey: null,
     lastTravel: null,
+    lastShowSnow: true,
     lastScrollX: 0,
     walkFrame: 0,
     lastWalkToggle: 0,
@@ -82,6 +86,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     const viewW = canvas.width;
     const viewH = canvas.height;
     const isTraveling = Boolean(playState?.travel);
+    const showSnow = options.showSnow !== false;
 
     // Rebuild strip only when a new travel starts (key changes to a non-null value).
     // When travel ends (key → null) we keep the existing strip so the scene
@@ -89,27 +94,39 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     const nextKey = travelKey(playState?.travel);
     const dimensionsChanged =
       state.cachedW !== viewW || state.cachedH !== viewH;
+    const snowModeChanged = state.lastShowSnow !== showSnow;
 
     if (nextKey !== null && nextKey !== state.travelKey) {
       if (state.strip === null) {
         // First journey – build full strip including the home-position extension before start
-        state.strip = buildJourneyStrip(playState.travel, viewW, viewH);
+        state.strip = buildJourneyStrip(playState.travel, viewW, viewH, {
+          showSnow,
+        });
         printStripSummary(state.strip, "New strip");
       } else {
         // Subsequent journey – extend the existing strip seamlessly from the current dest
-        extendStripWithTravel(state.strip, playState.travel, viewW, viewH);
+        extendStripWithTravel(state.strip, playState.travel, viewW, viewH, {
+          showSnow,
+        });
         printStripSummary(state.strip, "Extended strip");
       }
       state.lastTravel = playState.travel;
       state.travelKey = nextKey;
+      state.lastShowSnow = showSnow;
       state.cachedW = viewW;
       state.cachedH = viewH;
-    } else if (dimensionsChanged) {
-      // Canvas resized – rebuild with the same travel data if we have it
+    } else if (dimensionsChanged || snowModeChanged) {
+      // Canvas resized or snow mode changed – rebuild with the same travel data if we have it.
       if (state.lastTravel) {
-        state.strip = buildJourneyStrip(state.lastTravel, viewW, viewH);
-        printStripSummary(state.strip, "Rebuilt strip (resize)");
+        state.strip = buildJourneyStrip(state.lastTravel, viewW, viewH, {
+          showSnow,
+        });
+        printStripSummary(
+          state.strip,
+          snowModeChanged ? "Rebuilt strip (snow mode)" : "Rebuilt strip (resize)",
+        );
       }
+      state.lastShowSnow = showSnow;
       state.cachedW = viewW;
       state.cachedH = viewH;
     }
@@ -128,6 +145,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     state.strip = null;
     state.travelKey = null;
     state.lastTravel = null;
+    state.lastShowSnow = true;
     state.lastScrollX = 0;
     state.walkFrame = 0;
     state.lastWalkToggle = 0;
@@ -229,9 +247,11 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
 
     // 5. Near2
     drawSilhouetteLayer(ctx, strip, "near2", scrollX, playerX, viewW);
+    drawTreeDecorationsForLayer(ctx, strip, "near2", scrollX, playerX, viewW);
 
     // 6. Near1
     drawSilhouetteLayer(ctx, strip, "near1", scrollX, playerX, viewW);
+    drawTreeDecorationsForLayer(ctx, strip, "near1", scrollX, playerX, viewW);
 
     // 7. Ground (flat solid bands, ground speed = 1.0)
     drawGroundLayer(ctx, strip, scrollX, playerX, viewW);
@@ -432,21 +452,73 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       world?.cities?.[activeTravel?.startCityId ?? -1]?.marker ?? "settlement";
     const destMarker =
       world?.cities?.[activeTravel?.targetCityId ?? -1]?.marker ?? "settlement";
+    const startSignpost = startMarker === "signpost";
+    const destSignpost = destMarker === "signpost";
 
     drawPoiMarkerOnCanvas(ctx, startCanvasX, markerY, {
       marker: startMarker,
       scale: POI_MARKER_SCALE,
       highlighted: false,
       groundY: playerFeetY,
-      minVisualHeightPx: PLAYER_VISUAL_HEIGHT_PX,
+      minVisualHeightPx: startSignpost
+        ? SIGNPOST_VISUAL_HEIGHT_PX
+        : PLAYER_VISUAL_HEIGHT_PX,
+      verticalOffsetPx: startSignpost ? SIGNPOST_UPWARD_OFFSET_PX : 0,
     });
     drawPoiMarkerOnCanvas(ctx, destCanvasX, markerY, {
       marker: destMarker,
       scale: POI_MARKER_SCALE,
       highlighted: true,
       groundY: playerFeetY,
-      minVisualHeightPx: PLAYER_VISUAL_HEIGHT_PX,
+      minVisualHeightPx: destSignpost
+        ? SIGNPOST_VISUAL_HEIGHT_PX
+        : PLAYER_VISUAL_HEIGHT_PX,
+      verticalOffsetPx: destSignpost ? SIGNPOST_UPWARD_OFFSET_PX : 0,
     });
+  }
+
+  function drawTreeDecorationsForLayer(
+    ctx,
+    strip,
+    layerName,
+    scrollX,
+    playerX,
+    viewW,
+  ) {
+    const trees = strip.treeDecorations?.[layerName];
+    if (!trees?.length) return;
+
+    const speed = PARALLAX_SPEED[layerName] ?? 1.0;
+    const layerStripLeft = scrollX * speed - playerX;
+    const band = strip.layers[layerName];
+    if (!band) return;
+
+    const layerH = band.bottomY - band.topY;
+
+    for (const tree of trees) {
+      const canvasX = tree.stripX - layerStripLeft;
+      if (canvasX < -96 || canvasX > viewW + 96) continue;
+      if (!tree.topEdgeSamples?.length) continue;
+
+      const sampleIndex = Math.max(
+        0,
+        Math.min(
+          tree.topEdgeSamples.length - 1,
+          Math.round(tree.stripX - tree.segmentStripX),
+        ),
+      );
+      const topEdgeY = band.topY + tree.topEdgeSamples[sampleIndex] * layerH;
+      const treeGroundY = Math.min(
+        band.bottomY - 2,
+        topEdgeY + layerH * 0.34,
+      );
+
+      drawJourneyTreeOnCanvas(ctx, canvasX, treeGroundY, {
+        variantIndex: tree.variantIndex,
+        heightPx: tree.heightPx,
+        upwardOffsetPx: tree.upwardOffsetPx,
+      });
+    }
   }
 
   // -------------------------------------------------------------------------

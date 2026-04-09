@@ -5,7 +5,7 @@ import {
   buildSilhouetteTopEdge,
   sampleSilhouetteAtX,
   rgbToCss,
-} from "./journeyStyle.js";
+} from "./journeyStyle.js?v=20260409d";
 
 // ---------------------------------------------------------------------------
 // Fixed offsets for parallel sampling lines (world-space units).
@@ -26,6 +26,27 @@ const PLAYER_X_FRAC = 0.22;
 
 // Transition blend zone in pixels
 const BLEND_ZONE_PX = 48;
+const TREE_BLOCKED_BIOMES = new Set(["ocean", "lake", "desert"]);
+const TREE_ALLOWED_BIOMES = new Set(["forest", "rainforest", "highlands"]);
+const TREE_VARIANT_COUNT = 5;
+const TREE_LAYER_CONFIG = {
+  near2: {
+    minSpacingPx: 88,
+    maxSpacingPx: 146,
+    minHeightPx: 68,
+    maxHeightPx: 92,
+    minUpwardOffsetPx: 0,
+    maxUpwardOffsetPx: 3,
+  },
+  near1: {
+    minSpacingPx: 74,
+    maxSpacingPx: 122,
+    minHeightPx: 82,
+    maxHeightPx: 112,
+    minUpwardOffsetPx: 1,
+    maxUpwardOffsetPx: 4,
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -40,7 +61,7 @@ const BLEND_ZONE_PX = 48;
  * @param {number} viewH       – canvas viewport height in pixels
  * @returns {JourneyStrip}
  */
-export function buildJourneyStrip(travel, viewW, viewH) {
+export function buildJourneyStrip(travel, viewW, viewH, options = {}) {
   if (!travel) {
     return createEmptyStrip();
   }
@@ -135,18 +156,26 @@ export function buildJourneyStrip(travel, viewW, viewH) {
 
   // --- 3. Sample biome segments for each layer --------------------------
 
-  const nearSegments = buildNearSegments(travel, extBeforePx, extAfterPx);
+  const showSnow = options.showSnow !== false;
+  const nearSegments = buildNearSegments(
+    travel,
+    extBeforePx,
+    extAfterPx,
+    showSnow,
+  );
   const midSegments = buildOffsetSegments(
     travel,
     extBeforePx,
     extAfterPx,
     MID_OFFSET_WORLD,
+    showSnow,
   );
   const farSegments = buildOffsetSegments(
     travel,
     extBeforePx,
     extAfterPx,
     FAR_OFFSET_WORLD,
+    showSnow,
   );
 
   // --- 4. Build silhouette segment data for each layer ------------------
@@ -169,7 +198,7 @@ export function buildJourneyStrip(travel, viewW, viewH) {
   const midSegs = buildLayerSegments(scaleSegments(midSegments, PARALLAX_SPEED.mid), "mid");
   const farSegs = buildLayerSegments(scaleSegments(farSegments, PARALLAX_SPEED.far), "far");
 
-  return {
+  const strip = {
     totalStripPx,
     extBeforePx,
     routePx,
@@ -189,6 +218,8 @@ export function buildJourneyStrip(travel, viewW, viewH) {
     viewW,
     viewH,
   };
+  strip.treeDecorations = buildTreeDecorations(strip);
+  return strip;
 }
 
 // ---------------------------------------------------------------------------
@@ -201,7 +232,7 @@ export function buildJourneyStrip(travel, viewW, viewH) {
  * Append segments for a new travel onto an already-built strip.
  * Mutates the strip in-place and returns it.
  */
-export function extendStripWithTravel(strip, travel, viewW, viewH) {
+export function extendStripWithTravel(strip, travel, viewW, viewH, options = {}) {
   const FAR_SPEED = 0.26; // must match PARALLAX_SPEED.far — slowest layer drives post-ext size
   const playerX = viewW * PLAYER_X_FRAC;
 
@@ -223,6 +254,7 @@ export function extendStripWithTravel(strip, travel, viewW, viewH) {
     ROUTE_EXTENSION_WORLD * PX_PER_WORLD,
     minExtAfter,
   );
+  const showSnow = options.showSnow !== false;
 
   // Raw biome segment arrays from travel
   const rawNear =
@@ -240,6 +272,7 @@ export function extendStripWithTravel(strip, travel, viewW, viewH) {
     routeWorldLength,
     routePx,
     extAfterPx,
+    showSnow,
   );
   const midPx = expandFromStartX(
     rawMid,
@@ -247,6 +280,7 @@ export function extendStripWithTravel(strip, travel, viewW, viewH) {
     routeWorldLength,
     routePx,
     extAfterPx,
+    showSnow,
   );
   const farPx = expandFromStartX(
     rawFar,
@@ -254,6 +288,7 @@ export function extendStripWithTravel(strip, travel, viewW, viewH) {
     routeWorldLength,
     routePx,
     extAfterPx,
+    showSnow,
   );
 
   // Truncate the old post-extension from every layer before appending the
@@ -278,6 +313,7 @@ export function extendStripWithTravel(strip, travel, viewW, viewH) {
   strip.startMarkerStripX = newStartX;
   strip.destMarkerStripX = newDestX;
   strip.totalStripPx = Math.ceil(newDestX + extAfterPx);
+  strip.treeDecorations = buildTreeDecorations(strip);
 
   return strip;
 }
@@ -289,23 +325,32 @@ function expandFromStartX(
   totalWorldLength,
   routePx,
   extAfterPx,
+  showSnow = true,
 ) {
   const result = [];
   const firstBiome = normalizeBiomeKey(rawSegs[0]?.biome) ?? "plains";
+  const firstSnow = showSnow && Boolean(rawSegs[0]?.isSnow);
   const lastBiome =
     normalizeBiomeKey(rawSegs[rawSegs.length - 1]?.biome) ?? firstBiome;
+  const lastSnow = showSnow && Boolean(rawSegs[rawSegs.length - 1]?.isSnow);
   let cursor = startX;
 
   if (rawSegs.length && totalWorldLength > 0.0001) {
     for (const seg of rawSegs) {
       const biomeKey = normalizeBiomeKey(seg.biome) ?? firstBiome;
       const px = Math.max(1, (seg.distance / totalWorldLength) * routePx);
-      result.push({ biomeKey, stripX: cursor, stripWidth: px });
+      result.push({
+        biomeKey,
+        isSnow: showSnow && Boolean(seg.isSnow),
+        stripX: cursor,
+        stripWidth: px,
+      });
       cursor += px;
     }
   } else {
     result.push({
       biomeKey: firstBiome,
+      isSnow: firstSnow,
       stripX: cursor,
       stripWidth: Math.max(1, routePx),
     });
@@ -315,6 +360,7 @@ function expandFromStartX(
   if (extAfterPx > 0) {
     result.push({
       biomeKey: lastBiome,
+      isSnow: lastSnow,
       stripX: cursor,
       stripWidth: extAfterPx,
     });
@@ -331,9 +377,12 @@ function appendLayerSegs(target, pixelSegs, layerDepth, speedScale = 1.0) {
 
   let newSegs = scaledSegs.map((seg) => {
     const biomeKey = seg.biomeKey ?? "plains";
-    const colorRgb = getBiomeLayerColorRgb(biomeKey, layerDepth);
+    const colorRgb = getBiomeLayerColorRgb(biomeKey, layerDepth, {
+      isSnow: Boolean(seg.isSnow),
+    });
     return {
       biomeKey,
+      isSnow: Boolean(seg.isSnow),
       color: rgbToCss(colorRgb),
       colorRgb,
       stripX: seg.stripX,
@@ -359,7 +408,12 @@ function appendLayerSegs(target, pixelSegs, layerDepth, speedScale = 1.0) {
   if (target.length > 0 && newSegs.length > 0) {
     const last = target[target.length - 1];
     const first = newSegs[0];
-    if (!last.isBlend && !first.isBlend && last.biomeKey === first.biomeKey) {
+    if (
+      !last.isBlend &&
+      !first.isBlend &&
+      last.biomeKey === first.biomeKey &&
+      Boolean(last.isSnow) === Boolean(first.isSnow)
+    ) {
       if (first.topEdgeSamples && last.topEdgeSamples) {
         const merged = new Float32Array(
           last.topEdgeSamples.length + first.topEdgeSamples.length,
@@ -389,6 +443,70 @@ export const PARALLAX_SPEED = {
   mid: 0.46,
   far: 0.26,
 };
+
+function buildTreeDecorations(strip) {
+  return {
+    near2: buildLayerTreeDecorations(strip.layerSegments.near2, "near2"),
+    near1: buildLayerTreeDecorations(strip.layerSegments.near1, "near1"),
+  };
+}
+
+function buildLayerTreeDecorations(layerSegments, layerName) {
+  const config = TREE_LAYER_CONFIG[layerName];
+  if (!config || !layerSegments?.length) return [];
+
+  const trees = [];
+  for (const segment of layerSegments) {
+    if (!segment || segment.isBlend || !segment.topEdgeSamples) continue;
+    if (!segment.biomeKey || TREE_BLOCKED_BIOMES.has(segment.biomeKey)) continue;
+    if (!TREE_ALLOWED_BIOMES.has(segment.biomeKey)) continue;
+    if (segment.stripWidth < 16) continue;
+
+    const rng = createSeededRng(
+      hashString(
+        `${layerName}:${segment.biomeKey}:${Math.round(segment.stripX)}:${Math.round(segment.stripWidth)}`,
+      ),
+    );
+    const segStart = segment.stripX + 5 + rng() * 8;
+    const segEnd = segment.stripX + segment.stripWidth - 5;
+    const usableWidth = Math.max(0, segEnd - segStart);
+    if (usableWidth < 4) continue;
+    const avgSpacing = (config.minSpacingPx + config.maxSpacingPx) * 0.5;
+    const targetCount = Math.max(1, Math.round(usableWidth / avgSpacing));
+
+    for (let i = 0; i < targetCount; i += 1) {
+      const t = (i + 0.15 + rng() * 0.7) / targetCount;
+      const jitter = (rng() - 0.5) * avgSpacing * 0.2;
+      const cursor = Math.max(segStart, Math.min(segEnd, segStart + usableWidth * t + jitter));
+      trees.push({
+        stripX: cursor,
+        variantIndex: segment.isSnow
+          ? 3 + Math.floor(rng() * 2)
+          : Math.floor(rng() * 3),
+        heightPx: lerp(config.minHeightPx, config.maxHeightPx, rng()),
+        upwardOffsetPx: lerp(
+          config.minUpwardOffsetPx,
+          config.maxUpwardOffsetPx,
+          rng(),
+        ),
+        segmentStripX: segment.stripX,
+        topEdgeSamples: segment.topEdgeSamples,
+      });
+    }
+  }
+  return trees;
+}
+
+function createSeededRng(initialSeed) {
+  let state = (initialSeed | 0) || 1;
+  return function next() {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    const value = state >>> 0;
+    return value / 4294967296;
+  };
+}
 
 /**
  * Remove the old post-extension from a layer segment array up to `cutX`.
@@ -440,7 +558,7 @@ function scaleSegments(segs, speed) {
 // Biome sampling helpers
 // ---------------------------------------------------------------------------
 
-function buildNearSegments(travel, extBeforePx, extAfterPx) {
+function buildNearSegments(travel, extBeforePx, extAfterPx, showSnow = true) {
   // Use the near biome band from travel if available, otherwise fall back to
   // sampling the straight start→dest line directly.
   const rawSegs =
@@ -451,10 +569,17 @@ function buildNearSegments(travel, extBeforePx, extAfterPx) {
     extBeforePx,
     extAfterPx,
     travel.totalLength ?? 0,
+    showSnow,
   );
 }
 
-function buildOffsetSegments(travel, extBeforePx, extAfterPx, offsetWorld) {
+function buildOffsetSegments(
+  travel,
+  extBeforePx,
+  extAfterPx,
+  offsetWorld,
+  showSnow = true,
+) {
   // Use mid/far band from travel when it matches the offset.
   // These constants must match TRAVEL_BIOME_BANDS in travel.js (mid:5, far:10).
   const isMid = Math.abs(offsetWorld - MID_OFFSET_WORLD) < 0.01;
@@ -475,6 +600,7 @@ function buildOffsetSegments(travel, extBeforePx, extAfterPx, offsetWorld) {
     extBeforePx,
     extAfterPx,
     travel.totalLength ?? 0,
+    showSnow,
   );
 }
 
@@ -488,7 +614,10 @@ function mergeAdjacentSegments(segs) {
   for (let i = 1; i < segs.length; i++) {
     const prev = merged[merged.length - 1];
     const cur = segs[i];
-    if (cur.biomeKey === prev.biomeKey) {
+    if (
+      cur.biomeKey === prev.biomeKey &&
+      Boolean(cur.isSnow) === Boolean(prev.isSnow)
+    ) {
       prev.stripWidth += cur.stripWidth;
     } else {
       merged.push({ ...cur });
@@ -506,15 +635,23 @@ function expandSegmentsToPx(
   extBeforePx,
   extAfterPx,
   totalWorldLength,
+  showSnow = true,
 ) {
   const result = [];
   const firstBiome = normalizeBiomeKey(rawSegs[0]?.biome) ?? "plains";
+  const firstSnow = showSnow && Boolean(rawSegs[0]?.isSnow);
   const lastBiome =
     normalizeBiomeKey(rawSegs[rawSegs.length - 1]?.biome) ?? firstBiome;
+  const lastSnow = showSnow && Boolean(rawSegs[rawSegs.length - 1]?.isSnow);
 
   // Pre-extension
   if (extBeforePx > 0) {
-    result.push({ biomeKey: firstBiome, stripX: 0, stripWidth: extBeforePx });
+    result.push({
+      biomeKey: firstBiome,
+      isSnow: firstSnow,
+      stripX: 0,
+      stripWidth: extBeforePx,
+    });
   }
 
   // Route segments scaled to pixels
@@ -525,13 +662,19 @@ function expandSegmentsToPx(
     for (const seg of rawSegs) {
       const biomeKey = normalizeBiomeKey(seg.biome) ?? firstBiome;
       const px = Math.max(1, (seg.distance / totalWorldLength) * routePx);
-      result.push({ biomeKey, stripX: cursor, stripWidth: px });
+      result.push({
+        biomeKey,
+        isSnow: showSnow && Boolean(seg.isSnow),
+        stripX: cursor,
+        stripWidth: px,
+      });
       cursor += px;
     }
   } else {
     // No segment data – fill with fallback
     result.push({
       biomeKey: firstBiome,
+      isSnow: firstSnow,
       stripX: cursor,
       stripWidth: Math.max(1, routePx),
     });
@@ -542,6 +685,7 @@ function expandSegmentsToPx(
   if (extAfterPx > 0) {
     result.push({
       biomeKey: lastBiome,
+      isSnow: lastSnow,
       stripX: cursor,
       stripWidth: extAfterPx,
     });
@@ -568,7 +712,8 @@ function injectBlendSeams(segments, layerDepth) {
       next !== null &&
       seg.biomeKey !== null &&
       next.biomeKey !== null &&
-      seg.biomeKey !== next.biomeKey &&
+      (seg.biomeKey !== next.biomeKey ||
+        Boolean(seg.isSnow) !== Boolean(next.isSnow)) &&
       seg.topEdgeSamples !== null &&
       next.topEdgeSamples !== null;
 
@@ -639,7 +784,9 @@ function injectBlendSeams(segments, layerDepth) {
 function buildLayerSegments(pixelSegments, layerDepth) {
   let segs = pixelSegments.map((seg) => {
     const biomeKey = seg.biomeKey ?? "plains";
-    const colorRgb = getBiomeLayerColorRgb(biomeKey, layerDepth);
+    const colorRgb = getBiomeLayerColorRgb(biomeKey, layerDepth, {
+      isSnow: Boolean(seg.isSnow),
+    });
     const topEdgeSamples =
       layerDepth === "ground"
         ? null // ground is a flat filled rect – no silhouette needed
@@ -651,6 +798,7 @@ function buildLayerSegments(pixelSegments, layerDepth) {
           );
     return {
       biomeKey,
+      isSnow: Boolean(seg.isSnow),
       color: rgbToCss(colorRgb),
       colorRgb,
       stripX: seg.stripX,
@@ -664,6 +812,19 @@ function buildLayerSegments(pixelSegments, layerDepth) {
   }
 
   return segs;
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function hashString(text) {
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }
 
 function createEmptyStrip() {
@@ -682,6 +843,10 @@ function createEmptyStrip() {
       near2: [],
       mid: [],
       far: [],
+    },
+    treeDecorations: {
+      near2: [],
+      near1: [],
     },
     blendZonePx: BLEND_ZONE_PX,
     viewW: 0,

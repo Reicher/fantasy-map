@@ -1,4 +1,5 @@
 import { BIOME_INFO } from "../config.js";
+import { isSnowCell } from "../generator/surfaceModel.js";
 import { dedupePoints } from "../utils.js";
 import { regionAtCell, regionAtPosition } from "./playQueries.js";
 
@@ -282,11 +283,17 @@ function buildBiomeSegmentsFromPoints(world, points) {
     const distance = nextPoint
       ? Math.hypot(nextPoint.x - point.x, nextPoint.y - point.y)
       : 0;
+    const snowy = isSnowPoint(world, point);
 
-    if (!current || current.biome !== biomeInfo.key) {
+    if (
+      !current ||
+      current.biome !== biomeInfo.key ||
+      current.isSnow !== snowy
+    ) {
       current = {
         biome: biomeInfo.key,
         label: biomeInfo.label,
+        isSnow: snowy,
         distance: 0,
       };
       segments.push(current);
@@ -432,6 +439,20 @@ function biomeKeyAtPoint(world, position) {
     Math.min(world.terrain.height - 1, Math.floor(position.y)),
   );
   return world.climate.biome[y * world.terrain.width + x];
+}
+
+function isSnowPoint(world, position) {
+  if (!world || !position) return false;
+  const x = Math.max(0, Math.min(world.terrain.width - 1, Math.floor(position.x)));
+  const y = Math.max(0, Math.min(world.terrain.height - 1, Math.floor(position.y)));
+  const index = y * world.terrain.width + x;
+  return isSnowCell(
+    world.climate.biome[index],
+    world.terrain.elevation[index],
+    world.terrain.mountainField[index],
+    world.climate.temperature[index],
+    true,
+  );
 }
 
 function revealAroundPosition(world, discoveredCells, position) {

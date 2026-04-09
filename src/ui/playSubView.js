@@ -67,6 +67,7 @@ export function createPlaySubViewController({
       journeyScene.update(playState, {
         debug: state.playMapOptions?.debugTravelSampling,
         world,
+        showSnow: state.renderOptions?.showSnow !== false,
       });
     });
     profiler.setSnapshot(journeyScene.getDebugSnapshot());

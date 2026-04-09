@@ -1,5 +1,6 @@
 import { BIOME_INFO } from "../../config.js";
 import {
+  capToGamePalette,
   DEPTH_SHADE_BY_LAYER,
   WORLD_RGB,
   capToBiomePalette,
@@ -11,7 +12,13 @@ import { drawPoiMarkerGlyph } from "../../render/poiGlyph.js?v=20260408b";
 
 const SNOW_GROUND_RGB = WORLD_RGB.snow;
 const JOURNEY_SIGNPOST_IMAGE = createJourneySignpostImage();
-const JOURNEY_SIGNPOST_MIN_HEIGHT_PX = 56;
+const JOURNEY_SIGNPOST_MIN_HEIGHT_PX = 84;
+const JOURNEY_SIGNPOST_VERTICAL_OFFSET_PX = 13;
+const JOURNEY_TREE_SPRITESHEET = createJourneyTreeSpritesheet();
+const JOURNEY_TREE_VARIANT_COUNT = 5;
+const TREE_CHROMA_TOLERANCE = 24;
+const SNOW_AFFECTED_LAYERS = new Set(["ground", "near1", "near2", "foreground"]);
+let journeyTreeVariants = null;
 
 /** Returns the depth-tinted biome colour as an [r, g, b] array.
  * Near = darker, warmer, richer. Far = lighter, cooler, atmospheric haze. */
@@ -25,16 +32,15 @@ export function getBiomeLayerColorRgb(
     return SNOW_GROUND_RGB;
   }
 
-  const hex = getBiomeBaseHex(normalizedBiome);
-  const base = hexToRgb(hex);
+  const base = isSnow && SNOW_AFFECTED_LAYERS.has(layerDepth)
+    ? SNOW_GROUND_RGB
+    : hexToRgb(getBiomeBaseHex(normalizedBiome));
   const shade = DEPTH_SHADE_BY_LAYER[layerDepth] ?? DEPTH_SHADE_BY_LAYER.ground;
   if (!shade.target) {
-    return capToBiomePalette(base, normalizedBiome);
+    return isSnow ? capToGamePalette(base) : capToBiomePalette(base, normalizedBiome);
   }
-  return capToBiomePalette(
-    mixRgb(base, shade.target, shade.amount),
-    normalizedBiome,
-  );
+  const mixed = mixRgb(base, shade.target, shade.amount);
+  return isSnow ? capToGamePalette(mixed) : capToBiomePalette(mixed, normalizedBiome);
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +205,12 @@ export function drawPoiMarkerOnCanvas(
       JOURNEY_SIGNPOST_MIN_HEIGHT_PX,
       Math.round(options.minVisualHeightPx ?? JOURNEY_SIGNPOST_MIN_HEIGHT_PX),
     );
-    const groundY = Number.isFinite(options.groundY) ? options.groundY : y;
+    const baseGroundY = Number.isFinite(options.groundY) ? options.groundY : y;
+    const verticalOffset = Math.max(
+      0,
+      Number(options.verticalOffsetPx ?? JOURNEY_SIGNPOST_VERTICAL_OFFSET_PX),
+    );
+    const groundY = baseGroundY - verticalOffset;
     if (
       JOURNEY_SIGNPOST_IMAGE &&
       JOURNEY_SIGNPOST_IMAGE.complete &&
@@ -228,6 +239,82 @@ export function drawPoiMarkerOnCanvas(
     hovered: false,
     pressed: false,
   });
+}
+
+export function drawJourneyTreeOnCanvas(
+  ctx,
+  x,
+  groundY,
+  options = {},
+) {
+  const targetHeight = Math.max(18, Number(options.heightPx ?? 64));
+  const upwardOffset = Math.max(0, Number(options.upwardOffsetPx ?? 0));
+  const isSnowTree = Number(options.variantIndex ?? 0) >= 3;
+  const variants = getJourneyTreeVariants();
+  if (!variants?.length) {
+    drawFallbackJourneyTree(ctx, x, groundY, targetHeight, upwardOffset, isSnowTree);
+    return;
+  }
+
+  const rawIndex = Number.isFinite(options.variantIndex)
+    ? Math.floor(options.variantIndex)
+    : 0;
+  const variantIndex = ((rawIndex % variants.length) + variants.length) % variants.length;
+  const sprite = variants[variantIndex];
+  if (!sprite) {
+    drawFallbackJourneyTree(ctx, x, groundY, targetHeight, upwardOffset, isSnowTree);
+    return;
+  }
+
+  const targetWidth = targetHeight * (sprite.width / sprite.height);
+  const drawLeft = Math.round(x - targetWidth * 0.5);
+  const drawTop = Math.round(groundY - targetHeight - upwardOffset);
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(
+    sprite,
+    drawLeft,
+    drawTop,
+    Math.round(targetWidth),
+    Math.round(targetHeight),
+  );
+  ctx.restore();
+}
+
+function drawFallbackJourneyTree(
+  ctx,
+  x,
+  groundY,
+  targetHeight,
+  upwardOffset,
+  isSnowTree,
+) {
+  const baseY = Math.round(groundY - upwardOffset);
+  const h = Math.round(targetHeight);
+  const w = Math.round(h * 0.58);
+  const trunkH = Math.max(8, Math.round(h * 0.2));
+  const crownTop = baseY - h;
+  const crownBottom = baseY - trunkH;
+
+  ctx.save();
+  ctx.fillStyle = "#5a3a1f";
+  ctx.fillRect(Math.round(x - w * 0.08), crownBottom, Math.max(2, Math.round(w * 0.16)), trunkH);
+
+  ctx.beginPath();
+  ctx.moveTo(x, crownTop);
+  ctx.lineTo(x - w * 0.5, crownBottom);
+  ctx.lineTo(x + w * 0.5, crownBottom);
+  ctx.closePath();
+  ctx.fillStyle = isSnowTree ? "#dfe0dd" : "#2f6b2d";
+  ctx.fill();
+
+  if (isSnowTree) {
+    ctx.fillStyle = "rgba(255,255,255,0.75)";
+    ctx.fillRect(Math.round(x - w * 0.26), Math.round(crownTop + h * 0.24), Math.round(w * 0.52), Math.max(2, Math.round(h * 0.08)));
+  }
+  ctx.restore();
 }
 
 function drawJourneySignpostImage(
@@ -271,6 +358,80 @@ function createJourneySignpostImage() {
   image.decoding = "async";
   image.src = new URL("../../assets/journey/signpost-marker.png", import.meta.url).href;
   return image;
+}
+
+function createJourneyTreeSpritesheet() {
+  if (typeof Image !== "function") return null;
+  const image = new Image();
+  image.decoding = "async";
+  image.src = new URL("../../assets/journey/journey-pines.png", import.meta.url).href;
+  return image;
+}
+
+function getJourneyTreeVariants() {
+  if (journeyTreeVariants) return journeyTreeVariants;
+  if (
+    !JOURNEY_TREE_SPRITESHEET ||
+    !JOURNEY_TREE_SPRITESHEET.complete ||
+    JOURNEY_TREE_SPRITESHEET.naturalWidth <= 0 ||
+    JOURNEY_TREE_SPRITESHEET.naturalHeight <= 0
+  ) {
+    return null;
+  }
+  journeyTreeVariants = sliceJourneyTreeVariants(
+    JOURNEY_TREE_SPRITESHEET,
+    JOURNEY_TREE_VARIANT_COUNT,
+  );
+  return journeyTreeVariants;
+}
+
+function sliceJourneyTreeVariants(sheetImage, variantCount) {
+  if (typeof document === "undefined") return null;
+  const sourceW = sheetImage.naturalWidth;
+  const sourceH = sheetImage.naturalHeight;
+  if (sourceW <= 0 || sourceH <= 0 || variantCount <= 0) return null;
+
+  const sourceCanvas = document.createElement("canvas");
+  sourceCanvas.width = sourceW;
+  sourceCanvas.height = sourceH;
+  const sourceCtx = sourceCanvas.getContext("2d");
+  if (!sourceCtx) return null;
+  sourceCtx.drawImage(sheetImage, 0, 0);
+
+  const corner = sourceCtx.getImageData(1, 1, 1, 1).data;
+  const keyR = corner[0];
+  const keyG = corner[1];
+  const keyB = corner[2];
+
+  const variants = [];
+  const frameW = sourceW / variantCount;
+
+  for (let index = 0; index < variantCount; index += 1) {
+    const sx = frameW * index;
+    const sw = Math.max(1, frameW);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(sw));
+    canvas.height = sourceH;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) continue;
+
+    ctx.drawImage(sheetImage, sx, 0, sw, sourceH, 0, 0, canvas.width, sourceH);
+    const imageData = ctx.getImageData(0, 0, canvas.width, sourceH);
+    const pixels = imageData.data;
+    for (let p = 0; p < pixels.length; p += 4) {
+      const dr = pixels[p] - keyR;
+      const dg = pixels[p + 1] - keyG;
+      const db = pixels[p + 2] - keyB;
+      const distance = Math.hypot(dr, dg, db);
+      if (distance <= TREE_CHROMA_TOLERANCE) {
+        pixels[p + 3] = 0;
+      }
+    }
+    ctx.putImageData(imageData, 0, 0);
+    variants.push(canvas);
+  }
+
+  return variants;
 }
 
 // ---------------------------------------------------------------------------

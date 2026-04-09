@@ -13,7 +13,11 @@ export function attachEditorController({
   clampCamera,
   zoomCameraAroundPoint,
   getAdjacentEditorZoom,
+  findEditorPoiAtEvent,
+  setEditorPlayerStart,
 }) {
+  const DRAG_THRESHOLD_PX = 2.5;
+
   canvas.addEventListener("pointerdown", (event) => {
     if (
       state.currentMode !== "editor" ||
@@ -29,6 +33,7 @@ export function attachEditorController({
       startY: ((event.clientY - rect.top) / rect.height) * RENDER_HEIGHT,
       centerX: state.cameraState.centerX,
       centerY: state.cameraState.centerY,
+      moved: false,
     };
     canvas.setPointerCapture(event.pointerId);
     canvas.dataset.dragging = "true";
@@ -50,6 +55,12 @@ export function attachEditorController({
     if (state.dragState) {
       const dx = canvasX - state.dragState.startX;
       const dy = canvasY - state.dragState.startY;
+      const hasDragged =
+        Math.abs(dx) > DRAG_THRESHOLD_PX || Math.abs(dy) > DRAG_THRESHOLD_PX;
+      if (!hasDragged) {
+        return;
+      }
+      state.dragState.moved = true;
       state.cameraState = clampCamera({
         zoom: state.cameraState.zoom,
         centerX: state.dragState.centerX - dx / state.currentViewport.scaleX,
@@ -84,9 +95,22 @@ export function attachEditorController({
 
   canvas.addEventListener("pointerup", (event) => {
     if (state.dragState) {
+      const wasDrag = state.dragState.moved;
       state.dragState = null;
       canvas.releasePointerCapture(event.pointerId);
       canvas.dataset.dragging = "false";
+      if (
+        !wasDrag &&
+        state.currentMode === "editor" &&
+        event.button === 0 &&
+        typeof findEditorPoiAtEvent === "function" &&
+        typeof setEditorPlayerStart === "function"
+      ) {
+        const poiId = findEditorPoiAtEvent(event);
+        if (poiId != null && setEditorPlayerStart(poiId)) {
+          rerenderCurrentWorld();
+        }
+      }
     }
   });
 

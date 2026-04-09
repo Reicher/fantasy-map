@@ -32,9 +32,23 @@ export function findPlayableCityAtWorldPoint(
     return null;
   }
 
+  return findPoiAtWorldPoint(world, validCityIds, worldX, worldY, radius);
+}
+
+export function findPoiAtWorldPoint(
+  world,
+  candidatePoiIds,
+  worldX,
+  worldY,
+  radius = 6.4,
+) {
+  if (!world || !candidatePoiIds || candidatePoiIds.size === 0) {
+    return null;
+  }
+
   let best = null;
 
-  for (const cityId of validCityIds) {
+  for (const cityId of candidatePoiIds) {
     const city = world.cities[cityId];
     if (!city) {
       continue;

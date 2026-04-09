@@ -8,9 +8,11 @@ import {
   zoomCameraAroundPoint as buildZoomedCamera,
 } from "./cameraState.js?v=20260407a";
 import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260408a";
-import { attachEditorController } from "./editorController.js?v=20260407a";
+import { attachEditorController } from "./editorController.js?v=20260409a";
 import { renderEditorWorld } from "../render/renderer.js?v=20260409a";
 import { createMapAtlasCacheManager } from "./mapAtlasCache.js?v=20260408h";
+import { createPlayState } from "../game/travel.js?v=20260409b";
+import { findPoiAtWorldPoint } from "../game/playQueries.js?v=20260409a";
 
 export function createEditorSession({ refs, state, syncViewUi }) {
   const mapCache = createMapAtlasCacheManager({
@@ -19,10 +21,14 @@ export function createEditorSession({ refs, state, syncViewUi }) {
     getCameraState: () => state.cameraState,
     renderStaticScene: renderEditorWorld,
     getStaticKey(renderOptions = {}) {
+      const playerStart = renderOptions.playerStart;
       return [
         renderOptions.showSnow ? 1 : 0,
         renderOptions.showBiomeLabels ? 1 : 0,
         renderOptions.showPoiLabels ? 1 : 0,
+        playerStart?.cityId ?? "-",
+        playerStart?.x?.toFixed?.(2) ?? "-",
+        playerStart?.y?.toFixed?.(2) ?? "-",
       ].join(":");
     },
     getAtlasPadding(world, cameraState) {
@@ -49,6 +55,8 @@ export function createEditorSession({ refs, state, syncViewUi }) {
     clampCamera,
     zoomCameraAroundPoint,
     getAdjacentEditorZoom,
+    findEditorPoiAtEvent,
+    setEditorPlayerStart,
   });
 
   return {
@@ -70,6 +78,7 @@ export function createEditorSession({ refs, state, syncViewUi }) {
     const renderOptions = {
       ...state.renderOptions,
       cameraState: state.cameraState,
+      playerStart: getEditorPlayerStart(),
     };
     mapCache.ensure(renderOptions);
     state.currentViewport = mapCache.draw(state.cameraState);
@@ -87,6 +96,7 @@ export function createEditorSession({ refs, state, syncViewUi }) {
         ...state.renderOptions,
         cameraState: state.cameraState,
         interactive: true,
+        playerStart: getEditorPlayerStart(),
       };
       mapCache.ensure(renderOptions);
       state.currentViewport = mapCache.draw(state.cameraState);
@@ -169,5 +179,64 @@ export function createEditorSession({ refs, state, syncViewUi }) {
     );
     syncViewUi();
     rerenderCurrentWorld();
+  }
+
+  function findEditorPoiAtEvent(event) {
+    if (!state.currentWorld || !state.currentViewport) {
+      return null;
+    }
+
+    const rect = refs.canvas.getBoundingClientRect();
+    const canvasX = ((event.clientX - rect.left) / rect.width) * RENDER_WIDTH;
+    const canvasY = ((event.clientY - rect.top) / rect.height) * RENDER_HEIGHT;
+    const worldPoint = state.currentViewport.canvasToWorld(canvasX, canvasY);
+    const poiIds = new Set(
+      (state.currentWorld.features?.pointsOfInterest ?? state.currentWorld.cities)
+        .map((poi) => poi.id),
+    );
+    return findPoiAtWorldPoint(
+      state.currentWorld,
+      poiIds,
+      worldPoint.x,
+      worldPoint.y,
+    );
+  }
+
+  function setEditorPlayerStart(cityId) {
+    if (!state.currentWorld || cityId == null) {
+      return false;
+    }
+
+    const city = state.currentWorld.cities[cityId];
+    if (!city) {
+      return false;
+    }
+
+    state.currentWorld.playerStart = {
+      cityId,
+      x: city.x,
+      y: city.y,
+    };
+    state.playState = createPlayState(state.currentWorld);
+    return true;
+  }
+
+  function getEditorPlayerStart() {
+    if (state.currentWorld?.playerStart) {
+      return state.currentWorld.playerStart;
+    }
+
+    if (state.playState?.currentCityId != null) {
+      const city = state.currentWorld?.cities?.[state.playState.currentCityId];
+      if (city) {
+        return {
+          cityId: city.id,
+          x: city.x,
+          y: city.y,
+        };
+      }
+    }
+
+    return null;
   }
 }

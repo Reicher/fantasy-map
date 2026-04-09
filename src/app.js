@@ -25,9 +25,9 @@ import {
 import { applyCanvasResolution } from "./ui/canvasResolution.js?v=20260403a";
 import { createPlayProfiler } from "./ui/playProfiler.js?v=20260403a";
 import { updateStats } from "./ui/statsPanel.js";
-import { createEditorSession } from "./ui/editorSession.js?v=20260408j";
+import { createEditorSession } from "./ui/editorSession.js?v=20260409a";
 import { clearHover } from "./ui/hoverPanel.js?v=20260408a";
-import { createPlaySession } from "./ui/playSession.js?v=20260408m";
+import { createPlaySession } from "./ui/playSession.js?v=20260409a";
 import {
   createTransitionController,
   waitForNextPaintIfActive,
