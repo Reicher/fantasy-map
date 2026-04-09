@@ -611,7 +611,6 @@ function travelKey(travel) {
     travel.startCityId ?? "-",
     travel.targetCityId ?? "-",
     (travel.totalLength ?? 0).toFixed(2),
-    travel.biomeSegments?.length ?? 0,
     travel.biomeBandSegments?.near?.segments?.length ?? 0,
   ].join(":");
 }

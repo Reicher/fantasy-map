@@ -76,9 +76,7 @@ export function createPlaySubViewController({
 function syncPlayLegendButtons(playMapOptions, refs) {
   refs.playToggleBiomeLabelsButton.dataset.active =
     playMapOptions.showBiomeLabels ? "true" : "false";
-  refs.playToggleCityLabelsButton.dataset.active = (
-    playMapOptions.showPoiLabels ?? playMapOptions.showCityLabels
-  )
+  refs.playToggleCityLabelsButton.dataset.active = playMapOptions.showPoiLabels
     ? "true"
     : "false";
   refs.playToggleHoverButton.dataset.active = playMapOptions.showHoverInspector

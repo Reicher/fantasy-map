@@ -3,7 +3,7 @@ import { BIOME_KEYS } from "../config.js";
 export function drawLabels(ctx, world, viewport, options = {}) {
   const {
     showBiomeLabels = false,
-    showPoiLabels = options.showCityLabels ?? false,
+    showPoiLabels = false,
     discoveredCells = null
   } = options;
   const placedBoxes = [];
@@ -51,7 +51,7 @@ export function drawLabels(ctx, world, viewport, options = {}) {
       world,
       viewport,
       placedBoxes,
-      options.poiLabelIds ?? options.cityLabelIds ?? null,
+      options.poiLabelIds ?? null,
     );
   }
 
@@ -123,7 +123,6 @@ function resolveVisiblePoiIdsForLabels(options = {}) {
     options.visiblePoiIds ??
     options.visibleCityIds ??
     options.poiLabelIds ??
-    options.cityLabelIds ??
     null
   );
 }

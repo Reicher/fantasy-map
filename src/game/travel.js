@@ -34,7 +34,6 @@ export function createPlayState(world) {
     pressedCityId: null,
     travel: null,
     discoveredCells,
-    fogDirty: true,
   };
 }
 
@@ -101,16 +100,12 @@ export function advanceTravel(playState, world, deltaMs) {
   const discoveredCells =
     playState.discoveredCells ??
     new Uint8Array(world.terrain.width * world.terrain.height);
-  const revealed = revealAroundPosition(world, discoveredCells, sample.point);
+  revealAroundPosition(world, discoveredCells, sample.point);
 
   if (nextProgress >= playState.travel.totalLength - 0.0001) {
     const city = world.cities[playState.travel.targetCityId];
     const finalPosition = city ? { x: city.x, y: city.y } : sample.point;
-    const finalReveal = revealAroundPosition(
-      world,
-      discoveredCells,
-      finalPosition,
-    );
+    revealAroundPosition(world, discoveredCells, finalPosition);
     return {
       ...playState,
       currentCityId: playState.travel.targetCityId,
@@ -121,7 +116,6 @@ export function advanceTravel(playState, world, deltaMs) {
           : lastRegionId,
       travel: null,
       discoveredCells,
-      fogDirty: playState.fogDirty || revealed || finalReveal,
     };
   }
 
@@ -130,7 +124,6 @@ export function advanceTravel(playState, world, deltaMs) {
     position: sample.point,
     lastRegionId,
     discoveredCells,
-    fogDirty: playState.fogDirty || revealed,
     travel: {
       ...playState.travel,
       progress: nextProgress,
@@ -166,13 +159,10 @@ function createTravel(
     totalLength,
     progress: 0,
     biomeBandSegments,
-    biomeSegments: biomeBandSegments.near.segments,
-    midDistantBiomeSegments: biomeBandSegments.mid.segments,
-    farDistantBiomeSegments: biomeBandSegments.far.segments,
   };
 }
 
-export function buildOffsetTravelBiomeSegments(
+function buildOffsetTravelBiomeSegments(
   world,
   points,
   offsetDistance = TRAVEL_BIOME_BANDS.mid,

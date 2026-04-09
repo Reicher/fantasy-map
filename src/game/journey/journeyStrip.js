@@ -208,8 +208,7 @@ function buildPixelBandsFromStart(
 }
 
 function getRawBandSegments(travel, bandName) {
-  const nearSegs =
-    travel.biomeBandSegments?.near?.segments ?? travel.biomeSegments ?? [];
+  const nearSegs = travel.biomeBandSegments?.near?.segments ?? [];
   if (bandName === "mid") {
     return travel.biomeBandSegments?.mid?.segments?.length
       ? travel.biomeBandSegments.mid.segments
@@ -427,8 +426,7 @@ function scaleSegments(segs, speed) {
 function buildNearSegments(travel, extBeforePx, extAfterPx) {
   // Use the near biome band from travel if available, otherwise fall back to
   // sampling the straight start→dest line directly.
-  const rawSegs =
-    travel.biomeBandSegments?.near?.segments ?? travel.biomeSegments ?? [];
+  const rawSegs = travel.biomeBandSegments?.near?.segments ?? [];
 
   return expandSegmentsToPx(
     rawSegs,
@@ -449,8 +447,7 @@ function buildOffsetSegments(travel, extBeforePx, extAfterPx, offsetWorld) {
   } else if (isFar && travel.biomeBandSegments?.far?.segments?.length) {
     rawSegs = travel.biomeBandSegments.far.segments;
   } else {
-    rawSegs =
-      travel.biomeBandSegments?.near?.segments ?? travel.biomeSegments ?? [];
+    rawSegs = travel.biomeBandSegments?.near?.segments ?? [];
   }
 
   return expandSegmentsToPx(

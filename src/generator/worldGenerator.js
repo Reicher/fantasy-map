@@ -1,3 +1,4 @@
+import { PARAM_SCHEMA } from "../config.js";
 import { createNameGenerator } from "../naming.js?v=20260402d";
 import { createRng } from "../random.js";
 import { clamp } from "../utils.js";
@@ -16,51 +17,33 @@ import { buildTravelGraph } from "./travelGraph.js?v=20260401a";
 import { buildWorldStats } from "./worldStats.js?v=20260408a";
 
 export function normalizeParams(input) {
-  const legacyWater = asNumber(input.waterRichness, 56);
-  return {
-    seed: String(input.seed ?? "saltwind-01").trim() || "saltwind-01",
-    mapSize: clamp(asNumber(input.mapSize, 58), 10, 100),
-    mountainousness: clamp(asNumber(input.mountainousness, 54), 0, 100),
-    cityDensity: clamp(asNumber(input.cityDensity, 20), 0, 100),
-    riverAmount: clamp(asNumber(input.riverAmount, 56), 0, 100),
-    lakeAmount: clamp(asNumber(input.lakeAmount, legacyWater), 0, 100),
-    lakeSize: clamp(asNumber(input.lakeSize, legacyWater), 0, 100),
-    coastComplexity: clamp(asNumber(input.coastComplexity, 62), 0, 100),
-    edgeDetail: clamp(asNumber(input.edgeDetail, 300), 180, 520),
-    minBiomeSize: clamp(asNumber(input.minBiomeSize, 15), 0, 30),
-    renderScale: clamp(asNumber(input.renderScale, 150), 50, 250),
-    fogVisionRadius: clamp(asNumber(input.fogVisionRadius, 18), 6, 40),
-    temperatureBias: clamp(asNumber(input.temperatureBias, 50), 0, 100),
-    moistureBias: clamp(asNumber(input.moistureBias, 50), 0, 100),
-    coastalBias: clamp(asNumber(input.coastalBias, 50), 0, 100),
-    poiSettlementWeight: clamp(
-      asNumber(input.poiSettlementWeight, 62),
-      0,
-      100,
-    ),
-    poiCrashSiteWeight: clamp(
-      asNumber(input.poiCrashSiteWeight, 28),
-      0,
-      100,
-    ),
-    poiSignpostWeight: clamp(
-      asNumber(input.poiSignpostWeight, 24),
-      0,
-      100,
-    ),
-    roadShortcutAggression: clamp(
-      asNumber(input.roadShortcutAggression, 50),
-      0,
-      100,
-    ),
-    roadReuseBias: clamp(asNumber(input.roadReuseBias, 50), 0, 100),
-    roadCityAvoidance: clamp(asNumber(input.roadCityAvoidance, 50), 0, 100),
-    roadMaxConnectionsPerCity: clamp(
-      asNumber(input.roadMaxConnectionsPerCity, 5),
-      2,
-      8,
-    ),
-  };
+  const source = input ?? {};
+  const normalized = {};
+
+  for (const [key, schema] of Object.entries(PARAM_SCHEMA)) {
+    if (schema.type === "string") {
+      normalized[key] = normalizeSeed(source[key], schema.default);
+      continue;
+    }
+
+    const baseFallback = schema.default;
+    const legacyFallback =
+      schema.legacyFallbackKey &&
+      source[key] == null &&
+      schema.legacyFallbackKey in source
+        ? asNumber(
+            source[schema.legacyFallbackKey],
+            schema.legacyDefault ?? baseFallback,
+          )
+        : baseFallback;
+    normalized[key] = clamp(
+      asNumber(source[key], legacyFallback),
+      schema.min,
+      schema.max,
+    );
+  }
+
+  return normalized;
 }
 
 export function generateWorld(inputParams) {
@@ -116,4 +99,9 @@ function selectPlayerStart(cities, seed) {
 function asNumber(value, fallback) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function normalizeSeed(value, fallback) {
+  const trimmed = String(value ?? fallback).trim();
+  return trimmed || fallback;
 }

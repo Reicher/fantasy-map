@@ -11,7 +11,7 @@ export function createEditorMapCacheManager({ canvas, getWorld, getCameraState }
       return [
         renderOptions.showSnow ? 1 : 0,
         renderOptions.showBiomeLabels ? 1 : 0,
-        (renderOptions.showPoiLabels ?? renderOptions.showCityLabels) ? 1 : 0,
+        renderOptions.showPoiLabels ? 1 : 0,
       ].join(":");
     },
     getAtlasPadding(world, cameraState) {

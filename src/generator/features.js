@@ -70,7 +70,6 @@ export function buildFeatureCatalog(world) {
 
   return {
     pointsOfInterest,
-    cities: pointsOfInterest,
     lakes: world.hydrology.lakes.map((lake) => ({ ...lake })),
     rivers: world.hydrology.rivers.map((river) => ({ ...river })),
     biomeRegions: world.regions.biomeRegions.map((region) => ({ ...region })),
