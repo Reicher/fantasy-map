@@ -12,13 +12,31 @@ import { drawPoiMarkerGlyph } from "../../render/poiGlyph.js?v=20260408b";
 
 const SNOW_GROUND_RGB = WORLD_RGB.snow;
 const JOURNEY_SIGNPOST_IMAGE = createJourneySignpostImage();
-const JOURNEY_SIGNPOST_MIN_HEIGHT_PX = 84;
-const JOURNEY_SIGNPOST_VERTICAL_OFFSET_PX = 13;
-const JOURNEY_TREE_SPRITESHEET = createJourneyTreeSpritesheet();
-const JOURNEY_TREE_VARIANT_COUNT = 5;
+const JOURNEY_SIGNPOST_MIN_HEIGHT_PX = 104;
+const JOURNEY_SIGNPOST_VERTICAL_OFFSET_PX = 18;
+const JOURNEY_TREE_SPRITESHEET_BY_FAMILY = {
+  pine: createJourneyTreeSpritesheet(
+    new URL("../../assets/journey/journey-pines.png", import.meta.url).href,
+  ),
+  dead: createJourneyTreeSpritesheet(
+    new URL("../../assets/journey/journey-dead-trees.png", import.meta.url).href,
+  ),
+  cactus: createJourneyTreeSpritesheet(
+    new URL("../../assets/journey/journey-cacti.png", import.meta.url).href,
+  ),
+};
+const JOURNEY_TREE_VARIANT_COUNT_BY_FAMILY = {
+  pine: 5,
+  dead: 3,
+  cactus: 2,
+};
 const TREE_CHROMA_TOLERANCE = 24;
 const SNOW_AFFECTED_LAYERS = new Set(["ground", "near1", "near2", "foreground"]);
-let journeyTreeVariants = null;
+const JOURNEY_NEAR_SHADE_SCALE = {
+  near1: 0.36,
+  near2: 0.34,
+};
+const journeyTreeVariantsByFamily = new Map();
 
 /** Returns the depth-tinted biome colour as an [r, g, b] array.
  * Near = darker, warmer, richer. Far = lighter, cooler, atmospheric haze. */
@@ -39,7 +57,8 @@ export function getBiomeLayerColorRgb(
   if (!shade.target) {
     return isSnow ? capToGamePalette(base) : capToBiomePalette(base, normalizedBiome);
   }
-  const mixed = mixRgb(base, shade.target, shade.amount);
+  const shadeScale = JOURNEY_NEAR_SHADE_SCALE[layerDepth] ?? 1;
+  const mixed = mixRgb(base, shade.target, shade.amount * shadeScale);
   return isSnow ? capToGamePalette(mixed) : capToBiomePalette(mixed, normalizedBiome);
 }
 
@@ -131,11 +150,11 @@ function getBiomeBaseSpec(biomeKey) {
       };
     case "mountain":
       return {
-        baseY: 0.28,
-        amplitude: 0.26,
-        wavelength1: 160,
-        wavelength2: 68,
-        sharpness: 2.1,
+        baseY: 0.24,
+        amplitude: 0.34,
+        wavelength1: 108,
+        wavelength2: 40,
+        sharpness: 3.7,
       };
     case "highlands":
       return {
@@ -249,8 +268,11 @@ export function drawJourneyTreeOnCanvas(
 ) {
   const targetHeight = Math.max(18, Number(options.heightPx ?? 64));
   const upwardOffset = Math.max(0, Number(options.upwardOffsetPx ?? 0));
-  const isSnowTree = Number(options.variantIndex ?? 0) >= 3;
-  const variants = getJourneyTreeVariants();
+  const treeFamily = resolveTreeFamily(options.treeFamily);
+  const isSnowTree =
+    treeFamily === "pine" && Number(options.variantIndex ?? 0) >= 3;
+  const variants =
+    getJourneyTreeVariants(treeFamily) ?? getJourneyTreeVariants("pine");
   if (!variants?.length) {
     drawFallbackJourneyTree(ctx, x, groundY, targetHeight, upwardOffset, isSnowTree);
     return;
@@ -267,8 +289,16 @@ export function drawJourneyTreeOnCanvas(
   }
 
   const targetWidth = targetHeight * (sprite.width / sprite.height);
+  const groundAnchorFrac = clamp(
+    Number(sprite.groundAnchorFrac),
+    0.5,
+    1,
+    1,
+  );
   const drawLeft = Math.round(x - targetWidth * 0.5);
-  const drawTop = Math.round(groundY - targetHeight - upwardOffset);
+  const drawTop = Math.round(
+    groundY - targetHeight * groundAnchorFrac - upwardOffset,
+  );
 
   ctx.save();
   ctx.imageSmoothingEnabled = true;
@@ -360,29 +390,35 @@ function createJourneySignpostImage() {
   return image;
 }
 
-function createJourneyTreeSpritesheet() {
+function createJourneyTreeSpritesheet(src) {
   if (typeof Image !== "function") return null;
   const image = new Image();
   image.decoding = "async";
-  image.src = new URL("../../assets/journey/journey-pines.png", import.meta.url).href;
+  image.src = src;
   return image;
 }
 
-function getJourneyTreeVariants() {
-  if (journeyTreeVariants) return journeyTreeVariants;
+function getJourneyTreeVariants(treeFamily = "pine") {
+  const family = resolveTreeFamily(treeFamily);
+  if (journeyTreeVariantsByFamily.has(family)) {
+    return journeyTreeVariantsByFamily.get(family);
+  }
+  const sheet = JOURNEY_TREE_SPRITESHEET_BY_FAMILY[family];
+  const variantCount = JOURNEY_TREE_VARIANT_COUNT_BY_FAMILY[family];
   if (
-    !JOURNEY_TREE_SPRITESHEET ||
-    !JOURNEY_TREE_SPRITESHEET.complete ||
-    JOURNEY_TREE_SPRITESHEET.naturalWidth <= 0 ||
-    JOURNEY_TREE_SPRITESHEET.naturalHeight <= 0
+    !sheet ||
+    !sheet.complete ||
+    sheet.naturalWidth <= 0 ||
+    sheet.naturalHeight <= 0
   ) {
     return null;
   }
-  journeyTreeVariants = sliceJourneyTreeVariants(
-    JOURNEY_TREE_SPRITESHEET,
-    JOURNEY_TREE_VARIANT_COUNT,
+  const variants = sliceJourneyTreeVariants(
+    sheet,
+    variantCount,
   );
-  return journeyTreeVariants;
+  journeyTreeVariantsByFamily.set(family, variants);
+  return variants;
 }
 
 function sliceJourneyTreeVariants(sheetImage, variantCount) {
@@ -428,10 +464,41 @@ function sliceJourneyTreeVariants(sheetImage, variantCount) {
       }
     }
     ctx.putImageData(imageData, 0, 0);
+    canvas.groundAnchorFrac = computeTreeGroundAnchorFrac(imageData, sourceH);
     variants.push(canvas);
   }
 
   return variants;
+}
+
+function computeTreeGroundAnchorFrac(imageData, frameHeight) {
+  const pixels = imageData.data;
+  const width = imageData.width;
+  const height = imageData.height;
+  let maxOpaqueY = -1;
+  for (let y = height - 1; y >= 0; y -= 1) {
+    let foundOpaqueInRow = false;
+    const rowStart = y * width * 4;
+    for (let x = 0; x < width; x += 1) {
+      const alpha = pixels[rowStart + x * 4 + 3];
+      if (alpha > 8) {
+        foundOpaqueInRow = true;
+        break;
+      }
+    }
+    if (foundOpaqueInRow) {
+      maxOpaqueY = y;
+      break;
+    }
+  }
+  if (maxOpaqueY < 0) return 1;
+  return clamp((maxOpaqueY + 1) / Math.max(1, frameHeight), 0.5, 1, 1);
+}
+
+function resolveTreeFamily(treeFamily) {
+  if (treeFamily === "dead") return "dead";
+  if (treeFamily === "cactus") return "cactus";
+  return "pine";
 }
 
 // ---------------------------------------------------------------------------
@@ -500,4 +567,9 @@ function hash01(text) {
     hash = Math.imul(hash, 16777619);
   }
   return ((hash >>> 0) % 100000) / 100000;
+}
+
+function clamp(value, min, max, fallback = min) {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, value));
 }

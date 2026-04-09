@@ -14,6 +14,9 @@ const BIOME_TRAVEL_COST = {
   [BIOME_KEYS.HIGHLANDS]: 2.25,
   [BIOME_KEYS.MOUNTAIN]: 4.8
 };
+const MAX_SEA_ROUTES_PER_ISLAND_COMPONENT = 2;
+const ISLAND_COMPONENT_SIZE_RATIO_THRESHOLD = 0.6;
+const SEA_ROUTE_RADIUS_STEPS = [40, 60, 84, 112, 150, 220];
 
 export function generateRoads(world) {
   const { params, terrain, climate, hydrology, cities } = world;
@@ -355,6 +358,7 @@ function buildSeaRoutes({ cities, roads, terrain, climate }) {
   const { biome } = climate;
   const cityByCell = buildCityByCell(cities);
   const landComponentByCell = buildLandComponents(width, height, isLand);
+  const landComponentInfo = buildLandComponentInfo(landComponentByCell, isLand);
   const harborByCityId = buildHarborMap(cities, width, height, isLand, biome);
   const seaRoutes = [];
 
@@ -365,11 +369,18 @@ function buildSeaRoutes({ cities, roads, terrain, climate }) {
       break;
     }
 
+    const seaRouteCountByLandComponent = buildSeaRouteCountByLandComponent(
+      [...roads, ...seaRoutes],
+      cities,
+      landComponentByCell
+    );
     const bestCandidate = findBestSeaRouteByRadiusSteps({
       components: connectedComponents,
       cities,
       harborByCityId,
       landComponentByCell,
+      landComponentInfo,
+      seaRouteCountByLandComponent,
       width,
       height,
       isLand,
@@ -402,18 +413,21 @@ function findBestSeaRouteByRadiusSteps({
   cities,
   harborByCityId,
   landComponentByCell,
+  landComponentInfo,
+  seaRouteCountByLandComponent,
   width,
   height,
   isLand,
   biome
 }) {
-  const radiusSteps = [40, 60, 84, 112, 150, 220];
-  for (const maxCityDistance of radiusSteps) {
+  for (const maxCityDistance of SEA_ROUTE_RADIUS_STEPS) {
     const candidate = findBestSeaRouteCandidate({
       components,
       cities,
       harborByCityId,
       landComponentByCell,
+      landComponentInfo,
+      seaRouteCountByLandComponent,
       width,
       height,
       isLand,
@@ -433,6 +447,8 @@ function findBestSeaRouteCandidate({
   cities,
   harborByCityId,
   landComponentByCell,
+  landComponentInfo,
+  seaRouteCountByLandComponent,
   width,
   height,
   isLand,
@@ -458,14 +474,29 @@ function findBestSeaRouteCandidate({
       for (const fromCity of portCitiesA) {
         const sourceHarbor = harborByCityId.get(fromCity.id);
         const sourceLandComponent = landComponentByCell[fromCity.cell];
-        if (sourceHarbor == null) {
+        if (
+          sourceHarbor == null ||
+          !canAddSeaRouteForLandComponent(
+            sourceLandComponent,
+            landComponentInfo,
+            seaRouteCountByLandComponent
+          )
+        ) {
           continue;
         }
 
         for (const toCity of portCitiesB) {
           const targetHarbor = harborByCityId.get(toCity.id);
           const targetLandComponent = landComponentByCell[toCity.cell];
-          if (targetHarbor == null || sourceLandComponent === targetLandComponent) {
+          if (
+            targetHarbor == null ||
+            sourceLandComponent === targetLandComponent ||
+            !canAddSeaRouteForLandComponent(
+              targetLandComponent,
+              landComponentInfo,
+              seaRouteCountByLandComponent
+            )
+          ) {
             continue;
           }
 
@@ -475,21 +506,22 @@ function findBestSeaRouteCandidate({
           }
 
           const waterPath =
-            buildDirectSeaLane(sourceHarbor, targetHarbor, width, height, isLand, biome) ||
-            buildSeaLane(sourceHarbor, targetHarbor, width, height, isLand, biome);
+            buildDirectSeaLane(sourceHarbor.cell, targetHarbor.cell, width, height, isLand, biome) ||
+            buildSeaLane(sourceHarbor.cell, targetHarbor.cell, width, height, isLand, biome);
           if (!waterPath) {
             continue;
           }
 
-          const detourPenalty = Math.max(0, waterPath.length - cityDistance);
-          const score =
-            waterPath.length * 1.12 +
-            cityDistance * 0.46 +
-            detourPenalty * 0.32 -
-            (fromCity.score + toCity.score) * 0.04;
-
-          if (!best || score < best.score) {
-            best = { fromCity, toCity, waterPath, score };
+          const candidate = {
+            fromCity,
+            toCity,
+            waterPath,
+            cityDistance,
+            waterDistance: waterPath.length,
+            harborOffset: sourceHarbor.distance + targetHarbor.distance
+          };
+          if (!best || isSeaRouteCandidateCloser(candidate, best)) {
+            best = candidate;
           }
         }
       }
@@ -500,6 +532,10 @@ function findBestSeaRouteCandidate({
 }
 
 function getComponentPortCities(component, cities, harborByCityId) {
+  const portCities = component.cityIds
+    .map((cityId) => cities[cityId])
+    .filter((city) => harborByCityId.has(city.id));
+
   const coastal = component.cityIds
     .map((cityId) => cities[cityId])
     .filter((city) => city.coastal && harborByCityId.has(city.id));
@@ -507,9 +543,14 @@ function getComponentPortCities(component, cities, harborByCityId) {
     return coastal;
   }
 
-  return component.cityIds
-    .map((cityId) => cities[cityId])
-    .filter((city) => harborByCityId.has(city.id));
+  const nearCoastal = portCities.filter(
+    (city) => (harborByCityId.get(city.id)?.distance ?? Number.POSITIVE_INFINITY) <= 3
+  );
+  if (nearCoastal.length > 0) {
+    return nearCoastal;
+  }
+
+  return portCities;
 }
 
 function materializeSeaRoute({ city, candidate, waterPath, cityByCell }) {
@@ -543,7 +584,11 @@ function buildHarborMap(cities, width, height, isLand, biome) {
       city.coastal ? 4 : 8
     );
     if (harbor != null) {
-      harborByCityId.set(city.id, harbor);
+      const [harborX, harborY] = coordsOf(harbor, width);
+      harborByCityId.set(city.id, {
+        cell: harbor,
+        distance: distance(city.x, city.y, harborX, harborY)
+      });
     }
   }
 
@@ -664,6 +709,116 @@ function buildLandComponents(width, height, isLand) {
   }
 
   return components;
+}
+
+function buildLandComponentInfo(landComponentByCell, isLand) {
+  const sizeByComponent = new Map();
+
+  for (let cell = 0; cell < landComponentByCell.length; cell += 1) {
+    if (!isLand[cell]) {
+      continue;
+    }
+    const componentId = landComponentByCell[cell];
+    if (componentId < 0) {
+      continue;
+    }
+    sizeByComponent.set(componentId, (sizeByComponent.get(componentId) ?? 0) + 1);
+  }
+
+  let mainlandComponentId = -1;
+  let mainlandSize = -1;
+  for (const [componentId, size] of sizeByComponent.entries()) {
+    if (size > mainlandSize) {
+      mainlandSize = size;
+      mainlandComponentId = componentId;
+    }
+  }
+
+  return {
+    sizeByComponent,
+    mainlandComponentId,
+    mainlandSize
+  };
+}
+
+function buildSeaRouteCountByLandComponent(roads, cities, landComponentByCell) {
+  const counts = new Map();
+  const cityById = new Map(cities.map((city) => [city.id, city]));
+
+  for (const road of roads) {
+    if (road?.type !== "sea-route") {
+      continue;
+    }
+
+    const sourceCity = cityById.get(road.fromCityId);
+    const targetCity = cityById.get(road.cityId);
+    if (!sourceCity || !targetCity) {
+      continue;
+    }
+
+    const sourceComponent = landComponentByCell[sourceCity.cell];
+    const targetComponent = landComponentByCell[targetCity.cell];
+    if (sourceComponent < 0 || targetComponent < 0) {
+      continue;
+    }
+
+    counts.set(sourceComponent, (counts.get(sourceComponent) ?? 0) + 1);
+    if (targetComponent !== sourceComponent) {
+      counts.set(targetComponent, (counts.get(targetComponent) ?? 0) + 1);
+    }
+  }
+
+  return counts;
+}
+
+function canAddSeaRouteForLandComponent(componentId, landComponentInfo, seaRouteCountByLandComponent) {
+  if (componentId < 0) {
+    return false;
+  }
+  if (!isIslandLandComponent(componentId, landComponentInfo)) {
+    return true;
+  }
+  return (seaRouteCountByLandComponent.get(componentId) ?? 0) < MAX_SEA_ROUTES_PER_ISLAND_COMPONENT;
+}
+
+function isIslandLandComponent(componentId, landComponentInfo) {
+  if (componentId < 0 || componentId === landComponentInfo.mainlandComponentId) {
+    return false;
+  }
+
+  const mainlandSize = landComponentInfo.mainlandSize;
+  if (!Number.isFinite(mainlandSize) || mainlandSize <= 0) {
+    return false;
+  }
+
+  const componentSize = landComponentInfo.sizeByComponent.get(componentId) ?? 0;
+  return componentSize <= mainlandSize * ISLAND_COMPONENT_SIZE_RATIO_THRESHOLD;
+}
+
+function isSeaRouteCandidateCloser(candidate, currentBest) {
+  const epsilon = 1e-4;
+  if (candidate.cityDistance < currentBest.cityDistance - epsilon) {
+    return true;
+  }
+  if (candidate.cityDistance > currentBest.cityDistance + epsilon) {
+    return false;
+  }
+
+  if (candidate.waterDistance < currentBest.waterDistance - epsilon) {
+    return true;
+  }
+  if (candidate.waterDistance > currentBest.waterDistance + epsilon) {
+    return false;
+  }
+
+  if (candidate.harborOffset < currentBest.harborOffset - epsilon) {
+    return true;
+  }
+  if (candidate.harborOffset > currentBest.harborOffset + epsilon) {
+    return false;
+  }
+
+  return candidate.fromCity.score + candidate.toCity.score > currentBest.fromCity.score + currentBest.toCity.score;
 }
 
 function buildCityByCell(cities) {

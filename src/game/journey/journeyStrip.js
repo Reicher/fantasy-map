@@ -5,7 +5,7 @@ import {
   buildSilhouetteTopEdge,
   sampleSilhouetteAtX,
   rgbToCss,
-} from "./journeyStyle.js?v=20260409d";
+} from "./journeyStyle.js?v=20260409j";
 
 // ---------------------------------------------------------------------------
 // Fixed offsets for parallel sampling lines (world-space units).
@@ -26,26 +26,110 @@ const PLAYER_X_FRAC = 0.22;
 
 // Transition blend zone in pixels
 const BLEND_ZONE_PX = 48;
-const TREE_BLOCKED_BIOMES = new Set(["ocean", "lake", "desert"]);
-const TREE_ALLOWED_BIOMES = new Set(["forest", "rainforest", "highlands"]);
-const TREE_VARIANT_COUNT = 5;
+const TREE_BLOCKED_BIOMES = new Set(["ocean", "lake"]);
+const TREE_ALLOWED_BIOMES = new Set(["forest", "rainforest", "highlands", "tundra", "desert"]);
+const FOREGROUND_SUPPRESSED_BIOMES = new Set(["forest", "rainforest", "tundra"]);
+const FOREGROUND_TREE_ALLOWED_BIOMES = new Set([
+  ...FOREGROUND_SUPPRESSED_BIOMES,
+  "desert",
+]);
+const PINE_TEMPERATE_VARIANT_COUNT = 3;
+const PINE_SNOW_VARIANT_START = 3;
+const PINE_SNOW_VARIANT_COUNT = 2;
+const DEAD_TREE_VARIANT_COUNT = 3;
+const CACTUS_VARIANT_COUNT = 2;
+const DEAD_TREE_CHANCE_BY_BIOME = Object.freeze({
+  ocean: 0,
+  lake: 0,
+  plains: 0.02,
+  forest: 0.04,
+  rainforest: 0.02,
+  desert: 0,
+  tundra: 0.38,
+  highlands: 0.22,
+  mountain: 0.14,
+});
+const DEFAULT_TREE_SPAWN_TUNING = Object.freeze({
+  segmentChance: 1,
+  countScale: 1,
+  maxCount: Number.POSITIVE_INFINITY,
+});
+const DESERT_TREE_SPAWN_TUNING_BY_LAYER = Object.freeze({
+  ground: Object.freeze({
+    segmentChance: 0.24,
+    countScale: 0.24,
+    maxCount: 2,
+  }),
+  near1: Object.freeze({
+    segmentChance: 0.18,
+    countScale: 0.16,
+    maxCount: 2,
+  }),
+  near2: Object.freeze({
+    segmentChance: 0.14,
+    countScale: 0.14,
+    maxCount: 1,
+  }),
+  foreground: Object.freeze({
+    segmentChance: 0.12,
+    countScale: 0.14,
+    maxCount: 2,
+  }),
+});
 const TREE_LAYER_CONFIG = {
   near2: {
-    minSpacingPx: 88,
-    maxSpacingPx: 146,
-    minHeightPx: 68,
-    maxHeightPx: 92,
+    minSpacingPx: 72,
+    maxSpacingPx: 124,
+    minHeightPx: 88,
+    maxHeightPx: 126,
     minUpwardOffsetPx: 0,
-    maxUpwardOffsetPx: 3,
+    maxUpwardOffsetPx: 1,
+    minRootOffsetFrac: 0.04,
+    maxRootOffsetFrac: 0.16,
   },
   near1: {
-    minSpacingPx: 74,
-    maxSpacingPx: 122,
-    minHeightPx: 82,
-    maxHeightPx: 112,
-    minUpwardOffsetPx: 1,
-    maxUpwardOffsetPx: 4,
+    minSpacingPx: 60,
+    maxSpacingPx: 102,
+    minHeightPx: 112,
+    maxHeightPx: 154,
+    minUpwardOffsetPx: 0,
+    maxUpwardOffsetPx: 1,
+    minRootOffsetFrac: 0.08,
+    maxRootOffsetFrac: 0.24,
   },
+};
+const GROUND_TREE_CONFIG = {
+  minSpacingPx: 168,
+  maxSpacingPx: 252,
+  minHeightPx: 150,
+  maxHeightPx: 210,
+  edgePaddingPx: 14,
+  maxPerSegment: 6,
+  minSegmentWidthPx: 84,
+  minRootOffsetFrac: 0.06,
+  maxRootOffsetFrac: 0.94,
+};
+const FOREGROUND_TREE_CONFIG = {
+  minSpacingPx: 116,
+  maxSpacingPx: 182,
+  minHeightPx: 238,
+  maxHeightPx: 322,
+  edgePaddingPx: 12,
+  minSegmentWidthPx: 72,
+  maxPerSegment: 7,
+  minSinkFrac: 0.24,
+  maxSinkFrac: 0.42,
+};
+const DETAIL_THEME_BY_BIOME = {
+  forest: ["tuft", "stone", "stick", "tuft"],
+  rainforest: ["tuft", "tuft", "stone", "leaf"],
+  highlands: ["tuft", "stone", "pebble", "stone"],
+  plains: ["tuft", "stone", "flower", "tuft"],
+  desert: ["sand-dune", "pebble", "stone", "sand-dune"],
+  tundra: ["frost-tuft", "stone", "snow-dune", "pebble"],
+  mountain: ["stone", "pebble", "stone", "frost-tuft"],
+  ocean: ["foam", "drift", "foam", "pebble"],
+  lake: ["foam", "drift", "pebble", "foam"],
 };
 
 // ---------------------------------------------------------------------------
@@ -219,6 +303,9 @@ export function buildJourneyStrip(travel, viewW, viewH, options = {}) {
     viewH,
   };
   strip.treeDecorations = buildTreeDecorations(strip);
+  strip.groundTrees = buildGroundTrees(strip.layerSegments.ground);
+  strip.groundDetails = buildGroundDetails(strip.layerSegments.ground);
+  strip.foregroundTrees = buildForegroundTrees(strip.layerSegments.ground);
   return strip;
 }
 
@@ -314,6 +401,9 @@ export function extendStripWithTravel(strip, travel, viewW, viewH, options = {})
   strip.destMarkerStripX = newDestX;
   strip.totalStripPx = Math.ceil(newDestX + extAfterPx);
   strip.treeDecorations = buildTreeDecorations(strip);
+  strip.groundTrees = buildGroundTrees(strip.layerSegments.ground);
+  strip.groundDetails = buildGroundDetails(strip.layerSegments.ground);
+  strip.foregroundTrees = buildForegroundTrees(strip.layerSegments.ground);
 
   return strip;
 }
@@ -399,7 +489,11 @@ function appendLayerSegs(target, pixelSegs, layerDepth, speedScale = 1.0) {
     };
   });
 
-  if (layerDepth !== "ground") {
+  if (layerDepth === "foreground") {
+    applyForegroundSuppression(newSegs);
+  }
+
+  if (layerDepth !== "ground" && layerDepth !== "foreground") {
     newSegs = injectBlendSeams(newSegs, layerDepth);
   }
 
@@ -430,6 +524,10 @@ function appendLayerSegs(target, pixelSegs, layerDepth, speedScale = 1.0) {
   for (const s of newSegs) {
     target.push(s);
   }
+
+  if (layerDepth === "foreground") {
+    applyForegroundSuppression(target);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -451,6 +549,201 @@ function buildTreeDecorations(strip) {
   };
 }
 
+function buildGroundTrees(groundSegments) {
+  if (!groundSegments?.length) return [];
+  const trees = [];
+
+  for (const segment of groundSegments) {
+    if (!segment || segment.isBlend) continue;
+    if (!segment.biomeKey || !TREE_ALLOWED_BIOMES.has(segment.biomeKey)) continue;
+    if (segment.stripWidth < GROUND_TREE_CONFIG.minSegmentWidthPx) continue;
+
+    const rng = createSeededRng(
+      hashString(
+        `ground-tree:${segment.biomeKey}:${Number(segment.isSnow) ? 1 : 0}:${Math.round(segment.stripX)}:${Math.round(segment.stripWidth)}`,
+      ),
+    );
+    const segStart = segment.stripX + GROUND_TREE_CONFIG.edgePaddingPx + rng() * 16;
+    const segEnd = segment.stripX + segment.stripWidth - GROUND_TREE_CONFIG.edgePaddingPx;
+    const usableWidth = Math.max(0, segEnd - segStart);
+    if (usableWidth < 36) continue;
+
+    const avgSpacing =
+      (GROUND_TREE_CONFIG.minSpacingPx + GROUND_TREE_CONFIG.maxSpacingPx) * 0.5;
+    const roughCount = Math.round(usableWidth / avgSpacing);
+    const baseCount = Math.max(
+      1,
+      Math.min(
+        GROUND_TREE_CONFIG.maxPerSegment,
+        roughCount + (rng() < 0.7 ? 1 : 0),
+      ),
+    );
+    const count = computeTreeSpawnCountForSegment(
+      baseCount,
+      segment.biomeKey,
+      "ground",
+      rng,
+    );
+    if (count <= 0) continue;
+
+    for (let i = 0; i < count; i += 1) {
+      const t = (i + 0.2 + rng() * 0.6) / count;
+      const jitter = (rng() - 0.5) * avgSpacing * 0.2;
+      const stripX = Math.max(
+        segStart,
+        Math.min(segEnd, segStart + usableWidth * t + jitter),
+      );
+      const treeVisual = pickTreeVisualForBiome(
+        segment.biomeKey,
+        segment.isSnow,
+        rng(),
+      );
+      trees.push({
+        stripX,
+        treeFamily: treeVisual.treeFamily,
+        variantIndex: treeVisual.variantIndex,
+        heightPx: lerp(
+          GROUND_TREE_CONFIG.minHeightPx,
+          GROUND_TREE_CONFIG.maxHeightPx,
+          rng(),
+        ),
+        upwardOffsetPx: 0,
+        rootOffsetFrac: lerp(
+          GROUND_TREE_CONFIG.minRootOffsetFrac,
+          GROUND_TREE_CONFIG.maxRootOffsetFrac,
+          rng(),
+        ),
+      });
+    }
+  }
+
+  return trees;
+}
+
+function buildGroundDetails(groundSegments) {
+  if (!groundSegments?.length) return [];
+  const details = [];
+
+  for (const segment of groundSegments) {
+    if (!segment || segment.isBlend) continue;
+    if (!segment.biomeKey || segment.stripWidth < 20) continue;
+
+    const rng = createSeededRng(
+      hashString(
+        `ground-detail:${segment.biomeKey}:${Number(segment.isSnow) ? 1 : 0}:${Math.round(segment.stripX)}:${Math.round(segment.stripWidth)}`,
+      ),
+    );
+    const segStart = segment.stripX + 5 + rng() * 6;
+    const segEnd = segment.stripX + segment.stripWidth - 5;
+    const usableWidth = Math.max(0, segEnd - segStart);
+    if (usableWidth < 4) continue;
+
+    const { minSpacingPx, maxSpacingPx } = getGroundDetailSpacing(
+      segment.biomeKey,
+      segment.isSnow,
+    );
+    const avgSpacing = (minSpacingPx + maxSpacingPx) * 0.5;
+    const count = Math.max(1, Math.round(usableWidth / avgSpacing));
+    const motifs = getGroundDetailMotifs(segment.biomeKey, segment.isSnow);
+
+    for (let i = 0; i < count; i += 1) {
+      const t = (i + 0.08 + rng() * 0.84) / count;
+      const jitter = (rng() - 0.5) * avgSpacing * 0.24;
+      const stripX = Math.max(
+        segStart,
+        Math.min(segEnd, segStart + usableWidth * t + jitter),
+      );
+      details.push({
+        stripX,
+        biomeKey: segment.biomeKey,
+        isSnow: Boolean(segment.isSnow),
+        motif: motifs[Math.floor(rng() * motifs.length)],
+        scale: lerp(0.72, 1.28, rng()),
+        verticalFrac: lerp(0.04, 0.96, rng()),
+      });
+    }
+  }
+
+  return details;
+}
+
+function buildForegroundTrees(groundSegments) {
+  if (!groundSegments?.length) return [];
+  const trees = [];
+
+  for (const segment of groundSegments) {
+    if (!segment || segment.isBlend) continue;
+    if (!segment.biomeKey || !FOREGROUND_TREE_ALLOWED_BIOMES.has(segment.biomeKey)) continue;
+    if (segment.stripWidth < FOREGROUND_TREE_CONFIG.minSegmentWidthPx) continue;
+
+    const rng = createSeededRng(
+      hashString(
+        `foreground-tree:${segment.biomeKey}:${Number(segment.isSnow) ? 1 : 0}:${Math.round(segment.stripX)}:${Math.round(segment.stripWidth)}`,
+      ),
+    );
+    const segStart =
+      segment.stripX + FOREGROUND_TREE_CONFIG.edgePaddingPx + rng() * 12;
+    const segEnd =
+      segment.stripX +
+      segment.stripWidth -
+      FOREGROUND_TREE_CONFIG.edgePaddingPx;
+    const usableWidth = Math.max(0, segEnd - segStart);
+    if (usableWidth < 24) continue;
+
+    const avgSpacing =
+      (FOREGROUND_TREE_CONFIG.minSpacingPx +
+        FOREGROUND_TREE_CONFIG.maxSpacingPx) *
+      0.5;
+    const roughCount = Math.round(usableWidth / avgSpacing);
+    const baseCount = Math.max(
+      1,
+      Math.min(
+        FOREGROUND_TREE_CONFIG.maxPerSegment,
+        roughCount + (rng() < 0.62 ? 1 : 0),
+      ),
+    );
+    const count = computeTreeSpawnCountForSegment(
+      baseCount,
+      segment.biomeKey,
+      "foreground",
+      rng,
+    );
+    if (count <= 0) continue;
+
+    for (let i = 0; i < count; i += 1) {
+      const t = (i + 0.1 + rng() * 0.8) / count;
+      const jitter = (rng() - 0.5) * avgSpacing * 0.22;
+      const stripX = Math.max(
+        segStart,
+        Math.min(segEnd, segStart + usableWidth * t + jitter),
+      );
+      const treeVisual = pickTreeVisualForBiome(
+        segment.biomeKey,
+        segment.isSnow,
+        rng(),
+      );
+      trees.push({
+        stripX,
+        treeFamily: treeVisual.treeFamily,
+        variantIndex: treeVisual.variantIndex,
+        heightPx: lerp(
+          FOREGROUND_TREE_CONFIG.minHeightPx,
+          FOREGROUND_TREE_CONFIG.maxHeightPx,
+          rng(),
+        ),
+        upwardOffsetPx: 0,
+        sinkFrac: lerp(
+          FOREGROUND_TREE_CONFIG.minSinkFrac,
+          FOREGROUND_TREE_CONFIG.maxSinkFrac,
+          rng(),
+        ),
+      });
+    }
+  }
+
+  return trees;
+}
+
 function buildLayerTreeDecorations(layerSegments, layerName) {
   const config = TREE_LAYER_CONFIG[layerName];
   if (!config || !layerSegments?.length) return [];
@@ -464,7 +757,7 @@ function buildLayerTreeDecorations(layerSegments, layerName) {
 
     const rng = createSeededRng(
       hashString(
-        `${layerName}:${segment.biomeKey}:${Math.round(segment.stripX)}:${Math.round(segment.stripWidth)}`,
+        `${layerName}:${segment.biomeKey}:${Number(segment.isSnow) ? 1 : 0}:${Math.round(segment.stripX)}:${Math.round(segment.stripWidth)}`,
       ),
     );
     const segStart = segment.stripX + 5 + rng() * 8;
@@ -472,21 +765,37 @@ function buildLayerTreeDecorations(layerSegments, layerName) {
     const usableWidth = Math.max(0, segEnd - segStart);
     if (usableWidth < 4) continue;
     const avgSpacing = (config.minSpacingPx + config.maxSpacingPx) * 0.5;
-    const targetCount = Math.max(1, Math.round(usableWidth / avgSpacing));
+    const baseCount = Math.max(1, Math.round(usableWidth / avgSpacing));
+    const targetCount = computeTreeSpawnCountForSegment(
+      baseCount,
+      segment.biomeKey,
+      layerName,
+      rng,
+    );
+    if (targetCount <= 0) continue;
 
     for (let i = 0; i < targetCount; i += 1) {
       const t = (i + 0.15 + rng() * 0.7) / targetCount;
       const jitter = (rng() - 0.5) * avgSpacing * 0.2;
       const cursor = Math.max(segStart, Math.min(segEnd, segStart + usableWidth * t + jitter));
+      const treeVisual = pickTreeVisualForBiome(
+        segment.biomeKey,
+        segment.isSnow,
+        rng(),
+      );
       trees.push({
         stripX: cursor,
-        variantIndex: segment.isSnow
-          ? 3 + Math.floor(rng() * 2)
-          : Math.floor(rng() * 3),
+        treeFamily: treeVisual.treeFamily,
+        variantIndex: treeVisual.variantIndex,
         heightPx: lerp(config.minHeightPx, config.maxHeightPx, rng()),
         upwardOffsetPx: lerp(
           config.minUpwardOffsetPx,
           config.maxUpwardOffsetPx,
+          rng(),
+        ),
+        rootOffsetFrac: lerp(
+          config.minRootOffsetFrac,
+          config.maxRootOffsetFrac,
           rng(),
         ),
         segmentStripX: segment.stripX,
@@ -495,6 +804,113 @@ function buildLayerTreeDecorations(layerSegments, layerName) {
     }
   }
   return trees;
+}
+
+function pickTreeVisualForBiome(biomeKey, isSnow, roll = 0) {
+  const normalizedRoll = clamp01(roll);
+  if (biomeKey === "desert") {
+    return {
+      treeFamily: "cactus",
+      variantIndex: Math.min(
+        CACTUS_VARIANT_COUNT - 1,
+        Math.floor(normalizedRoll * CACTUS_VARIANT_COUNT),
+      ),
+    };
+  }
+  const deadChance = getDeadTreeChanceForBiome(biomeKey);
+  if (deadChance > 0 && normalizedRoll < deadChance) {
+    const deadRoll = deadChance >= 1 ? 0 : normalizedRoll / deadChance;
+    return {
+      treeFamily: "dead",
+      variantIndex: Math.min(
+        DEAD_TREE_VARIANT_COUNT - 1,
+        Math.floor(deadRoll * DEAD_TREE_VARIANT_COUNT),
+      ),
+    };
+  }
+
+  const pineRoll =
+    deadChance >= 1
+      ? 0
+      : (normalizedRoll - deadChance) / Math.max(1e-6, 1 - deadChance);
+  if (isSnow) {
+    return {
+      treeFamily: "pine",
+      variantIndex:
+        PINE_SNOW_VARIANT_START +
+        Math.min(
+          PINE_SNOW_VARIANT_COUNT - 1,
+          Math.floor(pineRoll * PINE_SNOW_VARIANT_COUNT),
+        ),
+    };
+  }
+  return {
+    treeFamily: "pine",
+    variantIndex: Math.min(
+      PINE_TEMPERATE_VARIANT_COUNT - 1,
+      Math.floor(pineRoll * PINE_TEMPERATE_VARIANT_COUNT),
+    ),
+  };
+}
+
+function getDeadTreeChanceForBiome(biomeKey) {
+  return clamp01(DEAD_TREE_CHANCE_BY_BIOME[biomeKey] ?? 0);
+}
+
+function computeTreeSpawnCountForSegment(baseCount, biomeKey, layerName, rng) {
+  const tuning = getTreeSpawnTuningForBiome(layerName, biomeKey);
+  if (tuning.segmentChance < 1 && rng() > tuning.segmentChance) {
+    return 0;
+  }
+  if (tuning.countScale === 1) return baseCount;
+
+  const scaledCount = Math.max(0, baseCount * tuning.countScale);
+  let count = Math.floor(scaledCount);
+  const fraction = scaledCount - count;
+  if (fraction > 0 && rng() < fraction) {
+    count += 1;
+  }
+  if (Number.isFinite(tuning.maxCount)) {
+    count = Math.min(count, tuning.maxCount);
+  }
+  return count;
+}
+
+function getTreeSpawnTuningForBiome(layerName, biomeKey) {
+  if (biomeKey === "desert") {
+    return DESERT_TREE_SPAWN_TUNING_BY_LAYER[layerName] ?? DEFAULT_TREE_SPAWN_TUNING;
+  }
+  return DEFAULT_TREE_SPAWN_TUNING;
+}
+
+function getGroundDetailSpacing(biomeKey, isSnow) {
+  if (isSnow) {
+    return { minSpacingPx: 34, maxSpacingPx: 60 };
+  }
+  switch (biomeKey) {
+    case "forest":
+    case "rainforest":
+    case "highlands":
+    case "plains":
+      return { minSpacingPx: 28, maxSpacingPx: 52 };
+    case "desert":
+      return { minSpacingPx: 30, maxSpacingPx: 56 };
+    case "mountain":
+    case "tundra":
+      return { minSpacingPx: 34, maxSpacingPx: 62 };
+    case "ocean":
+    case "lake":
+      return { minSpacingPx: 42, maxSpacingPx: 74 };
+    default:
+      return { minSpacingPx: 32, maxSpacingPx: 58 };
+  }
+}
+
+function getGroundDetailMotifs(biomeKey, isSnow) {
+  if (isSnow) {
+    return ["snow-dune", "snow-dune", "pebble", "frost-tuft"];
+  }
+  return DETAIL_THEME_BY_BIOME[biomeKey] ?? ["tuft", "stone", "pebble", "tuft"];
 }
 
 function createSeededRng(initialSeed) {
@@ -807,15 +1223,72 @@ function buildLayerSegments(pixelSegments, layerDepth) {
     };
   });
 
-  if (layerDepth !== "ground") {
+  if (layerDepth === "foreground") {
+    applyForegroundSuppression(segs);
+  }
+
+  if (layerDepth !== "ground" && layerDepth !== "foreground") {
     segs = injectBlendSeams(segs, layerDepth);
   }
 
   return segs;
 }
 
+function applyForegroundSuppression(segments) {
+  if (!segments?.length) return;
+  const taperPx = 68;
+
+  for (let index = 0; index < segments.length; index += 1) {
+    const seg = segments[index];
+    if (!seg || !seg.topEdgeSamples?.length) continue;
+    const biomeKey = seg.biomeKey ?? "";
+    const isSuppressed = FOREGROUND_SUPPRESSED_BIOMES.has(biomeKey);
+    const prevBiome = segments[index - 1]?.biomeKey ?? "";
+    const nextBiome = segments[index + 1]?.biomeKey ?? "";
+    const leftSuppressed = FOREGROUND_SUPPRESSED_BIOMES.has(prevBiome);
+    const rightSuppressed = FOREGROUND_SUPPRESSED_BIOMES.has(nextBiome);
+
+    if (isSuppressed) {
+      seg.topEdgeSamples.fill(1);
+      continue;
+    }
+
+    const sampleCount = seg.topEdgeSamples.length;
+    const fadeCount = Math.max(
+      1,
+      Math.min(sampleCount - 1, Math.round(Math.min(taperPx, seg.stripWidth))),
+    );
+    if (fadeCount <= 1) continue;
+
+    if (leftSuppressed) {
+      for (let i = 0; i < fadeCount; i += 1) {
+        const t = i / (fadeCount - 1);
+        const w = (1 - t) * (1 - t);
+        seg.topEdgeSamples[i] = lerp(seg.topEdgeSamples[i], 1, w);
+      }
+    }
+    if (rightSuppressed) {
+      for (let i = 0; i < fadeCount; i += 1) {
+        const t = i / (fadeCount - 1);
+        const w = (1 - t) * (1 - t);
+        const sampleIndex = sampleCount - 1 - i;
+        seg.topEdgeSamples[sampleIndex] = lerp(
+          seg.topEdgeSamples[sampleIndex],
+          1,
+          w,
+        );
+      }
+    }
+  }
+}
+
 function lerp(a, b, t) {
   return a + (b - a) * t;
+}
+
+function clamp01(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
 }
 
 function hashString(text) {
@@ -848,6 +1321,9 @@ function createEmptyStrip() {
       near2: [],
       near1: [],
     },
+    groundTrees: [],
+    groundDetails: [],
+    foregroundTrees: [],
     blendZonePx: BLEND_ZONE_PX,
     viewW: 0,
     viewH: 0,

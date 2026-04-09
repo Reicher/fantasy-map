@@ -17,12 +17,13 @@ import {
   buildJourneyStrip,
   extendStripWithTravel,
   PARALLAX_SPEED,
-} from "./journey/journeyStrip.js?v=20260409d";
+} from "./journey/journeyStrip.js?v=20260409o";
+import { buildTravelBiomeBandSegments } from "./travel.js?v=20260409c";
 import {
   drawPoiMarkerOnCanvas,
   drawJourneyTreeOnCanvas,
   drawPlayerFigure,
-} from "./journey/journeyStyle.js?v=20260409d";
+} from "./journey/journeyStyle.js?v=20260409j";
 
 // ---------------------------------------------------------------------------
 // Layout
@@ -40,8 +41,11 @@ const WALK_FRAME_MS = 220;
 
 const POI_MARKER_SCALE = 1.35;
 const PLAYER_VISUAL_HEIGHT_PX = 55;
-const SIGNPOST_VISUAL_HEIGHT_PX = 84;
-const SIGNPOST_UPWARD_OFFSET_PX = 13;
+const SIGNPOST_VISUAL_HEIGHT_PX = 104;
+const SIGNPOST_UPWARD_OFFSET_PX = 18;
+const IDLE_PREVIEW_POINT_COUNT = 14;
+const IDLE_PREVIEW_SPAN_MIN = 14;
+const IDLE_PREVIEW_SPAN_MAX = 34;
 
 // Sky gradient – lighter at the horizon to reinforce atmospheric depth
 const SKY_TOP = "rgb(152, 204, 240)";
@@ -74,6 +78,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     lastWalkToggle: 0,
     cachedW: 0,
     cachedH: 0,
+    idleKey: null,
   };
 
   return { update, reset, getDebugSnapshot };
@@ -87,6 +92,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     const viewH = canvas.height;
     const isTraveling = Boolean(playState?.travel);
     const showSnow = options.showSnow !== false;
+    const worldSnapshot = options.world ?? getWorld();
 
     // Rebuild strip only when a new travel starts (key changes to a non-null value).
     // When travel ends (key → null) we keep the existing strip so the scene
@@ -95,6 +101,11 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     const dimensionsChanged =
       state.cachedW !== viewW || state.cachedH !== viewH;
     const snowModeChanged = state.lastShowSnow !== showSnow;
+    const idlePreviewTravel =
+      nextKey === null && !state.lastTravel
+        ? createIdlePreviewTravel(worldSnapshot, playState)
+        : null;
+    const idleKey = idlePreviewTravel?.__journeyIdleKey ?? null;
 
     if (nextKey !== null && nextKey !== state.travelKey) {
       if (state.strip === null) {
@@ -112,9 +123,27 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       }
       state.lastTravel = playState.travel;
       state.travelKey = nextKey;
+      state.idleKey = null;
       state.lastShowSnow = showSnow;
       state.cachedW = viewW;
       state.cachedH = viewH;
+    } else if (
+      idlePreviewTravel &&
+      (
+        state.strip === null ||
+        dimensionsChanged ||
+        snowModeChanged ||
+        state.idleKey !== idleKey
+      )
+    ) {
+      state.strip = buildJourneyStrip(idlePreviewTravel, viewW, viewH, {
+        showSnow,
+      });
+      state.idleKey = idleKey;
+      state.lastShowSnow = showSnow;
+      state.cachedW = viewW;
+      state.cachedH = viewH;
+      printStripSummary(state.strip, "Idle preview strip");
     } else if (dimensionsChanged || snowModeChanged) {
       // Canvas resized or snow mode changed – rebuild with the same travel data if we have it.
       if (state.lastTravel) {
@@ -137,7 +166,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       viewH,
       isTraveling,
       options.debug ?? false,
-      options.world ?? getWorld(),
+      worldSnapshot,
     );
   }
 
@@ -151,6 +180,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     state.lastWalkToggle = 0;
     state.cachedW = 0;
     state.cachedH = 0;
+    state.idleKey = null;
     if (ctx) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
@@ -207,7 +237,15 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
         markerAnchorX;
       state.lastScrollX = scrollX;
     } else if (strip) {
-      scrollX = strip.destMarkerStripX + playerX - markerAnchorX;
+      if (state.lastTravel) {
+        scrollX = strip.destMarkerStripX + playerX - markerAnchorX;
+      } else {
+        scrollX =
+          strip.startMarkerStripX +
+          strip.routePx * 0.45 +
+          playerX -
+          markerAnchorX;
+      }
       state.lastScrollX = scrollX;
     }
 
@@ -255,6 +293,8 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
 
     // 7. Ground (flat solid bands, ground speed = 1.0)
     drawGroundLayer(ctx, strip, scrollX, playerX, viewW);
+    drawGroundDetails(ctx, strip, scrollX, playerX, viewW);
+    drawGroundTrees(ctx, strip, scrollX, playerX, viewW);
 
     // 8. POI markers – behind the player but above all background layers
     drawPoiMarkers(
@@ -279,6 +319,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
 
     // 10. Foreground (fastest – in front of player and POI markers)
     drawSilhouetteLayer(ctx, strip, "foreground", scrollX, playerX, viewW);
+    drawForegroundCanopyTrees(ctx, strip, scrollX, playerX, viewW, viewH);
 
     // 11. Debug overlay (segment boundaries) – only when enabled
     if (debug) {
@@ -393,24 +434,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
 
       const width = samples.length;
 
-      // Fill style
       const haze = LAYER_HAZE[layerName] ?? 0;
-      let fillStyle;
-      if (seg.isBlend && seg.colorA && seg.colorB) {
-        // Horizontal gradient across the blend zone
-        const hGrad = ctx.createLinearGradient(canvasX, 0, canvasX + seg.stripWidth, 0);
-        hGrad.addColorStop(0, `rgb(${seg.colorA[0]},${seg.colorA[1]},${seg.colorA[2]})`);
-        hGrad.addColorStop(1, `rgb(${seg.colorB[0]},${seg.colorB[1]},${seg.colorB[2]})`);
-        fillStyle = hGrad;
-      } else if (haze > 0 && seg.colorRgb) {
-        const [cr, cg, cb] = seg.colorRgb;
-        const vGrad = ctx.createLinearGradient(0, topY, 0, bottomY);
-        vGrad.addColorStop(0, `rgb(${Math.round(cr*(1-haze)+SKY_HAZE_R*haze)},${Math.round(cg*(1-haze)+SKY_HAZE_G*haze)},${Math.round(cb*(1-haze)+SKY_HAZE_B*haze)})`);
-        vGrad.addColorStop(1, seg.color);
-        fillStyle = vGrad;
-      } else {
-        fillStyle = seg.color;
-      }
 
       // Silhouette polygon. Samples are 1px apart in strip space.
       // canvasX is a float — sub-pixel left edge gives smooth scrolling.
@@ -425,8 +449,214 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       }
       ctx.lineTo(canvasX + seg.stripWidth, bottomY);
       ctx.closePath();
+      if (seg.isBlend && seg.colorA && seg.colorB && haze > 0) {
+        // Blend segments need both horizontal biome interpolation and vertical haze.
+        // Paint in thin clipped strips to avoid hard boundaries in far/mid layers.
+        ctx.save();
+        ctx.clip();
+        const slices = Math.max(2, Math.ceil(seg.stripWidth));
+        const topA = tintRgbWithSky(seg.colorA, haze);
+        const topB = tintRgbWithSky(seg.colorB, haze);
+        for (let slice = 0; slice < slices; slice += 1) {
+          const t0 = slice / slices;
+          const t1 = (slice + 1) / slices;
+          const tm = (slice + 0.5) / slices;
+          const topColor = lerpRgb(topA, topB, tm);
+          const bottomColor = lerpRgb(seg.colorA, seg.colorB, tm);
+          const vGrad = ctx.createLinearGradient(0, topY, 0, bottomY);
+          vGrad.addColorStop(0, rgbCssFromArray(topColor));
+          vGrad.addColorStop(1, rgbCssFromArray(bottomColor));
+          ctx.fillStyle = vGrad;
+          const x0 = canvasX + seg.stripWidth * t0;
+          const w = Math.max(1, seg.stripWidth * (t1 - t0) + 0.75);
+          ctx.fillRect(x0, topY, w, layerH + 1);
+        }
+        ctx.restore();
+        continue;
+      }
+
+      let fillStyle;
+      if (seg.isBlend && seg.colorA && seg.colorB) {
+        const hGrad = ctx.createLinearGradient(canvasX, 0, canvasX + seg.stripWidth, 0);
+        hGrad.addColorStop(0, `rgb(${seg.colorA[0]},${seg.colorA[1]},${seg.colorA[2]})`);
+        hGrad.addColorStop(1, `rgb(${seg.colorB[0]},${seg.colorB[1]},${seg.colorB[2]})`);
+        fillStyle = hGrad;
+      } else if (haze > 0 && seg.colorRgb) {
+        const topColor = tintRgbWithSky(seg.colorRgb, haze);
+        const vGrad = ctx.createLinearGradient(0, topY, 0, bottomY);
+        vGrad.addColorStop(0, rgbCssFromArray(topColor));
+        vGrad.addColorStop(1, seg.color);
+        fillStyle = vGrad;
+      } else {
+        fillStyle = seg.color;
+      }
       ctx.fillStyle = fillStyle;
       ctx.fill();
+    }
+  }
+
+  function drawGroundDetails(ctx, strip, scrollX, playerX, viewW) {
+    const details = strip.groundDetails;
+    if (!details?.length) return;
+    const band = strip.layers.ground;
+    if (!band) return;
+    const layerH = Math.max(1, band.bottomY - band.topY);
+    const topInsetPx = 2;
+    const bottomInsetPx = 2;
+    const usableY = Math.max(1, layerH - topInsetPx - bottomInsetPx);
+    const layerStripLeft = scrollX * PARALLAX_SPEED.ground - playerX;
+
+    for (const detail of details) {
+      const canvasX = detail.stripX - layerStripLeft;
+      if (canvasX < -24 || canvasX > viewW + 24) continue;
+      const verticalFrac = clamp01(
+        Number.isFinite(detail.verticalFrac) ? detail.verticalFrac : 0.5,
+      );
+      drawGroundDetailGlyph(
+        ctx,
+        canvasX,
+        band.topY + topInsetPx + verticalFrac * usableY,
+        detail,
+      );
+    }
+  }
+
+  function drawGroundTrees(ctx, strip, scrollX, playerX, viewW) {
+    const trees = strip.groundTrees;
+    if (!trees?.length) return;
+    const band = strip.layers.ground;
+    if (!band) return;
+    const layerH = Math.max(1, band.bottomY - band.topY);
+    const topFifthHeight = Math.max(8, layerH * 0.2 - 2);
+    const layerStripLeft = scrollX * PARALLAX_SPEED.ground - playerX;
+
+    for (const tree of trees) {
+      const canvasX = tree.stripX - layerStripLeft;
+      if (canvasX < -120 || canvasX > viewW + 120) continue;
+      const rootOffsetFrac = clamp01(
+        Number.isFinite(tree.rootOffsetFrac) ? tree.rootOffsetFrac : 0.5,
+      );
+      const rootY = band.topY + 1 + rootOffsetFrac * topFifthHeight;
+      drawJourneyTreeOnCanvas(ctx, canvasX, rootY, {
+        treeFamily: tree.treeFamily,
+        variantIndex: tree.variantIndex,
+        heightPx: tree.heightPx,
+        upwardOffsetPx: tree.upwardOffsetPx ?? 0,
+      });
+    }
+  }
+
+  function drawGroundDetailGlyph(ctx, x, y, detail) {
+    const s = Math.max(0.65, Number(detail.scale ?? 1));
+    const motif = detail.motif;
+    const isSnow = Boolean(detail.isSnow);
+    ctx.save();
+    switch (motif) {
+      case "tuft":
+      case "frost-tuft": {
+        ctx.strokeStyle = motif === "frost-tuft" ? "rgba(223,230,236,0.92)" : "rgba(70,98,56,0.86)";
+        ctx.lineWidth = Math.max(1, 1.05 * s);
+        ctx.beginPath();
+        ctx.moveTo(x - 2.6 * s, y);
+        ctx.lineTo(x - 0.8 * s, y - 4.8 * s);
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, y - 6.1 * s);
+        ctx.moveTo(x + 2.6 * s, y);
+        ctx.lineTo(x + 0.9 * s, y - 4.5 * s);
+        ctx.stroke();
+        break;
+      }
+      case "stone":
+      case "pebble": {
+        ctx.fillStyle = isSnow ? "rgba(178,179,182,0.8)" : "rgba(118,108,96,0.78)";
+        const rx = (motif === "pebble" ? 1.8 : 2.7) * s;
+        const ry = (motif === "pebble" ? 1.2 : 1.9) * s;
+        ctx.beginPath();
+        ctx.ellipse(x, y - ry * 0.4, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case "stick":
+      case "drift": {
+        ctx.strokeStyle = motif === "drift" ? "rgba(132,98,64,0.7)" : "rgba(98,74,52,0.76)";
+        ctx.lineWidth = Math.max(1, 1.2 * s);
+        ctx.beginPath();
+        ctx.moveTo(x - 3 * s, y - 0.8 * s);
+        ctx.lineTo(x + 3.2 * s, y - 1.8 * s);
+        ctx.stroke();
+        break;
+      }
+      case "leaf": {
+        ctx.fillStyle = "rgba(82,114,62,0.75)";
+        ctx.beginPath();
+        ctx.ellipse(x, y - 1.5 * s, 2.4 * s, 1.6 * s, -0.25, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case "flower": {
+        ctx.fillStyle = "rgba(241,216,124,0.84)";
+        ctx.beginPath();
+        ctx.arc(x, y - 2.2 * s, 1.4 * s, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case "snow-dune": {
+        ctx.fillStyle = "rgba(244,245,247,0.88)";
+        ctx.beginPath();
+        ctx.ellipse(x, y - 0.9 * s, 4.2 * s, 2.1 * s, 0, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case "sand-dune": {
+        ctx.fillStyle = "rgba(209,182,126,0.76)";
+        ctx.beginPath();
+        ctx.ellipse(x, y - 1 * s, 4.1 * s, 2.0 * s, 0, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case "foam": {
+        ctx.strokeStyle = "rgba(234,241,247,0.68)";
+        ctx.lineWidth = Math.max(1, 1.2 * s);
+        ctx.beginPath();
+        ctx.moveTo(x - 3.2 * s, y - 1.4 * s);
+        ctx.lineTo(x + 3.2 * s, y - 1.4 * s);
+        ctx.stroke();
+        break;
+      }
+      default:
+        ctx.fillStyle = isSnow ? "rgba(188,190,194,0.7)" : "rgba(92,104,82,0.72)";
+        ctx.fillRect(Math.round(x - s), Math.round(y - s), Math.max(1, Math.round(2 * s)), Math.max(1, Math.round(2 * s)));
+        break;
+    }
+    ctx.restore();
+  }
+
+  function drawForegroundCanopyTrees(
+    ctx,
+    strip,
+    scrollX,
+    playerX,
+    viewW,
+    viewH,
+  ) {
+    const trees = strip.foregroundTrees;
+    if (!trees?.length) return;
+    const layerStripLeft = scrollX * PARALLAX_SPEED.ground - playerX;
+
+    for (const tree of trees) {
+      const canvasX = tree.stripX - layerStripLeft;
+      if (canvasX < -180 || canvasX > viewW + 180) continue;
+      const sinkFrac = clamp01(
+        Number.isFinite(tree.sinkFrac) ? tree.sinkFrac : 0.32,
+      );
+      const sinkPx = Math.max(8, tree.heightPx * sinkFrac);
+      const rootY = viewH + sinkPx;
+      drawJourneyTreeOnCanvas(ctx, canvasX, rootY, {
+        treeFamily: tree.treeFamily,
+        variantIndex: tree.variantIndex,
+        heightPx: tree.heightPx,
+        upwardOffsetPx: tree.upwardOffsetPx ?? 0,
+      });
     }
   }
 
@@ -441,13 +671,15 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     playState,
     world,
   ) {
+    const activeTravel = playState?.travel ?? state.lastTravel;
+    if (!activeTravel) return;
+
     const speed = PARALLAX_SPEED.ground;
     const layerStripLeft = scrollX * speed - playerX;
     const markerY = groundTopY + Math.round((viewH - groundTopY) * 0.15);
 
     const startCanvasX = strip.startMarkerStripX - layerStripLeft;
     const destCanvasX = strip.destMarkerStripX - layerStripLeft;
-    const activeTravel = playState?.travel ?? state.lastTravel;
     const startMarker =
       world?.cities?.[activeTravel?.startCityId ?? -1]?.marker ?? "settlement";
     const destMarker =
@@ -508,12 +740,23 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
         ),
       );
       const topEdgeY = band.topY + tree.topEdgeSamples[sampleIndex] * layerH;
+      const rootOffsetFrac = clamp01(
+        Number.isFinite(tree.rootOffsetFrac)
+          ? tree.rootOffsetFrac
+          : layerName === "near2"
+            ? 0.1
+            : 0.16,
+      );
+      const desiredRootY = topEdgeY + rootOffsetFrac * layerH;
+      const minRootY = band.topY + 1;
+      const maxRootY = band.bottomY - 8;
       const treeGroundY = Math.min(
-        band.bottomY - 2,
-        topEdgeY + layerH * 0.34,
+        maxRootY,
+        Math.max(minRootY, desiredRootY),
       );
 
       drawJourneyTreeOnCanvas(ctx, canvasX, treeGroundY, {
+        treeFamily: tree.treeFamily,
         variantIndex: tree.variantIndex,
         heightPx: tree.heightPx,
         upwardOffsetPx: tree.upwardOffsetPx,
@@ -632,4 +875,113 @@ function travelKey(travel) {
     travel.biomeSegments?.length ?? 0,
     travel.biomeBandSegments?.near?.segments?.length ?? 0,
   ].join(":");
+}
+
+function createIdlePreviewTravel(world, playState) {
+  const pos = playState?.position;
+  if (!pos) return null;
+
+  const hasTerrain =
+    Boolean(world?.terrain?.width) &&
+    Boolean(world?.terrain?.height) &&
+    Boolean(world?.climate?.biome);
+
+  const minX = 0;
+  const minY = 0;
+  const maxX = hasTerrain ? world.terrain.width - 1 : 4096;
+  const maxY = hasTerrain ? world.terrain.height - 1 : 4096;
+  const centerX = clampValue(Number(pos.x) || 0, minX, maxX);
+  const centerY = clampValue(Number(pos.y) || 0, minY, maxY);
+
+  const span = hasTerrain
+    ? clampValue(world.terrain.width * 0.08, IDLE_PREVIEW_SPAN_MIN, IDLE_PREVIEW_SPAN_MAX)
+    : 22;
+  const wobble = clampValue(span * 0.08, 0.9, 2.6);
+  const startX = clampValue(centerX - span * 0.55, minX, maxX);
+  const endX = clampValue(centerX + span * 0.55, minX, maxX);
+
+  const points = [];
+  for (let index = 0; index <= IDLE_PREVIEW_POINT_COUNT; index += 1) {
+    const t = index / IDLE_PREVIEW_POINT_COUNT;
+    const x = startX + (endX - startX) * t;
+    const waveA = Math.sin(t * Math.PI * 2);
+    const waveB = Math.sin(t * Math.PI * 5 + 0.9);
+    const y = clampValue(
+      centerY + waveA * wobble * 0.4 + waveB * wobble * 0.16,
+      minY,
+      maxY,
+    );
+    points.push({ x, y });
+  }
+
+  const segmentLengths = [];
+  let totalLength = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const prev = points[index - 1];
+    const next = points[index];
+    const length = Math.hypot(next.x - prev.x, next.y - prev.y);
+    segmentLengths.push(length);
+    totalLength += length;
+  }
+
+  const biomeBandSegments = hasTerrain
+    ? buildTravelBiomeBandSegments(world, points)
+    : createEmptyBiomeBands();
+
+  const cityId = playState?.currentCityId ?? null;
+  return {
+    startCityId: cityId,
+    targetCityId: cityId,
+    routeType: "idle-preview",
+    points,
+    segmentLengths,
+    totalLength: Math.max(1, totalLength),
+    progress: 0,
+    biomeBandSegments,
+    biomeSegments: biomeBandSegments.near?.segments ?? [],
+    __journeyIdleKey: [
+      Math.round(centerX),
+      Math.round(centerY),
+      hasTerrain ? `${world.terrain.width}x${world.terrain.height}` : "no-terrain",
+    ].join(":"),
+  };
+}
+
+function createEmptyBiomeBands() {
+  return {
+    near: { name: "near", offsetDistance: 0, segments: [] },
+    mid: { name: "mid", offsetDistance: 5, segments: [] },
+    far: { name: "far", offsetDistance: 10, segments: [] },
+  };
+}
+
+function clamp01(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function clampValue(value, min, max) {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, value));
+}
+
+function tintRgbWithSky(rgb, haze) {
+  const [r, g, b] = rgb;
+  return [
+    r * (1 - haze) + SKY_HAZE_R * haze,
+    g * (1 - haze) + SKY_HAZE_G * haze,
+    b * (1 - haze) + SKY_HAZE_B * haze,
+  ];
+}
+
+function lerpRgb(a, b, t) {
+  return [
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t,
+    a[2] + (b[2] - a[2]) * t,
+  ];
+}
+
+function rgbCssFromArray(rgb) {
+  return `rgb(${Math.round(rgb[0])},${Math.round(rgb[1])},${Math.round(rgb[2])})`;
 }

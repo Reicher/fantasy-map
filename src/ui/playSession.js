@@ -5,7 +5,7 @@ import {
   getValidTargetIds,
   sampleTravelBiomeBandPoints,
 } from "../game/travel.js?v=20260409c";
-import { createJourneyScene } from "../game/journeyScene.js?v=20260409d";
+import { createJourneyScene } from "../game/journeyScene.js?v=20260409q";
 import {
   renderPlayWorldDynamic,
   renderPlayWorldStatic,
