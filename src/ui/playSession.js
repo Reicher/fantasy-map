@@ -4,12 +4,12 @@ import {
   createPlayState,
   getValidTargetIds,
   sampleTravelBiomeBandPoints,
-} from "../game/travel.js?v=20260409f";
+} from "../game/travel.js?v=20260409g";
 import { createJourneyScene } from "../game/journeyScene.js?v=20260409ac";
 import {
   renderPlayWorldDynamic,
   renderPlayWorldStatic,
-} from "../render/renderer.js?v=20260409c";
+} from "../render/renderer.js?v=20260409d";
 import { inspectWorldAt } from "../inspector.js?v=20260408b";
 import { createPlayCamera as buildPlayCamera } from "./cameraState.js?v=20260407a";
 import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260408a";
@@ -88,20 +88,22 @@ export function createPlaySession({ refs, state, syncModeUi }) {
 
     if (state.playState.viewMode === "map") {
       state.playProfiler.measure("play-map-render", () => {
-        const validPoiIds = getValidTargetIds(
+        const validNodeIds = getValidTargetIds(
           state.playState,
           state.currentWorld,
         );
-        const visiblePoiIds = getVisiblePoiIds(
+        const visibleNodeIds = getVisibleNodeIds(
           state.currentWorld,
           state.playState,
-          validPoiIds,
+          validNodeIds,
         );
         const renderOptions = {
           showSnow: state.renderOptions.showSnow,
           showBiomeLabels: state.playMapOptions.showBiomeLabels,
-          showPoiLabels: state.playMapOptions.showPoiLabels,
-          visiblePoiIds,
+          showNodeLabels:
+            state.playMapOptions.showNodeLabels ??
+            state.playMapOptions.showPoiLabels,
+          visibleNodeIds,
           discoveredCells: state.playState.discoveredCells,
           cameraState: createPlayCamera(),
           playerStart: state.playState.position,
@@ -110,14 +112,14 @@ export function createPlaySession({ refs, state, syncModeUi }) {
             playState: state.playState,
             radiusCells: state.currentWorld.params.fogVisionRadius,
           },
-          cityOverlay: {
-            validPoiIds,
-            visiblePoiIds,
+          nodeOverlay: {
+            validNodeIds,
+            visibleNodeIds,
             onlyValid: true,
-            hoveredPoiId:
-              state.playState.hoveredPoiId ?? state.playState.hoveredCityId,
-            pressedPoiId:
-              state.playState.pressedPoiId ?? state.playState.pressedCityId,
+            hoveredNodeId:
+              state.playState.hoveredNodeId ?? state.playState.hoveredCityId,
+            pressedNodeId:
+              state.playState.pressedNodeId ?? state.playState.pressedCityId,
           },
           travelDebug:
             state.playMapOptions.debugTravelSampling && state.playState.travel
@@ -157,10 +159,8 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     state.playState = {
       ...state.playState,
       viewMode: mode,
-      hoveredPoiId: mode === "map" ? state.playState.hoveredPoiId : null,
-      hoveredCityId: mode === "map" ? state.playState.hoveredCityId : null,
-      pressedPoiId: null,
-      pressedCityId: null,
+      hoveredNodeId: mode === "map" ? state.playState.hoveredNodeId : null,
+      pressedNodeId: null,
     };
 
     if (mode === "journey") {
@@ -187,10 +187,8 @@ export function createPlaySession({ refs, state, syncModeUi }) {
       state.playState = {
         ...state.playState,
         viewMode: "map",
-        hoveredPoiId: null,
-        pressedPoiId: null,
-        hoveredCityId: null,
-        pressedCityId: null,
+        hoveredNodeId: null,
+        pressedNodeId: null,
       };
     }
     playSubView.reset();
@@ -232,14 +230,12 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     );
   }
 
-  function getVisiblePoiIds(world, playState, validPoiIds) {
-    const visibleIds = new Set(validPoiIds);
-    if (playState?.currentPoiId != null) {
-      visibleIds.add(playState.currentPoiId);
-    }
-
-    if (playState?.currentCityId != null) {
-      visibleIds.add(playState.currentCityId);
+  function getVisibleNodeIds(world, playState, validNodeIds) {
+    const visibleIds = new Set(validNodeIds);
+    // support both new (currentNodeId) and legacy (currentCityId) field names
+    const currentId = playState?.currentNodeId ?? playState?.currentCityId;
+    if (currentId != null) {
+      visibleIds.add(currentId);
     }
 
     const discoveredCells = playState?.discoveredCells;
@@ -247,22 +243,25 @@ export function createPlaySession({ refs, state, syncModeUi }) {
       return Array.from(visibleIds);
     }
 
-    const pointsOfInterest =
-      world.features?.pointsOfInterest ?? world.pointsOfInterest ?? world.cities ?? [];
-    for (const poi of pointsOfInterest) {
-      if (!poi || !Number.isFinite(poi.x) || !Number.isFinite(poi.y)) {
+    const nodes =
+      world.features?.pointsOfInterest ??
+      world.pointsOfInterest ??
+      world.cities ??
+      [];
+    for (const node of nodes) {
+      if (!node || !Number.isFinite(node.x) || !Number.isFinite(node.y)) {
         continue;
       }
       const x = Math.max(
         0,
-        Math.min(world.terrain.width - 1, Math.floor(poi.x)),
+        Math.min(world.terrain.width - 1, Math.floor(node.x)),
       );
       const y = Math.max(
         0,
-        Math.min(world.terrain.height - 1, Math.floor(poi.y)),
+        Math.min(world.terrain.height - 1, Math.floor(node.y)),
       );
-      if (discoveredCells[y * world.terrain.width + x] && poi.id != null) {
-        visibleIds.add(poi.id);
+      if (discoveredCells[y * world.terrain.width + x] && node.id != null) {
+        visibleIds.add(node.id);
       }
     }
 

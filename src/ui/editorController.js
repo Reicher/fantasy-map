@@ -13,7 +13,7 @@ export function attachEditorController({
   clampCamera,
   zoomCameraAroundPoint,
   getAdjacentEditorZoom,
-  findEditorPoiAtEvent,
+  findEditorNodeAtEvent,
   setEditorPlayerStart,
 }) {
   const DRAG_THRESHOLD_PX = 2.5;
@@ -103,11 +103,11 @@ export function attachEditorController({
         !wasDrag &&
         state.currentMode === "editor" &&
         event.button === 0 &&
-        typeof findEditorPoiAtEvent === "function" &&
+        typeof findEditorNodeAtEvent === "function" &&
         typeof setEditorPlayerStart === "function"
       ) {
-        const poiId = findEditorPoiAtEvent(event);
-        if (poiId != null && setEditorPlayerStart(poiId)) {
+        const nodeId = findEditorNodeAtEvent(event);
+        if (nodeId != null && setEditorPlayerStart(nodeId)) {
           rerenderCurrentWorld();
         }
       }

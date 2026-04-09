@@ -20,48 +20,49 @@ export function regionAtPosition(world, position) {
   return regionAtCell(world, y * world.terrain.width + x);
 }
 
-export function findPlayablePoiAtWorldPoint(
+export function findPlayableNodeAtWorldPoint(
   world,
-  validPoiIds,
+  validNodeIds,
   worldX,
   worldY,
   radius = 6.4,
 ) {
-  if (!world || !validPoiIds || validPoiIds.size === 0) {
+  if (!world || !validNodeIds || validNodeIds.size === 0) {
     return null;
   }
 
-  return findPoiAtWorldPoint(world, validPoiIds, worldX, worldY, radius);
+  return findNodeAtWorldPoint(world, validNodeIds, worldX, worldY, radius);
 }
 
-export function findPoiAtWorldPoint(
+export function findNodeAtWorldPoint(
   world,
-  candidatePoiIds,
+  candidateNodeIds,
   worldX,
   worldY,
   radius = 6.4,
 ) {
-  if (!world || !candidatePoiIds || candidatePoiIds.size === 0) {
+  if (!world || !candidateNodeIds || candidateNodeIds.size === 0) {
     return null;
   }
 
   let best = null;
-  const pois = world.features?.pointsOfInterest ?? world.pointsOfInterest ?? world.cities;
-  if (!pois) {
+  const nodes =
+    world.features?.pointsOfInterest ?? world.pointsOfInterest ?? world.cities;
+  if (!nodes) {
     return null;
   }
 
-  for (const poiId of candidatePoiIds) {
-    const poi = pois[poiId];
-    if (!poi) {
+  for (const nodeId of candidateNodeIds) {
+    const node = nodes[nodeId];
+    if (!node) {
       continue;
     }
 
-    const distance = Math.hypot(worldX - poi.x, worldY - poi.y);
+    const distance = Math.hypot(worldX - node.x, worldY - node.y);
     if (distance <= radius && (!best || distance < best.distance)) {
-      best = { poiId, distance };
+      best = { nodeId, distance };
     }
   }
 
-  return best?.poiId ?? null;
+  return best?.nodeId ?? null;
 }

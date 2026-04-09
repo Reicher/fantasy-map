@@ -99,12 +99,12 @@ const state = {
   currentRenderScale: DEFAULT_PARAMS.renderScale,
   renderOptions: {
     showBiomeLabels: true,
-    showPoiLabels: false,
+    showNodeLabels: false,
     showSnow: true,
   },
   playMapOptions: {
     showBiomeLabels: false,
-    showPoiLabels: false,
+    showNodeLabels: false,
     showHoverInspector: true,
     debugTravelSampling: false,
   },
@@ -171,7 +171,7 @@ refs.toggleBiomeLabelsButton.addEventListener("click", () => {
 });
 
 refs.toggleCityLabelsButton.addEventListener("click", () => {
-  state.renderOptions.showPoiLabels = !state.renderOptions.showPoiLabels;
+  state.renderOptions.showNodeLabels = !state.renderOptions.showNodeLabels;
   syncLabelButtons();
   editorSession.rerenderCurrentWorld();
 });
@@ -189,7 +189,7 @@ refs.playToggleBiomeLabelsButton.addEventListener("click", () => {
 });
 
 refs.playToggleCityLabelsButton.addEventListener("click", () => {
-  state.playMapOptions.showPoiLabels = !state.playMapOptions.showPoiLabels;
+  state.playMapOptions.showNodeLabels = !state.playMapOptions.showNodeLabels;
   playSession.renderPlayWorld();
 });
 

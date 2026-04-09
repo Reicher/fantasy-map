@@ -1,5 +1,5 @@
 import { regionAtCell, regionAtPosition } from "./playQueries.js";
-import { getPoiTitle } from "../poi/poiModel.js";
+import { getNodeTitle } from "../nodeModel.js";
 
 export function describePlayHud(world, playState) {
   if (!world || !playState) {
@@ -11,9 +11,12 @@ export function describePlayHud(world, playState) {
   }
 
   if (playState.travel) {
-    const pois = world.features?.pointsOfInterest ?? world.pointsOfInterest ?? world.cities;
+    const pois =
+      world.features?.pointsOfInterest ??
+      world.pointsOfInterest ??
+      world.cities;
     const toPoi =
-      pois[playState.travel.targetPoiId ?? playState.travel.targetCityId];
+      pois[playState.travel.targetNodeId ?? playState.travel.targetCityId];
     const regionName =
       playState.travel.routeType === "sea-route"
         ? "På havet"
@@ -22,17 +25,18 @@ export function describePlayHud(world, playState) {
     return {
       locationLine: regionName,
       regionName,
-      poiTitle: toPoi ? getPoiTitle(toPoi) : null,
+      poiTitle: toPoi ? getNodeTitle(toPoi) : null,
     };
   }
 
-  const pois = world.features?.pointsOfInterest ?? world.pointsOfInterest ?? world.cities;
-  const currentPoi = pois[playState.currentPoiId ?? playState.currentCityId];
+  const pois =
+    world.features?.pointsOfInterest ?? world.pointsOfInterest ?? world.cities;
+  const currentPoi = pois[playState.currentNodeId ?? playState.currentCityId];
   const region = currentPoi
     ? regionAtCell(world, currentPoi.cell)
     : regionAtPosition(world, playState.position);
   const regionName = formatHudRegionLine(region);
-  const poiTitle = currentPoi ? getPoiTitle(currentPoi) : null;
+  const poiTitle = currentPoi ? getNodeTitle(currentPoi) : null;
 
   return {
     locationLine: poiTitle ? `${poiTitle} - ${regionName}` : regionName,

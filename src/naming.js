@@ -149,7 +149,7 @@ const CITY_SUFFIX_ROOTS = new Set([
   "köping",
 ]);
 
-const POI_NAME_MARKERS = new Set(["settlement", "crash-site", "signpost"]);
+const POI_NAME_MARKERS = new Set(["settlement", "abandoned", "guidepost"]);
 
 const FAMILY_NAMES = [
   "Andersson",
@@ -356,13 +356,13 @@ export function createNameGenerator(seed) {
     pointOfInterestName(marker, key = 0) {
       const normalizedMarker = normalizePoiNameMarker(marker);
 
-      if (normalizedMarker === "signpost") {
+      if (normalizedMarker === "guidepost") {
         return "";
       }
 
       const rng = createRng(`${seed}::poi:${normalizedMarker}:${key}`);
 
-      if (normalizedMarker === "crash-site") {
+      if (normalizedMarker === "abandoned") {
         return uniqueName(generateCrashSiteName(rng));
       }
 

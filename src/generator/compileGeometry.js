@@ -34,10 +34,34 @@ function compileRoadGeometry(world) {
   return world.features.roads.map((road) => ({
     id: road.id,
     type: road.type,
-    points: simplifyWorldPoints(
-      cellsToWorldPoints(road.cells, world.terrain.width),
+    points: resampleWorldPoints(
+      simplifyWorldPoints(cellsToWorldPoints(road.cells, world.terrain.width)),
+      3.5,
     ),
   }));
+}
+
+function resampleWorldPoints(points, maxSegmentLength) {
+  if (points.length < 2) {
+    return points;
+  }
+  const result = [points[0]];
+  for (let i = 1; i < points.length; i += 1) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const dx = curr.x - prev.x;
+    const dy = curr.y - prev.y;
+    const len = Math.hypot(dx, dy);
+    if (len > maxSegmentLength) {
+      const count = Math.ceil(len / maxSegmentLength);
+      for (let j = 1; j < count; j += 1) {
+        const t = j / count;
+        result.push({ x: prev.x + dx * t, y: prev.y + dy * t });
+      }
+    }
+    result.push(curr);
+  }
+  return result;
 }
 
 function compileLabelGeometry(world) {
@@ -91,7 +115,7 @@ function compileLabelGeometry(world) {
     ),
   }));
 
-  const pointsOfInterest = world.features.pointsOfInterest.map((poi) => ({
+  const nodes = world.features.pointsOfInterest.map((poi) => ({
     id: poi.id,
     kind: poi.kind ?? "city",
     marker: poi.marker ?? "dot",
@@ -104,7 +128,7 @@ function compileLabelGeometry(world) {
     biomeRegions,
     mountainRegions,
     lakes,
-    pointsOfInterest,
+    pointsOfInterest: nodes,
   };
 }
 
@@ -362,9 +386,7 @@ function pickRegionLabelAnchor(region, regionIdByCell, width, height) {
     );
     const mapEdgeDistance = Math.min(x, y, width - 1 - x, height - 1 - y);
     const score =
-      sameNeighbors * 8.5 +
-      mapEdgeDistance * 2.2 -
-      centroidDistance * 1.35;
+      sameNeighbors * 8.5 + mapEdgeDistance * 2.2 - centroidDistance * 1.35;
     if (!best || score > best.score) {
       best = { x: x + 0.5, y: y + 0.5, score };
     }

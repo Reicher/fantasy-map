@@ -18,9 +18,9 @@ import {
   extendStripWithTravel,
   PARALLAX_SPEED,
 } from "./journey/journeyStrip.js?v=20260409r";
-import { buildTravelBiomeBandSegments } from "./travel.js?v=20260409f";
+import { buildTravelBiomeBandSegments } from "./travel.js?v=20260409g";
 import {
-  drawPoiMarkerOnCanvas,
+  drawNodeMarkerOnCanvas,
   drawJourneyTreeOnCanvas,
   drawPlayerFigure,
 } from "./journey/journeyStyle.js?v=20260409o";
@@ -45,11 +45,11 @@ const WALK_FRAME_MS = 220;
 
 const POI_MARKER_SCALE = 1.35;
 const SETTLEMENT_VISUAL_HEIGHT_PX = 472;
-const CRASH_SITE_VISUAL_HEIGHT_PX = 216;
+const ABANDONED_VISUAL_HEIGHT_PX = 216;
 const SETTLEMENT_UPWARD_OFFSET_PX = 30;
-const CRASH_SITE_UPWARD_OFFSET_PX = 13;
-const SIGNPOST_VISUAL_HEIGHT_PX = 104;
-const SIGNPOST_UPWARD_OFFSET_PX = 18;
+const ABANDONED_UPWARD_OFFSET_PX = 13;
+const GUIDEPOST_VISUAL_HEIGHT_PX = 104;
+const GUIDEPOST_UPWARD_OFFSET_PX = 18;
 const IDLE_PREVIEW_POINT_COUNT = 14;
 const IDLE_PREVIEW_SPAN_MIN = 14;
 const IDLE_PREVIEW_SPAN_MAX = 34;
@@ -66,7 +66,13 @@ const NIGHT_SKY_BOTTOM_RGB = [49, 70, 104];
 
 // Atmospheric haze per silhouette layer: how much the top of each layer
 // fades toward the sky horizon colour. 0 = none, 1 = full sky colour.
-const LAYER_HAZE = { far: 0.42, mid: 0.20, near2: 0.07, near1: 0, foreground: 0 };
+const LAYER_HAZE = {
+  far: 0.42,
+  mid: 0.2,
+  near2: 0.07,
+  near1: 0,
+  foreground: 0,
+};
 const TAU = Math.PI * 2;
 const SKY_BODY_SPRITE_CHROMA_TOLERANCE = 24;
 const SKY_BODY_SIZE_MULTIPLIER = {
@@ -155,12 +161,10 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       state.cachedH = viewH;
     } else if (
       idlePreviewTravel &&
-      (
-        state.strip === null ||
+      (state.strip === null ||
         dimensionsChanged ||
         snowModeChanged ||
-        state.idleKey !== idleKey
-      )
+        state.idleKey !== idleKey)
     ) {
       state.strip = buildJourneyStrip(idlePreviewTravel, viewW, viewH, {
         showSnow,
@@ -178,7 +182,9 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
         });
         printStripSummary(
           state.strip,
-          snowModeChanged ? "Rebuilt strip (snow mode)" : "Rebuilt strip (resize)",
+          snowModeChanged
+            ? "Rebuilt strip (snow mode)"
+            : "Rebuilt strip (resize)",
           logStripSummary,
         );
       }
@@ -331,11 +337,27 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     drawSilhouetteLayer(ctx, strip, "mid", scrollX, playerX, viewW, skyHazeRgb);
 
     // 5. Near2
-    drawSilhouetteLayer(ctx, strip, "near2", scrollX, playerX, viewW, skyHazeRgb);
+    drawSilhouetteLayer(
+      ctx,
+      strip,
+      "near2",
+      scrollX,
+      playerX,
+      viewW,
+      skyHazeRgb,
+    );
     drawTreeDecorationsForLayer(ctx, strip, "near2", scrollX, playerX, viewW);
 
     // 6. Near1
-    drawSilhouetteLayer(ctx, strip, "near1", scrollX, playerX, viewW, skyHazeRgb);
+    drawSilhouetteLayer(
+      ctx,
+      strip,
+      "near1",
+      scrollX,
+      playerX,
+      viewW,
+      skyHazeRgb,
+    );
     drawTreeDecorationsForLayer(ctx, strip, "near1", scrollX, playerX, viewW);
 
     // 7. Ground (flat solid bands, ground speed = 1.0)
@@ -420,20 +442,23 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
 
     // Main ocean gradient: airy horizon haze at top → deep ocean blue at bottom
     const ocean = ctx.createLinearGradient(0, top, 0, bottom);
-    ocean.addColorStop(0.00, rgbCssFromArray(horizon)); // flush with sky horizon
+    ocean.addColorStop(0.0, rgbCssFromArray(horizon)); // flush with sky horizon
     ocean.addColorStop(0.12, rgbCssFromArray(nearHorizon)); // pale ocean near horizon
     ocean.addColorStop(0.38, rgbCssFromArray(midOcean)); // mid ocean
-    ocean.addColorStop(0.70, rgbCssFromArray(deepOcean)); // deeper ocean
-    ocean.addColorStop(1.00, rgbCssFromArray(floorOcean)); // darkest – bottom of zone
+    ocean.addColorStop(0.7, rgbCssFromArray(deepOcean)); // deeper ocean
+    ocean.addColorStop(1.0, rgbCssFromArray(floorOcean)); // darkest – bottom of zone
     ctx.fillStyle = ocean;
     ctx.fillRect(0, top, viewW, h);
 
     // Thin specular glare line just below the sky/ocean seam
-    const glareY = top + Math.round(h * 0.10);
+    const glareY = top + Math.round(h * 0.1);
     const glare = ctx.createLinearGradient(0, glareY - 1, 0, glareY + 3);
-    glare.addColorStop(0,   'rgba(255, 255, 255, 0)');
-    glare.addColorStop(0.4, `rgba(255, 255, 255, ${0.11 + daylight * 0.2 + twilight * 0.1 - night * 0.07})`);
-    glare.addColorStop(1,   'rgba(255, 255, 255, 0)');
+    glare.addColorStop(0, "rgba(255, 255, 255, 0)");
+    glare.addColorStop(
+      0.4,
+      `rgba(255, 255, 255, ${0.11 + daylight * 0.2 + twilight * 0.1 - night * 0.07})`,
+    );
+    glare.addColorStop(1, "rgba(255, 255, 255, 0)");
     ctx.fillStyle = glare;
     ctx.fillRect(0, glareY - 1, viewW, 4);
   }
@@ -449,7 +474,12 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       const canvasX = seg.stripX - layerStripLeft;
       if (canvasX + seg.stripWidth < 0 || canvasX > viewW) continue;
       ctx.fillStyle = seg.color;
-      ctx.fillRect(Math.floor(canvasX), topY, Math.ceil(seg.stripWidth) + 1, layerH);
+      ctx.fillRect(
+        Math.floor(canvasX),
+        topY,
+        Math.ceil(seg.stripWidth) + 1,
+        layerH,
+      );
     }
 
     // 2. Colour-blend gradient at each biome boundary
@@ -553,9 +583,20 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
 
       let fillStyle;
       if (seg.isBlend && seg.colorA && seg.colorB) {
-        const hGrad = ctx.createLinearGradient(canvasX, 0, canvasX + seg.stripWidth, 0);
-        hGrad.addColorStop(0, `rgb(${seg.colorA[0]},${seg.colorA[1]},${seg.colorA[2]})`);
-        hGrad.addColorStop(1, `rgb(${seg.colorB[0]},${seg.colorB[1]},${seg.colorB[2]})`);
+        const hGrad = ctx.createLinearGradient(
+          canvasX,
+          0,
+          canvasX + seg.stripWidth,
+          0,
+        );
+        hGrad.addColorStop(
+          0,
+          `rgb(${seg.colorA[0]},${seg.colorA[1]},${seg.colorA[2]})`,
+        );
+        hGrad.addColorStop(
+          1,
+          `rgb(${seg.colorB[0]},${seg.colorB[1]},${seg.colorB[2]})`,
+        );
         fillStyle = hGrad;
       } else if (haze > 0 && seg.colorRgb) {
         const topColor = tintRgbWithSky(seg.colorRgb, haze, skyHazeRgb);
@@ -630,7 +671,10 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     switch (motif) {
       case "tuft":
       case "frost-tuft": {
-        ctx.strokeStyle = motif === "frost-tuft" ? "rgba(223,230,236,0.92)" : "rgba(70,98,56,0.86)";
+        ctx.strokeStyle =
+          motif === "frost-tuft"
+            ? "rgba(223,230,236,0.92)"
+            : "rgba(70,98,56,0.86)";
         ctx.lineWidth = Math.max(1, 1.05 * s);
         ctx.beginPath();
         ctx.moveTo(x - 2.6 * s, y);
@@ -644,7 +688,9 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       }
       case "stone":
       case "pebble": {
-        ctx.fillStyle = isSnow ? "rgba(178,179,182,0.8)" : "rgba(118,108,96,0.78)";
+        ctx.fillStyle = isSnow
+          ? "rgba(178,179,182,0.8)"
+          : "rgba(118,108,96,0.78)";
         const rx = (motif === "pebble" ? 1.8 : 2.7) * s;
         const ry = (motif === "pebble" ? 1.2 : 1.9) * s;
         ctx.beginPath();
@@ -654,7 +700,8 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       }
       case "stick":
       case "drift": {
-        ctx.strokeStyle = motif === "drift" ? "rgba(132,98,64,0.7)" : "rgba(98,74,52,0.76)";
+        ctx.strokeStyle =
+          motif === "drift" ? "rgba(132,98,64,0.7)" : "rgba(98,74,52,0.76)";
         ctx.lineWidth = Math.max(1, 1.2 * s);
         ctx.beginPath();
         ctx.moveTo(x - 3 * s, y - 0.8 * s);
@@ -700,8 +747,15 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
         break;
       }
       default:
-        ctx.fillStyle = isSnow ? "rgba(188,190,194,0.7)" : "rgba(92,104,82,0.72)";
-        ctx.fillRect(Math.round(x - s), Math.round(y - s), Math.max(1, Math.round(2 * s)), Math.max(1, Math.round(2 * s)));
+        ctx.fillStyle = isSnow
+          ? "rgba(188,190,194,0.7)"
+          : "rgba(92,104,82,0.72)";
+        ctx.fillRect(
+          Math.round(x - s),
+          Math.round(y - s),
+          Math.max(1, Math.round(2 * s)),
+          Math.max(1, Math.round(2 * s)),
+        );
         break;
     }
     ctx.restore();
@@ -754,55 +808,62 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     const layerStripLeft = scrollX * speed - playerX;
     const markerY = groundTopY + Math.round((viewH - groundTopY) * 0.15);
     const pois =
-      world?.features?.pointsOfInterest ?? world?.pointsOfInterest ?? world?.cities ?? [];
+      world?.features?.pointsOfInterest ??
+      world?.pointsOfInterest ??
+      world?.cities ??
+      [];
 
     const startCanvasX = strip.startMarkerStripX - layerStripLeft;
     const destCanvasX = strip.destMarkerStripX - layerStripLeft;
-    const startPoiId = activeTravel?.startPoiId ?? activeTravel?.startCityId ?? null;
-    const destPoiId = activeTravel?.targetPoiId ?? activeTravel?.targetCityId ?? null;
+    const startNodeId =
+      activeTravel?.startNodeId ?? activeTravel?.startCityId ?? null;
+    const destNodeId =
+      activeTravel?.targetNodeId ?? activeTravel?.targetCityId ?? null;
     const startPoi =
-      startPoiId == null
+      startNodeId == null
         ? null
-        : pois[startPoiId] ?? world?.cities?.[startPoiId] ?? null;
+        : (pois[startNodeId] ?? world?.cities?.[startNodeId] ?? null);
     const destPoi =
-      destPoiId == null ? null : pois[destPoiId] ?? world?.cities?.[destPoiId] ?? null;
+      destNodeId == null
+        ? null
+        : (pois[destNodeId] ?? world?.cities?.[destNodeId] ?? null);
     const startMarker = startPoi?.marker ?? "settlement";
     const destMarker = destPoi?.marker ?? "settlement";
-    const startSignpost = startMarker === "signpost";
-    const destSignpost = destMarker === "signpost";
+    const startGuidepost = startMarker === "guidepost";
+    const destGuidepost = destMarker === "guidepost";
 
-    drawPoiMarkerOnCanvas(ctx, startCanvasX, markerY, {
+    drawNodeMarkerOnCanvas(ctx, startCanvasX, markerY, {
       marker: startMarker,
       scale: POI_MARKER_SCALE,
       highlighted: false,
       groundY: playerFeetY,
-      variantSeed: startPoi?.id ?? startPoiId ?? "start",
-      minVisualHeightPx: startSignpost
-        ? SIGNPOST_VISUAL_HEIGHT_PX
-        : startMarker === "crash-site"
-          ? CRASH_SITE_VISUAL_HEIGHT_PX
+      variantSeed: startPoi?.id ?? startNodeId ?? "start",
+      minVisualHeightPx: startGuidepost
+        ? GUIDEPOST_VISUAL_HEIGHT_PX
+        : startMarker === "abandoned"
+          ? ABANDONED_VISUAL_HEIGHT_PX
           : SETTLEMENT_VISUAL_HEIGHT_PX,
-      verticalOffsetPx: startSignpost
-        ? SIGNPOST_UPWARD_OFFSET_PX
-        : startMarker === "crash-site"
-          ? CRASH_SITE_UPWARD_OFFSET_PX
+      verticalOffsetPx: startGuidepost
+        ? GUIDEPOST_UPWARD_OFFSET_PX
+        : startMarker === "abandoned"
+          ? ABANDONED_UPWARD_OFFSET_PX
           : SETTLEMENT_UPWARD_OFFSET_PX,
     });
-    drawPoiMarkerOnCanvas(ctx, destCanvasX, markerY, {
+    drawNodeMarkerOnCanvas(ctx, destCanvasX, markerY, {
       marker: destMarker,
       scale: POI_MARKER_SCALE,
       highlighted: true,
       groundY: playerFeetY,
-      variantSeed: destPoi?.id ?? destPoiId ?? "dest",
-      minVisualHeightPx: destSignpost
-        ? SIGNPOST_VISUAL_HEIGHT_PX
-        : destMarker === "crash-site"
-          ? CRASH_SITE_VISUAL_HEIGHT_PX
+      variantSeed: destPoi?.id ?? destNodeId ?? "dest",
+      minVisualHeightPx: destGuidepost
+        ? GUIDEPOST_VISUAL_HEIGHT_PX
+        : destMarker === "abandoned"
+          ? ABANDONED_VISUAL_HEIGHT_PX
           : SETTLEMENT_VISUAL_HEIGHT_PX,
-      verticalOffsetPx: destSignpost
-        ? SIGNPOST_UPWARD_OFFSET_PX
-        : destMarker === "crash-site"
-          ? CRASH_SITE_UPWARD_OFFSET_PX
+      verticalOffsetPx: destGuidepost
+        ? GUIDEPOST_UPWARD_OFFSET_PX
+        : destMarker === "abandoned"
+          ? ABANDONED_UPWARD_OFFSET_PX
           : SETTLEMENT_UPWARD_OFFSET_PX,
     });
 
@@ -853,10 +914,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       const desiredRootY = topEdgeY + rootOffsetFrac * layerH;
       const minRootY = band.topY + 1;
       const maxRootY = band.bottomY - 8;
-      const treeGroundY = Math.min(
-        maxRootY,
-        Math.max(minRootY, desiredRootY),
-      );
+      const treeGroundY = Math.min(maxRootY, Math.max(minRootY, desiredRootY));
 
       drawJourneyTreeOnCanvas(ctx, canvasX, treeGroundY, {
         treeFamily: tree.treeFamily,
@@ -999,7 +1057,11 @@ function createIdlePreviewTravel(world, playState) {
   const centerY = clampValue(Number(pos.y) || 0, minY, maxY);
 
   const span = hasTerrain
-    ? clampValue(world.terrain.width * 0.08, IDLE_PREVIEW_SPAN_MIN, IDLE_PREVIEW_SPAN_MAX)
+    ? clampValue(
+        world.terrain.width * 0.08,
+        IDLE_PREVIEW_SPAN_MIN,
+        IDLE_PREVIEW_SPAN_MAX,
+      )
     : 22;
   const wobble = clampValue(span * 0.08, 0.9, 2.6);
   const startX = clampValue(centerX - span * 0.55, minX, maxX);
@@ -1033,12 +1095,10 @@ function createIdlePreviewTravel(world, playState) {
     ? buildTravelBiomeBandSegments(world, points)
     : createEmptyBiomeBands();
 
-  const poiId = playState?.currentPoiId ?? playState?.currentCityId ?? null;
+  const nodeId = playState?.currentNodeId ?? playState?.currentCityId ?? null;
   return {
-    startCityId: poiId,
-    targetCityId: poiId,
-    startPoiId: poiId,
-    targetPoiId: poiId,
+    startNodeId: nodeId,
+    targetNodeId: nodeId,
     routeType: "idle-preview",
     points,
     segmentLengths,
@@ -1049,7 +1109,9 @@ function createIdlePreviewTravel(world, playState) {
     __journeyIdleKey: [
       Math.round(centerX),
       Math.round(centerY),
-      hasTerrain ? `${world.terrain.width}x${world.terrain.height}` : "no-terrain",
+      hasTerrain
+        ? `${world.terrain.width}x${world.terrain.height}`
+        : "no-terrain",
     ].join(":"),
   };
 }
@@ -1096,7 +1158,9 @@ function rgbCssFromArray(rgb) {
 
 function createSkyState(timeOfDayHours, viewW, viewH) {
   const hour = normalizeTimeOfDayHours(
-    Number.isFinite(timeOfDayHours) ? timeOfDayHours : DEFAULT_TIME_OF_DAY_HOURS,
+    Number.isFinite(timeOfDayHours)
+      ? timeOfDayHours
+      : DEFAULT_TIME_OF_DAY_HOURS,
   );
   const horizonY = Math.round(viewH * GROUND_TOP_FRAC);
   const orbitCenterX = viewW / 2;
@@ -1112,23 +1176,19 @@ function createSkyState(timeOfDayHours, viewW, viewH) {
     x: orbitCenterX + Math.cos(moonAngle) * orbitRadiusX,
     y: horizonY + Math.sin(moonAngle) * orbitRadiusY,
   };
-  const sunAltitude = clampValue(
-    (horizonY - sunPos.y) / orbitRadiusY,
-    -1,
-    1,
-  );
-  const moonAltitude = clampValue(
-    (horizonY - moonPos.y) / orbitRadiusY,
-    -1,
-    1,
-  );
+  const sunAltitude = clampValue((horizonY - sunPos.y) / orbitRadiusY, -1, 1);
+  const moonAltitude = clampValue((horizonY - moonPos.y) / orbitRadiusY, -1, 1);
   const daylight = clamp01((sunAltitude + 0.16) / 1.16);
   const night = 1 - daylight;
   const twilight = clamp01(1 - Math.abs(sunAltitude) * 2.4);
   const twilightTopWeight = twilight * (0.3 + night * 0.15);
   const twilightBottomWeight = twilight * (0.62 + night * 0.2);
   const baseTop = lerpRgb(NIGHT_SKY_TOP_RGB, DAY_SKY_TOP_RGB, daylight);
-  const baseBottom = lerpRgb(NIGHT_SKY_BOTTOM_RGB, DAY_SKY_BOTTOM_RGB, daylight);
+  const baseBottom = lerpRgb(
+    NIGHT_SKY_BOTTOM_RGB,
+    DAY_SKY_BOTTOM_RGB,
+    daylight,
+  );
   const topRgb = lerpRgb(baseTop, TWILIGHT_SKY_TOP_RGB, twilightTopWeight);
   const bottomRgb = lerpRgb(
     baseBottom,
@@ -1142,7 +1202,8 @@ function createSkyState(timeOfDayHours, viewW, viewH) {
     twilight * (0.34 + daylight * 0.16),
   );
   const sunVisible = clamp01((sunAltitude + 0.18) / 0.48);
-  const moonVisible = clamp01((moonAltitude + 0.2) / 0.54) * (0.35 + night * 0.72);
+  const moonVisible =
+    clamp01((moonAltitude + 0.2) / 0.54) * (0.35 + night * 0.72);
 
   return {
     hour,

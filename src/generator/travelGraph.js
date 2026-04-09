@@ -2,13 +2,13 @@ import { coordsOf, dedupePoints } from "../utils.js";
 
 export function buildTravelGraph(network, width) {
   const graph = new Map();
-  const cityNodes = network.nodes.filter((node) => node.cityId != null);
+  const stopNodes = network.nodes.filter(
+    (node) => node.cityId != null || node.poiId != null,
+  );
 
-  for (const cityNode of cityNodes) {
-    graph.set(
-      cityNode.cityId,
-      collectCityNeighbors(cityNode.id, network, width),
-    );
+  for (const stopNode of stopNodes) {
+    const graphKey = stopNode.cityId ?? stopNode.poiId;
+    graph.set(graphKey, collectCityNeighbors(stopNode.id, network, width));
   }
 
   return graph;
@@ -44,15 +44,23 @@ function collectCityNeighbors(startNodeId, network, width) {
       const nextCost = current.cost + link.length;
       const nextHasSeaRoute = current.hasSeaRoute || link.type === "sea-route";
 
-      if (nextNode.cityId != null && nextNode.id !== startNodeId) {
-        const previous = bestByCityId.get(nextNode.cityId);
+      const nextStopId = nextNode.cityId ?? nextNode.poiId ?? null;
+      if (nextStopId != null && nextNode.id !== startNodeId) {
+        const previous = bestByCityId.get(nextStopId);
         if (!previous || nextCost < previous.cost) {
-          bestByCityId.set(nextNode.cityId, {
-            cityId: nextNode.cityId,
+          bestByCityId.set(nextStopId, {
+            cityId: nextStopId,
             points: nextPoints,
             cost: nextCost,
             routeType: nextHasSeaRoute ? "sea-route" : "road",
           });
+        }
+        // Also block the frontier from expanding through this stop node.
+        if (
+          nextCost <
+          (bestCostByNodeId.get(nextNode.id) ?? Number.POSITIVE_INFINITY)
+        ) {
+          bestCostByNodeId.set(nextNode.id, nextCost);
         }
         continue;
       }

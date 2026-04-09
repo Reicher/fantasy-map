@@ -1,5 +1,5 @@
 import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
-import { createViewport } from "../render/renderer.js?v=20260409c";
+import { createViewport } from "../render/renderer.js?v=20260409d";
 
 export function createMapAtlasCacheManager({
   canvas,
@@ -201,7 +201,6 @@ function projectMountainHitsToViewport(
       y: hit.y - sourceYLogical,
     }))
     .filter(
-      (hit) =>
-        hit.x >= minX && hit.y >= minY && hit.x <= maxX && hit.y <= maxY,
+      (hit) => hit.x >= minX && hit.y >= minY && hit.x <= maxX && hit.y <= maxY,
     );
 }

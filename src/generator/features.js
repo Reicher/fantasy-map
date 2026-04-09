@@ -1,6 +1,6 @@
 import { createRng } from "../random.js";
 import { clamp, coordsOf, distance } from "../utils.js";
-import { describePoi } from "../poi/poiModel.js";
+import { describeNode } from "../nodeModel.js";
 
 const DEFAULT_POI_WEIGHT = 50;
 
@@ -13,7 +13,11 @@ export function buildFeatureCatalog(world, names) {
     world.network,
     world.cities.length,
   );
-  const settlementPois = buildSettlementPois(world, poiName, roadDegreeByCityId);
+  const settlementPois = buildSettlementPois(
+    world,
+    poiName,
+    roadDegreeByCityId,
+  );
   const signpostPois = buildDedicatedSignpostPois(world, settlementPois);
   const crashSitePois = buildDedicatedCrashSitePois(
     world,
@@ -21,14 +25,20 @@ export function buildFeatureCatalog(world, names) {
     settlementPois,
     signpostPois,
   );
-  const pointsOfInterest = [...settlementPois, ...signpostPois, ...crashSitePois];
+  const pointsOfInterest = [
+    ...settlementPois,
+    ...signpostPois,
+    ...crashSitePois,
+  ];
 
   return {
     pointsOfInterest,
     lakes: world.hydrology.lakes.map((lake) => ({ ...lake })),
     rivers: world.hydrology.rivers.map((river) => ({ ...river })),
     biomeRegions: world.regions.biomeRegions.map((region) => ({ ...region })),
-    mountainRegions: world.regions.mountainRegions.map((region) => ({ ...region })),
+    mountainRegions: world.regions.mountainRegions.map((region) => ({
+      ...region,
+    })),
     roads: world.roads.roads.map((road) => ({ ...road })),
     indices: {
       lakeIdByCell: world.hydrology.lakeIdByCell,
@@ -39,7 +49,7 @@ export function buildFeatureCatalog(world, names) {
 }
 
 function buildSettlementPois(world, poiName, roadDegreeByCityId) {
-  const descriptor = describePoi({ marker: "settlement", roadDegree: 0 });
+  const descriptor = describeNode({ marker: "settlement", roadDegree: 0 });
 
   return world.cities.map((city) => {
     const roadDegree = roadDegreeByCityId[city.id] ?? 0;
@@ -52,8 +62,8 @@ function buildSettlementPois(world, poiName, roadDegreeByCityId) {
       marker: descriptor.marker,
       kind: descriptor.kind,
       roadDegree,
-      poiSubtitle: descriptor.subtitle,
-      poiDetail: descriptor.detail,
+      subtitle: descriptor.subtitle,
+      detail: descriptor.detail,
     };
     world.cities[city.id] = enriched;
     return enriched;
@@ -62,7 +72,11 @@ function buildSettlementPois(world, poiName, roadDegreeByCityId) {
 
 function buildDedicatedSignpostPois(world, settlementPois) {
   const network = world.network;
-  if (!network?.nodes?.length || !network?.adjacencyByNodeId || !network?.links) {
+  if (
+    !network?.nodes?.length ||
+    !network?.adjacencyByNodeId ||
+    !network?.links
+  ) {
     return [];
   }
 
@@ -73,7 +87,7 @@ function buildDedicatedSignpostPois(world, settlementPois) {
   if (signpostWeight <= 0.01) {
     return [];
   }
-  const minSettlementClearance = lerp(4.4, 3.0, signpostWeight);
+  const minSettlementClearance = lerp(5.5, 4.5, signpostWeight);
 
   const candidates = [];
 
@@ -92,7 +106,10 @@ function buildDedicatedSignpostPois(world, settlementPois) {
     if (shape === "y") {
       continue;
     }
-    const nearestSettlementDistance = getNearestPoiDistance(node, settlementPois);
+    const nearestSettlementDistance = getNearestPoiDistance(
+      node,
+      settlementPois,
+    );
     if (nearestSettlementDistance < minSettlementClearance) {
       continue;
     }
@@ -104,14 +121,17 @@ function buildDedicatedSignpostPois(world, settlementPois) {
     const meanEdgeLength = totalEdgeLength / Math.max(1, adjacency.length);
 
     const shapeScore =
-      shape === "cross" ? 1 : shape === "t" ? 0.84 : shape === "multi" ? 0.66 : 0.32;
+      shape === "cross"
+        ? 1
+        : shape === "t"
+          ? 0.84
+          : shape === "multi"
+            ? 0.66
+            : 0.32;
     const spacingScore = clamp((nearestSettlementDistance - 3) / 9, 0, 1);
     const spanScore = clamp((meanEdgeLength - 3) / 18, 0, 1);
     const score =
-      degree * 0.5 +
-      shapeScore * 1.25 +
-      spacingScore * 0.75 +
-      spanScore * 0.42;
+      degree * 0.5 + shapeScore * 1.25 + spacingScore * 0.75 + spanScore * 0.42;
 
     candidates.push({
       id: node.id,
@@ -145,8 +165,13 @@ function buildDedicatedSignpostPois(world, settlementPois) {
     anchorPoints: settlementPois,
     desiredSpacing: lerp(13.5, 8.2, signpostWeight),
     scoreCandidate(candidate, context) {
+      const anchorClearZone = lerp(8.5, 7.0, signpostWeight);
       const anchorPenalty =
-        clamp((5.4 - context.nearestAnchorDistance) / 5.4, 0, 1) * 2.8;
+        clamp(
+          (anchorClearZone - context.nearestAnchorDistance) / anchorClearZone,
+          0,
+          1,
+        ) * 2.8;
       return (
         candidate.score +
         context.spreadScore * 1.06 -
@@ -158,12 +183,15 @@ function buildDedicatedSignpostPois(world, settlementPois) {
 
   const baseId = settlementPois.length;
   return selected.map((entry, index) => {
-    const descriptor = describePoi({
-      marker: "signpost",
+    const poiId = baseId + index;
+    // Tag the network node so buildTravelGraph treats this junction as a stop.
+    entry.node.poiId = poiId;
+    const descriptor = describeNode({
+      marker: "guidepost",
       roadDegree: entry.degree,
     });
     return {
-      id: baseId + index,
+      id: poiId,
       cell: entry.node.cell,
       x: entry.node.x,
       y: entry.node.y,
@@ -171,8 +199,8 @@ function buildDedicatedSignpostPois(world, settlementPois) {
       marker: descriptor.marker,
       kind: descriptor.kind,
       roadDegree: entry.degree,
-      poiSubtitle: descriptor.subtitle,
-      poiDetail: descriptor.detail,
+      subtitle: descriptor.subtitle,
+      detail: descriptor.detail,
       score: clamp(entry.score / 8, 0, 1),
       coastal: false,
       river: false,
@@ -180,7 +208,12 @@ function buildDedicatedSignpostPois(world, settlementPois) {
   });
 }
 
-function buildDedicatedCrashSitePois(world, poiName, settlementPois, signpostPois) {
+/**
+ * Pre-compute which road cells should become crash-site nodes BEFORE the
+ * network is built.  The world object only needs `roads`, `terrain`,
+ * `climate`, and `params` at this point.
+ */
+export function preselectCrashSiteCells(world) {
   const roads = (world.roads?.roads ?? []).filter(
     (road) => (road?.type ?? "road") === "road",
   );
@@ -196,24 +229,12 @@ function buildDedicatedCrashSitePois(world, poiName, settlementPois, signpostPoi
     return [];
   }
 
+  // Settlements/signposts don't exist yet so pass empty arrays; spacing
+  // quality is slightly lower but cell selection is fully correct.
   const roadCellAdjacency = buildRoadCellAdjacency(roads);
-  const corridorCandidates = collectCrashCorridorCandidates(
-    world,
-    settlementPois,
-    signpostPois,
-    roadCellAdjacency,
+  const candidates = mergeCrashCandidates(
+    collectGenericCrashCandidates(world, roads, [], [], roadCellAdjacency),
   );
-  const genericCandidates = collectGenericCrashCandidates(
-    world,
-    roads,
-    settlementPois,
-    signpostPois,
-    roadCellAdjacency,
-  );
-  const candidates = mergeCrashCandidates([
-    ...corridorCandidates,
-    ...genericCandidates,
-  ]);
 
   if (!candidates.length) {
     return [];
@@ -226,7 +247,9 @@ function buildDedicatedCrashSitePois(world, poiName, settlementPois, signpostPoi
   );
   const maxByRoadLength = clamp(Math.round(totalRoadCells / 120), 1, 42);
   const target = clamp(
-    Math.round(settlementPois.length * lerp(0.05, 0.62, crashWeight)),
+    Math.round(
+      Math.max(1, world.cities?.length ?? 1) * lerp(0.05, 0.62, crashWeight),
+    ),
     crashWeight >= 0.15 ? 1 : 0,
     Math.min(candidates.length, maxByRoadLength),
   );
@@ -237,14 +260,15 @@ function buildDedicatedCrashSitePois(world, poiName, settlementPois, signpostPoi
   const selected = chooseSpreadCandidates(candidates, {
     target,
     seedKey: `${world.params.seed}::poi-crash-select`,
-    anchorPoints: [...settlementPois, ...signpostPois],
+    anchorPoints: [],
     desiredSpacing: lerp(11.6, 7.6, crashWeight),
     initialStats: { endpointCount: 0 },
     scoreCandidate(candidate, context) {
       const endpointShare =
         context.stats.endpointCount / Math.max(1, context.target);
-      const endpointPenalty =
-        candidate.isEndpoint ? 1.2 + endpointShare * 1.4 : 0;
+      const endpointPenalty = candidate.isEndpoint
+        ? 1.2 + endpointShare * 1.4
+        : 0;
       const corridorBoost = candidate.isCorridorCandidate ? 0.84 : 0;
       return (
         candidate.score +
@@ -261,23 +285,52 @@ function buildDedicatedCrashSitePois(world, poiName, settlementPois, signpostPoi
     },
   });
 
-  const descriptor = describePoi({ marker: "crash-site", roadDegree: 2 });
+  return selected.map((entry) => entry.cell);
+}
+
+function buildDedicatedCrashSitePois(
+  world,
+  poiName,
+  settlementPois,
+  signpostPois,
+) {
+  const crashWeight = getWeight01(
+    world.params?.poiCrashSiteWeight,
+    DEFAULT_POI_WEIGHT,
+  );
+  if (crashWeight <= 0.01) {
+    return [];
+  }
+
+  // Find abandoned-site nodes that were pre-injected into the network.
+  const crashNodes =
+    world.network?.nodes?.filter((node) => node?.type === "abandoned") ?? [];
+  if (!crashNodes.length) {
+    return [];
+  }
+
+  const descriptor = describeNode({ marker: "abandoned", roadDegree: 2 });
   const baseId = settlementPois.length + signpostPois.length;
-  return selected.map((entry, index) => ({
-    id: baseId + index,
-    cell: entry.cell,
-    x: entry.x,
-    y: entry.y,
-    name: poiName("crash-site", `crash-${entry.cell}-${index}`),
-    marker: descriptor.marker,
-    kind: descriptor.kind,
-    roadDegree: entry.degree,
-    poiSubtitle: descriptor.subtitle,
-    poiDetail: descriptor.detail,
-    score: clamp(entry.score, 0, 1),
-    coastal: false,
-    river: false,
-  }));
+  return crashNodes.map((node, index) => {
+    const poiId = baseId + index;
+    // Tag the node so buildTravelGraph treats it as a stop.
+    node.poiId = poiId;
+    return {
+      id: poiId,
+      cell: node.cell,
+      x: node.x,
+      y: node.y,
+      name: poiName("abandoned", `abandoned-${node.cell}-${index}`),
+      marker: descriptor.marker,
+      kind: descriptor.kind,
+      roadDegree: 2,
+      subtitle: descriptor.subtitle,
+      detail: descriptor.detail,
+      score: 0.5,
+      coastal: false,
+      river: false,
+    };
+  });
 }
 
 function chooseSpreadCandidates(candidates, options = {}) {
@@ -375,8 +428,9 @@ function buildRoadDegreeByCityId(network, cityCount) {
     if (node?.type !== "city" || node.cityId == null || node.cityId < 0) {
       continue;
     }
-    degreeByCityId[node.cityId] =
-      (network.adjacencyByNodeId.get(node.id) ?? []).length;
+    degreeByCityId[node.cityId] = (
+      network.adjacencyByNodeId.get(node.id) ?? []
+    ).length;
   }
 
   return degreeByCityId;
@@ -532,12 +586,20 @@ function collectCrashCorridorCandidates(
         y,
         settlementPois,
       );
-      const nearestSignpostDistance = getNearestPointDistance(x, y, signpostPois);
+      const nearestSignpostDistance = getNearestPointDistance(
+        x,
+        y,
+        signpostPois,
+      );
       const elevation = world.terrain.elevation[cell] ?? 0;
       const mountainField = world.terrain.mountainField[cell] ?? 0;
       const ruggedness = clamp(mountainField * 0.7 + elevation * 0.45, 0, 1);
       const spacingScore = clamp((nearestSettlementDistance - 2.2) / 12, 0, 1);
-      const signpostSpacing = clamp((nearestSignpostDistance - 1.8) / 9.5, 0, 1);
+      const signpostSpacing = clamp(
+        (nearestSignpostDistance - 1.8) / 9.5,
+        0,
+        1,
+      );
       const spanScore = clamp((span - longRouteThreshold) / 28, 0, 1);
       const degreeScore =
         degree === 2 ? 1 : degree === 3 ? 0.55 : degree >= 4 ? 0.28 : 0.16;
@@ -609,7 +671,11 @@ function collectGenericCrashCandidates(
         y,
         settlementPois,
       );
-      const nearestSignpostDistance = getNearestPointDistance(x, y, signpostPois);
+      const nearestSignpostDistance = getNearestPointDistance(
+        x,
+        y,
+        signpostPois,
+      );
       const elevation = world.terrain.elevation[cell] ?? 0;
       const mountainField = world.terrain.mountainField[cell] ?? 0;
       const moisture = world.climate.moisture[cell] ?? 0.5;
@@ -726,7 +792,11 @@ function buildAnchorNeighborRoutes(anchorPois, roadCellAdjacency) {
           (anchorId) => anchorId !== anchor.id,
         );
         if (targetAnchorIds.length > 0) {
-          const cells = reconstructCellPath(sourceCell, nextCell, previousByCell);
+          const cells = reconstructCellPath(
+            sourceCell,
+            nextCell,
+            previousByCell,
+          );
           if (cells.length >= 2) {
             for (const targetAnchorId of targetAnchorIds) {
               setBestAnchorRoute(

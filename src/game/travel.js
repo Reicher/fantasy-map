@@ -11,10 +11,10 @@ const TRAVEL_BIOME_BANDS = {
 };
 
 export function createPlayState(world) {
-  const currentCityId =
+  const currentNodeId =
     world.playerStart?.cityId ?? world.cities[0]?.id ?? null;
   const currentCity =
-    currentCityId == null ? null : world.cities[currentCityId];
+    currentNodeId == null ? null : world.cities[currentNodeId];
   const lastRegionId =
     currentCity && currentCity.cell != null
       ? (regionAtCell(world, currentCity.cell)?.id ?? null)
@@ -32,11 +32,11 @@ export function createPlayState(world) {
     graph: world.travelGraph,
     viewMode: "map",
     timeOfDayHours: DEFAULT_TIME_OF_DAY_HOURS,
-    currentCityId,
+    currentNodeId,
     position: currentCity ? { x: currentCity.x, y: currentCity.y } : null,
     lastRegionId,
-    hoveredCityId: null,
-    pressedCityId: null,
+    hoveredNodeId: null,
+    pressedNodeId: null,
     travel: null,
     discoveredCells,
     fogDirty: true,
@@ -52,10 +52,10 @@ export function getValidTargetIds(playState) {
     return [];
   }
 
-  return [...(playState.graph.get(playState.currentCityId)?.keys() ?? [])];
+  return [...(playState.graph.get(playState.currentNodeId)?.keys() ?? [])];
 }
 
-export function beginTravel(playState, targetCityId, world = null) {
+export function beginTravel(playState, targetNodeId, world = null) {
   if (!playState) {
     return playState;
   }
@@ -64,7 +64,7 @@ export function beginTravel(playState, targetCityId, world = null) {
     return playState;
   }
 
-  const path = playState.graph.get(playState.currentCityId)?.get(targetCityId);
+  const path = playState.graph.get(playState.currentNodeId)?.get(targetNodeId);
   if (!path) {
     return playState;
   }
@@ -76,14 +76,14 @@ export function beginTravel(playState, targetCityId, world = null) {
   return {
     ...playState,
     travel: createTravel(
-      playState.currentCityId,
-      targetCityId,
+      playState.currentNodeId,
+      targetNodeId,
       path.points,
       path.routeType,
       biomeBandSegments,
     ),
-    hoveredCityId: null,
-    pressedCityId: null,
+    hoveredNodeId: null,
+    pressedNodeId: null,
   };
 }
 
@@ -109,8 +109,12 @@ export function advanceTravel(playState, world, deltaMs) {
   const revealed = revealAroundPosition(world, discoveredCells, sample.point);
 
   if (nextProgress >= playState.travel.totalLength - 0.0001) {
-    const city = world.cities[playState.travel.targetCityId];
-    const finalPosition = city ? { x: city.x, y: city.y } : sample.point;
+    const city = world.cities[playState.travel.targetNodeId];
+    const targetPoi =
+      city ?? world.features?.pointsOfInterest?.[playState.travel.targetNodeId];
+    const finalPosition = targetPoi
+      ? { x: targetPoi.x, y: targetPoi.y }
+      : sample.point;
     const finalReveal = revealAroundPosition(
       world,
       discoveredCells,
@@ -118,11 +122,11 @@ export function advanceTravel(playState, world, deltaMs) {
     );
     return {
       ...playState,
-      currentCityId: playState.travel.targetCityId,
+      currentNodeId: playState.travel.targetNodeId,
       position: finalPosition,
       lastRegionId:
-        city && city.cell != null
-          ? (regionAtCell(world, city.cell)?.id ?? lastRegionId)
+        targetPoi && targetPoi.cell != null
+          ? (regionAtCell(world, targetPoi.cell)?.id ?? lastRegionId)
           : lastRegionId,
       travel: null,
       discoveredCells,
@@ -144,8 +148,8 @@ export function advanceTravel(playState, world, deltaMs) {
 }
 
 function createTravel(
-  startCityId,
-  targetCityId,
+  startNodeId,
+  targetNodeId,
   points,
   routeType = "road",
   biomeBandSegments = createEmptyTravelBiomeBands(),
@@ -163,8 +167,8 @@ function createTravel(
   }
 
   return {
-    startCityId,
-    targetCityId,
+    startNodeId,
+    targetNodeId,
     routeType,
     points: normalizedPoints,
     segmentLengths,

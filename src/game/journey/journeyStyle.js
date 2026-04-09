@@ -8,44 +8,46 @@ import {
   hexToRgb,
   mixRgb,
 } from "../../palette/colorSystem.js";
-import { drawPoiMarkerGlyph } from "../../render/poiGlyph.js?v=20260408b";
+import { drawNodeMarkerGlyph } from "../../render/nodeGlyph.js?v=20260409a";
 
 const SNOW_GROUND_RGB = WORLD_RGB.snow;
-const JOURNEY_SIGNPOST_IMAGE = createJourneySignpostImage();
-const JOURNEY_SIGNPOST_MIN_HEIGHT_PX = 104;
-const JOURNEY_SIGNPOST_VERTICAL_OFFSET_PX = 18;
+const JOURNEY_GUIDEPOST_IMAGE = createJourneySignpostImage();
+const JOURNEY_GUIDEPOST_MIN_HEIGHT_PX = 104;
+const JOURNEY_GUIDEPOST_VERTICAL_OFFSET_PX = 18;
 const JOURNEY_POI_MIN_HEIGHT_BY_MARKER = {
   settlement: 118,
-  "crash-site": 108,
+  abandoned: 108,
 };
 const JOURNEY_POI_WIDTH_SCALE_BY_MARKER = {
   settlement: 1,
-  "crash-site": 0.88,
+  abandoned: 0.88,
 };
 const JOURNEY_POI_SPRITESHEET_BY_MARKER = {
   settlement: createJourneySpritesheet(
     new URL("../../assets/journey/settlement-pois.png", import.meta.url).href,
   ),
-  "crash-site": createJourneySpritesheet(
+  abandoned: createJourneySpritesheet(
     new URL("../../assets/journey/crash-site-pois.png", import.meta.url).href,
   ),
 };
 const JOURNEY_POI_VARIANT_COUNT_BY_MARKER = {
   settlement: 3,
-  "crash-site": 4,
+  abandoned: 4,
 };
 const JOURNEY_TREE_SPRITESHEET_BY_FAMILY = {
   pine: createJourneySpritesheet(
     new URL("../../assets/journey/journey-pines.png", import.meta.url).href,
   ),
   dead: createJourneySpritesheet(
-    new URL("../../assets/journey/journey-dead-trees.png", import.meta.url).href,
+    new URL("../../assets/journey/journey-dead-trees.png", import.meta.url)
+      .href,
   ),
   cactus: createJourneySpritesheet(
     new URL("../../assets/journey/journey-cacti.png", import.meta.url).href,
   ),
   tuft: createJourneySpritesheet(
-    new URL("../../assets/journey/journey-plains-tufts.png", import.meta.url).href,
+    new URL("../../assets/journey/journey-plains-tufts.png", import.meta.url)
+      .href,
   ),
 };
 const JOURNEY_TREE_VARIANT_COUNT_BY_FAMILY = {
@@ -55,7 +57,12 @@ const JOURNEY_TREE_VARIANT_COUNT_BY_FAMILY = {
   tuft: 4,
 };
 const SPRITE_CHROMA_TOLERANCE = 24;
-const SNOW_AFFECTED_LAYERS = new Set(["ground", "near1", "near2", "foreground"]);
+const SNOW_AFFECTED_LAYERS = new Set([
+  "ground",
+  "near1",
+  "near2",
+  "foreground",
+]);
 const JOURNEY_NEAR_LIGHTEN_FRAC = {
   near1: 0.08,
   near2: 0.16,
@@ -84,15 +91,20 @@ export function getBiomeLayerColorRgb(
     return mixRgb(nearBase, [255, 255, 255], nearLightenFrac);
   }
 
-  const base = isSnow && SNOW_AFFECTED_LAYERS.has(layerDepth)
-    ? SNOW_GROUND_RGB
-    : biomeBase;
+  const base =
+    isSnow && SNOW_AFFECTED_LAYERS.has(layerDepth)
+      ? SNOW_GROUND_RGB
+      : biomeBase;
   const shade = DEPTH_SHADE_BY_LAYER[layerDepth] ?? DEPTH_SHADE_BY_LAYER.ground;
   if (!shade.target) {
-    return isSnow ? capToGamePalette(base) : capToBiomePalette(base, normalizedBiome);
+    return isSnow
+      ? capToGamePalette(base)
+      : capToBiomePalette(base, normalizedBiome);
   }
   const mixed = mixRgb(base, shade.target, shade.amount);
-  return isSnow ? capToGamePalette(mixed) : capToBiomePalette(mixed, normalizedBiome);
+  return isSnow
+    ? capToGamePalette(mixed)
+    : capToBiomePalette(mixed, normalizedBiome);
 }
 
 // ---------------------------------------------------------------------------
@@ -137,7 +149,9 @@ export function sampleSilhouetteAtX(biomeKey, globalX, layerDepth) {
 function getSilhouetteSpec(biomeKey, layerDepth) {
   // Negative = more jagged (foreground), positive = smoother (far background)
   const depthFactor =
-    { foreground: -1.0, near1: 0, near2: 1.5, mid: 3.2, far: 5.5 }[layerDepth] ?? 0;
+    { foreground: -1.0, near1: 0, near2: 1.5, mid: 3.2, far: 5.5 }[
+      layerDepth
+    ] ?? 0;
   const p1 = hash01(`${biomeKey}:${layerDepth}:p1`) * 1000;
   const p2 = hash01(`${biomeKey}:${layerDepth}:p2`) * 600;
   const base = getBiomeBaseSpec(biomeKey);
@@ -245,29 +259,24 @@ function sampleSilhouetteY(spec, x) {
 // POI marker – matches the map renderer dot style
 // ---------------------------------------------------------------------------
 
-export function drawPoiMarkerOnCanvas(
-  ctx,
-  x,
-  y,
-  options = {},
-) {
+export function drawNodeMarkerOnCanvas(ctx, x, y, options = {}) {
   const marker = options.marker;
-  if (marker === "signpost") {
+  if (marker === "guidepost") {
     const minVisualHeightPx = Math.max(
-      JOURNEY_SIGNPOST_MIN_HEIGHT_PX,
-      Math.round(options.minVisualHeightPx ?? JOURNEY_SIGNPOST_MIN_HEIGHT_PX),
+      JOURNEY_GUIDEPOST_MIN_HEIGHT_PX,
+      Math.round(options.minVisualHeightPx ?? JOURNEY_GUIDEPOST_MIN_HEIGHT_PX),
     );
     const baseGroundY = Number.isFinite(options.groundY) ? options.groundY : y;
     const verticalOffset = Math.max(
       0,
-      Number(options.verticalOffsetPx ?? JOURNEY_SIGNPOST_VERTICAL_OFFSET_PX),
+      Number(options.verticalOffsetPx ?? JOURNEY_GUIDEPOST_VERTICAL_OFFSET_PX),
     );
     const groundY = baseGroundY - verticalOffset;
     if (
-      JOURNEY_SIGNPOST_IMAGE &&
-      JOURNEY_SIGNPOST_IMAGE.complete &&
-      JOURNEY_SIGNPOST_IMAGE.naturalWidth > 0 &&
-      JOURNEY_SIGNPOST_IMAGE.naturalHeight > 0
+      JOURNEY_GUIDEPOST_IMAGE &&
+      JOURNEY_GUIDEPOST_IMAGE.complete &&
+      JOURNEY_GUIDEPOST_IMAGE.naturalWidth > 0 &&
+      JOURNEY_GUIDEPOST_IMAGE.naturalHeight > 0
     ) {
       drawJourneySignpostImage(ctx, x, groundY, minVisualHeightPx, {
         highlighted: options.highlighted ?? true,
@@ -275,7 +284,7 @@ export function drawPoiMarkerOnCanvas(
       return;
     }
     const fallbackScale = minVisualHeightPx / 9.2;
-    drawPoiMarkerGlyph(ctx, x, groundY, marker, {
+    drawNodeMarkerGlyph(ctx, x, groundY, marker, {
       scale: fallbackScale,
       iconLift: 4.6 * fallbackScale,
       highlighted: options.highlighted ?? true,
@@ -297,7 +306,7 @@ export function drawPoiMarkerOnCanvas(
     return;
   }
 
-  drawPoiMarkerGlyph(ctx, x, y, options.marker, {
+  drawNodeMarkerGlyph(ctx, x, y, options.marker, {
     scale: options.scale ?? 1.25,
     highlighted: options.highlighted ?? true,
     hovered: false,
@@ -305,12 +314,7 @@ export function drawPoiMarkerOnCanvas(
   });
 }
 
-export function drawJourneyTreeOnCanvas(
-  ctx,
-  x,
-  groundY,
-  options = {},
-) {
+export function drawJourneyTreeOnCanvas(ctx, x, groundY, options = {}) {
   const targetHeight = Math.max(18, Number(options.heightPx ?? 64));
   const upwardOffset = Math.max(0, Number(options.upwardOffsetPx ?? 0));
   const treeFamily = resolveTreeFamily(options.treeFamily);
@@ -319,27 +323,37 @@ export function drawJourneyTreeOnCanvas(
   const variants =
     getJourneyTreeVariants(treeFamily) ?? getJourneyTreeVariants("pine");
   if (!variants?.length) {
-    drawFallbackJourneyTree(ctx, x, groundY, targetHeight, upwardOffset, isSnowTree);
+    drawFallbackJourneyTree(
+      ctx,
+      x,
+      groundY,
+      targetHeight,
+      upwardOffset,
+      isSnowTree,
+    );
     return;
   }
 
   const rawIndex = Number.isFinite(options.variantIndex)
     ? Math.floor(options.variantIndex)
     : 0;
-  const variantIndex = ((rawIndex % variants.length) + variants.length) % variants.length;
+  const variantIndex =
+    ((rawIndex % variants.length) + variants.length) % variants.length;
   const sprite = variants[variantIndex];
   if (!sprite) {
-    drawFallbackJourneyTree(ctx, x, groundY, targetHeight, upwardOffset, isSnowTree);
+    drawFallbackJourneyTree(
+      ctx,
+      x,
+      groundY,
+      targetHeight,
+      upwardOffset,
+      isSnowTree,
+    );
     return;
   }
 
   const targetWidth = targetHeight * (sprite.width / sprite.height);
-  const groundAnchorFrac = clamp(
-    Number(sprite.groundAnchorFrac),
-    0.5,
-    1,
-    1,
-  );
+  const groundAnchorFrac = clamp(Number(sprite.groundAnchorFrac), 0.5, 1, 1);
   const drawLeft = Math.round(x - targetWidth * 0.5);
   const drawTop = Math.round(
     groundY - targetHeight * groundAnchorFrac - upwardOffset,
@@ -375,7 +389,12 @@ function drawFallbackJourneyTree(
 
   ctx.save();
   ctx.fillStyle = "#5a3a1f";
-  ctx.fillRect(Math.round(x - w * 0.08), crownBottom, Math.max(2, Math.round(w * 0.16)), trunkH);
+  ctx.fillRect(
+    Math.round(x - w * 0.08),
+    crownBottom,
+    Math.max(2, Math.round(w * 0.16)),
+    trunkH,
+  );
 
   ctx.beginPath();
   ctx.moveTo(x, crownTop);
@@ -387,7 +406,12 @@ function drawFallbackJourneyTree(
 
   if (isSnowTree) {
     ctx.fillStyle = "rgba(255,255,255,0.75)";
-    ctx.fillRect(Math.round(x - w * 0.26), Math.round(crownTop + h * 0.24), Math.round(w * 0.52), Math.max(2, Math.round(h * 0.08)));
+    ctx.fillRect(
+      Math.round(x - w * 0.26),
+      Math.round(crownTop + h * 0.24),
+      Math.round(w * 0.52),
+      Math.max(2, Math.round(h * 0.08)),
+    );
   }
   ctx.restore();
 }
@@ -399,11 +423,14 @@ function drawJourneySignpostImage(
   minVisualHeightPx,
   { highlighted = true } = {},
 ) {
-  const sourceWidth = JOURNEY_SIGNPOST_IMAGE.naturalWidth;
-  const sourceHeight = JOURNEY_SIGNPOST_IMAGE.naturalHeight;
+  const sourceWidth = JOURNEY_GUIDEPOST_IMAGE.naturalWidth;
+  const sourceHeight = JOURNEY_GUIDEPOST_IMAGE.naturalHeight;
   if (sourceWidth <= 0 || sourceHeight <= 0) return;
 
-  const targetHeight = Math.max(JOURNEY_SIGNPOST_MIN_HEIGHT_PX, minVisualHeightPx);
+  const targetHeight = Math.max(
+    JOURNEY_GUIDEPOST_MIN_HEIGHT_PX,
+    minVisualHeightPx,
+  );
   const targetWidth = targetHeight * (sourceWidth / sourceHeight);
   const drawLeft = Math.round(x - targetWidth * 0.5);
   const drawTop = Math.round(groundY - targetHeight);
@@ -418,7 +445,7 @@ function drawJourneySignpostImage(
     ctx.shadowOffsetY = 1;
   }
   ctx.drawImage(
-    JOURNEY_SIGNPOST_IMAGE,
+    JOURNEY_GUIDEPOST_IMAGE,
     drawLeft,
     drawTop,
     Math.round(targetWidth),
@@ -432,10 +459,16 @@ function drawJourneyPoiImage(
   x,
   y,
   marker,
-  { highlighted = true, groundY, minVisualHeightPx, variantSeed, verticalOffsetPx = 0 } = {},
+  {
+    highlighted = true,
+    groundY,
+    minVisualHeightPx,
+    variantSeed,
+    verticalOffsetPx = 0,
+  } = {},
 ) {
   const normalizedMarker =
-    marker === "crash-site" || marker === "settlement" ? marker : null;
+    marker === "abandoned" || marker === "settlement" ? marker : null;
   if (!normalizedMarker) return false;
 
   const variants = getJourneyPoiVariants(normalizedMarker);
@@ -462,15 +495,11 @@ function drawJourneyPoiImage(
     1.2,
     1,
   );
-  const targetWidth = targetHeight * (sprite.width / sprite.height) * widthScale;
+  const targetWidth =
+    targetHeight * (sprite.width / sprite.height) * widthScale;
   const baseGroundY = Number.isFinite(groundY) ? groundY : y;
   const groundedY = baseGroundY - Math.max(0, Number(verticalOffsetPx));
-  const groundAnchorFrac = clamp(
-    Number(sprite.groundAnchorFrac),
-    0.55,
-    1,
-    1,
-  );
+  const groundAnchorFrac = clamp(Number(sprite.groundAnchorFrac), 0.55, 1, 1);
   const drawLeft = Math.round(x - targetWidth * 0.5);
   const drawTop = Math.round(groundedY - targetHeight * groundAnchorFrac);
 
@@ -498,7 +527,10 @@ function createJourneySignpostImage() {
   if (typeof Image !== "function") return null;
   const image = new Image();
   image.decoding = "async";
-  image.src = new URL("../../assets/journey/signpost-marker.png", import.meta.url).href;
+  image.src = new URL(
+    "../../assets/journey/signpost-marker.png",
+    import.meta.url,
+  ).href;
   return image;
 }
 
@@ -524,11 +556,7 @@ function getJourneyPoiVariants(marker) {
   ) {
     return null;
   }
-  const variants = sliceJourneyPoiVariants(
-    sheet,
-    variantCount,
-    marker,
-  );
+  const variants = sliceJourneyPoiVariants(sheet, variantCount, marker);
   journeyPoiVariantsByMarker.set(marker, variants);
   return variants;
 }
@@ -636,7 +664,7 @@ function sliceJourneyPoiVariants(sheetImage, variantCount, marker) {
   }
   sourceCtx.putImageData(sourceData, 0, 0);
 
-  if (marker === "crash-site") {
+  if (marker === "abandoned") {
     const gridVariants = sliceJourneyVariantsFromGrid(
       sourceCanvas,
       2,
@@ -683,17 +711,7 @@ function sliceJourneyPoiVariants(sheetImage, variantCount, marker) {
     canvas.height = sourceH;
     const ctx = canvas.getContext("2d");
     if (!ctx) continue;
-    ctx.drawImage(
-      sourceCanvas,
-      sx,
-      0,
-      sw,
-      sourceH,
-      0,
-      0,
-      sw,
-      sourceH,
-    );
+    ctx.drawImage(sourceCanvas, sx, 0, sw, sourceH, 0, 0, sw, sourceH);
     const imageData = ctx.getImageData(0, 0, sw, sourceH);
     canvas.groundAnchorFrac = computeSpriteGroundAnchorFrac(imageData, sourceH);
     variants.push(canvas);
@@ -797,7 +815,7 @@ function detectOpaqueColumnClusters(columnHasOpaque, targetCount, marker) {
   }
 
   return clusters
-    .sort((a, b) => (b.end - b.start) - (a.end - a.start))
+    .sort((a, b) => b.end - b.start - (a.end - a.start))
     .slice(0, targetCount)
     .sort((a, b) => a.start - b.start);
 }

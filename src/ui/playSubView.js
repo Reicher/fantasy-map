@@ -1,5 +1,5 @@
 import { describePlayHud } from "../game/playViewText.js?v=20260409f";
-import { getPoiTitle } from "../poi/poiModel.js";
+import { getNodeTitle } from "../nodeModel.js";
 import { setElementVisible } from "./viewState.js?v=20260403a";
 
 export function createPlaySubViewController({
@@ -15,7 +15,7 @@ export function createPlaySubViewController({
   let lastLocationLine = null;
   let lastModeButtonLabel = null;
   let activeTravelCueKey = null;
-  let activeTravelTargetPoiId = null;
+  let activeTravelTargetNodeId = null;
   let lastDestMarkerCanvasX = null;
   const shownArrivalCueKeys = new Set();
 
@@ -31,7 +31,7 @@ export function createPlaySubViewController({
     lastLocationLine = null;
     lastModeButtonLabel = null;
     activeTravelCueKey = null;
-    activeTravelTargetPoiId = null;
+    activeTravelTargetNodeId = null;
     lastDestMarkerCanvasX = null;
     shownArrivalCueKeys.clear();
     hideArrivalCue();
@@ -105,19 +105,21 @@ export function createPlaySubViewController({
   function maybeTriggerArrivalCue(world, playState, presentation = {}) {
     if (playState.travel) {
       const cueKey = buildTravelCueKey(playState.travel);
-      const targetPoiId =
-        playState.travel.targetPoiId ?? playState.travel.targetCityId ?? null;
+      const targetNodeId =
+        playState.travel.targetNodeId ?? playState.travel.targetCityId ?? null;
 
       if (activeTravelCueKey !== cueKey) {
         activeTravelCueKey = cueKey;
-        activeTravelTargetPoiId = targetPoiId;
+        activeTravelTargetNodeId = targetNodeId;
         lastDestMarkerCanvasX = null;
       }
 
       const destCanvasX = Number.isFinite(presentation.destMarkerCanvasX)
         ? presentation.destMarkerCanvasX
         : null;
-      const viewW = Number.isFinite(presentation.viewW) ? presentation.viewW : 0;
+      const viewW = Number.isFinite(presentation.viewW)
+        ? presentation.viewW
+        : 0;
       const enteredViewport =
         destCanvasX != null &&
         viewW > 0 &&
@@ -125,7 +127,7 @@ export function createPlaySubViewController({
         (lastDestMarkerCanvasX == null || lastDestMarkerCanvasX > viewW);
 
       if (enteredViewport) {
-        triggerArrivalCue(world, targetPoiId, cueKey);
+        triggerArrivalCue(world, targetNodeId, cueKey);
       }
 
       if (destCanvasX != null) {
@@ -135,19 +137,21 @@ export function createPlaySubViewController({
     }
 
     if (activeTravelCueKey && !shownArrivalCueKeys.has(activeTravelCueKey)) {
-      triggerArrivalCue(world, activeTravelTargetPoiId, activeTravelCueKey);
+      triggerArrivalCue(world, activeTravelTargetNodeId, activeTravelCueKey);
     }
     resetTravelCueTracking();
   }
 
-  function triggerArrivalCue(world, targetPoiId, cueKey) {
+  function triggerArrivalCue(world, targetNodeId, cueKey) {
     if (cueKey && shownArrivalCueKeys.has(cueKey)) {
       return;
     }
-    const pois =
-      world?.features?.pointsOfInterest ?? world?.pointsOfInterest ?? world?.cities;
-    const poi = targetPoiId == null ? null : pois?.[targetPoiId];
-    const title = poi ? getPoiTitle(poi) : "";
+    const nodes =
+      world?.features?.pointsOfInterest ??
+      world?.pointsOfInterest ??
+      world?.cities;
+    const node = targetNodeId == null ? null : nodes?.[targetNodeId];
+    const title = node ? getNodeTitle(node) : "";
     if (!title) {
       return;
     }
@@ -179,7 +183,7 @@ export function createPlaySubViewController({
 
   function resetTravelCueTracking() {
     activeTravelCueKey = null;
-    activeTravelTargetPoiId = null;
+    activeTravelTargetNodeId = null;
     lastDestMarkerCanvasX = null;
   }
 
@@ -195,9 +199,10 @@ export function createPlaySubViewController({
 function syncPlayLegendButtons(playMapOptions, refs) {
   refs.playToggleBiomeLabelsButton.dataset.active =
     playMapOptions.showBiomeLabels ? "true" : "false";
-  refs.playToggleCityLabelsButton.dataset.active = playMapOptions.showPoiLabels
-    ? "true"
-    : "false";
+  refs.playToggleCityLabelsButton.dataset.active =
+    (playMapOptions.showNodeLabels ?? playMapOptions.showPoiLabels)
+      ? "true"
+      : "false";
   refs.playToggleHoverButton.dataset.active = playMapOptions.showHoverInspector
     ? "true"
     : "false";
@@ -225,8 +230,8 @@ function buildTravelCueKey(travel) {
     return "";
   }
   return [
-    travel.startPoiId ?? travel.startCityId ?? "-",
-    travel.targetPoiId ?? travel.targetCityId ?? "-",
+    travel.startNodeId ?? travel.startCityId ?? "-",
+    travel.targetNodeId ?? travel.targetCityId ?? "-",
     (travel.totalLength ?? 0).toFixed(4),
   ].join(":");
 }

@@ -35,7 +35,11 @@ const TREE_ALLOWED_BIOMES = new Set([
   "desert",
   "plains",
 ]);
-const FOREGROUND_SUPPRESSED_BIOMES = new Set(["forest", "rainforest", "tundra"]);
+const FOREGROUND_SUPPRESSED_BIOMES = new Set([
+  "forest",
+  "rainforest",
+  "tundra",
+]);
 const FOREGROUND_TREE_ALLOWED_BIOMES = new Set([
   ...FOREGROUND_SUPPRESSED_BIOMES,
   "desert",
@@ -177,7 +181,7 @@ const DETAIL_THEME_BY_BIOME = {
 /**
  * Build the full precomputed journey strip for a given travel.
  *
- * @param {object} travel      – playState.travel (has startCityId, targetCityId,
+ * @param {object} travel      – playState.travel (has startNodeId, targetNodeId,
  *                               points, segmentLengths, totalLength, biomeBandSegments)
  * @param {number} viewW       – canvas viewport width in pixels
  * @param {number} viewH       – canvas viewport height in pixels
@@ -221,9 +225,8 @@ export function buildJourneyStrip(travel, viewW, viewH, options = {}) {
   //   extAfterPx ≥ playerX*(1 − 1/FAR_SPEED) + viewW*(1/FAR_SPEED − 0.5)
   // The foreground (fastest, s>1) needs only ~0.17*viewW — far less.
   const minExtAfter =
-    Math.ceil(
-      playerX * (1 - 1 / FAR_SPEED) + viewW * (1 / FAR_SPEED - 0.5),
-    ) + 32;
+    Math.ceil(playerX * (1 - 1 / FAR_SPEED) + viewW * (1 / FAR_SPEED - 0.5)) +
+    32;
   const extAfterPx = Math.max(
     ROUTE_EXTENSION_WORLD * PX_PER_WORLD,
     minExtAfter,
@@ -272,8 +275,8 @@ export function buildJourneyStrip(travel, viewW, viewH, options = {}) {
     // closer layer's polygon naturally occludes the ones behind it.
     near1: { topY: near1Top, bottomY: SILHOUETTE_BOTTOM },
     near2: { topY: near2Top, bottomY: SILHOUETTE_BOTTOM },
-    mid:   { topY: midTop,   bottomY: SILHOUETTE_BOTTOM },
-    far:   { topY: farTop,   bottomY: SILHOUETTE_BOTTOM },
+    mid: { topY: midTop, bottomY: SILHOUETTE_BOTTOM },
+    far: { topY: farTop, bottomY: SILHOUETTE_BOTTOM },
   };
 
   // --- 3. Sample biome segments for each layer --------------------------
@@ -314,11 +317,26 @@ export function buildJourneyStrip(travel, viewW, viewH, options = {}) {
   //  → at any progress the layer transition aligns with the ground transition.
 
   const groundSegs = buildLayerSegments(nearSegments, "ground");
-  const fgSegs = buildLayerSegments(scaleSegments(nearSegments, PARALLAX_SPEED.foreground), "foreground");
-  const near1Segs = buildLayerSegments(scaleSegments(nearSegments, PARALLAX_SPEED.near1), "near1");
-  const near2Segs = buildLayerSegments(scaleSegments(nearSegments, PARALLAX_SPEED.near2), "near2");
-  const midSegs = buildLayerSegments(scaleSegments(midSegments, PARALLAX_SPEED.mid), "mid");
-  const farSegs = buildLayerSegments(scaleSegments(farSegments, PARALLAX_SPEED.far), "far");
+  const fgSegs = buildLayerSegments(
+    scaleSegments(nearSegments, PARALLAX_SPEED.foreground),
+    "foreground",
+  );
+  const near1Segs = buildLayerSegments(
+    scaleSegments(nearSegments, PARALLAX_SPEED.near1),
+    "near1",
+  );
+  const near2Segs = buildLayerSegments(
+    scaleSegments(nearSegments, PARALLAX_SPEED.near2),
+    "near2",
+  );
+  const midSegs = buildLayerSegments(
+    scaleSegments(midSegments, PARALLAX_SPEED.mid),
+    "mid",
+  );
+  const farSegs = buildLayerSegments(
+    scaleSegments(farSegments, PARALLAX_SPEED.far),
+    "far",
+  );
 
   const strip = {
     totalStripPx,
@@ -343,7 +361,10 @@ export function buildJourneyStrip(travel, viewW, viewH, options = {}) {
   strip.treeDecorations = buildTreeDecorations(strip);
   strip.groundTrees = buildGroundTrees(strip.layerSegments.ground, strip);
   strip.groundDetails = buildGroundDetails(strip.layerSegments.ground, strip);
-  strip.foregroundTrees = buildForegroundTrees(strip.layerSegments.ground, strip);
+  strip.foregroundTrees = buildForegroundTrees(
+    strip.layerSegments.ground,
+    strip,
+  );
   return strip;
 }
 
@@ -357,7 +378,13 @@ export function buildJourneyStrip(travel, viewW, viewH, options = {}) {
  * Append segments for a new travel onto an already-built strip.
  * Mutates the strip in-place and returns it.
  */
-export function extendStripWithTravel(strip, travel, viewW, viewH, options = {}) {
+export function extendStripWithTravel(
+  strip,
+  travel,
+  viewW,
+  viewH,
+  options = {},
+) {
   const FAR_SPEED = 0.26; // must match PARALLAX_SPEED.far — slowest layer drives post-ext size
   const playerX = viewW * PLAYER_X_FRAC;
 
@@ -372,9 +399,8 @@ export function extendStripWithTravel(strip, travel, viewW, viewH, options = {})
   // old FG_SPEED-based formula grew linearly with strip length, producing
   // huge unnecessary allocations on each subsequent journey.
   const minExtAfter =
-    Math.ceil(
-      playerX * (1 - 1 / FAR_SPEED) + viewW * (1 / FAR_SPEED - 0.5),
-    ) + 32;
+    Math.ceil(playerX * (1 - 1 / FAR_SPEED) + viewW * (1 / FAR_SPEED - 0.5)) +
+    32;
   const extAfterPx = Math.max(
     ROUTE_EXTENSION_WORLD * PX_PER_WORLD,
     minExtAfter,
@@ -421,17 +447,35 @@ export function extendStripWithTravel(strip, travel, viewW, viewH, options = {})
   // destMarkerStripX * speed in layer-space — exactly where the new route
   // also starts — so without this step the two would be double-drawn.
   const cutGround = strip.destMarkerStripX;
-  truncateLayerAtX(strip.layerSegments.ground,     cutGround);
-  truncateLayerAtX(strip.layerSegments.foreground, cutGround * PARALLAX_SPEED.foreground);
-  truncateLayerAtX(strip.layerSegments.near1,      cutGround * PARALLAX_SPEED.near1);
-  truncateLayerAtX(strip.layerSegments.near2,      cutGround * PARALLAX_SPEED.near2);
-  truncateLayerAtX(strip.layerSegments.mid,        cutGround * PARALLAX_SPEED.mid);
-  truncateLayerAtX(strip.layerSegments.far,        cutGround * PARALLAX_SPEED.far);
+  truncateLayerAtX(strip.layerSegments.ground, cutGround);
+  truncateLayerAtX(
+    strip.layerSegments.foreground,
+    cutGround * PARALLAX_SPEED.foreground,
+  );
+  truncateLayerAtX(strip.layerSegments.near1, cutGround * PARALLAX_SPEED.near1);
+  truncateLayerAtX(strip.layerSegments.near2, cutGround * PARALLAX_SPEED.near2);
+  truncateLayerAtX(strip.layerSegments.mid, cutGround * PARALLAX_SPEED.mid);
+  truncateLayerAtX(strip.layerSegments.far, cutGround * PARALLAX_SPEED.far);
 
   appendLayerSegs(strip.layerSegments.ground, nearPx, "ground", 1.0);
-  appendLayerSegs(strip.layerSegments.foreground, nearPx, "foreground", PARALLAX_SPEED.foreground);
-  appendLayerSegs(strip.layerSegments.near1, nearPx, "near1", PARALLAX_SPEED.near1);
-  appendLayerSegs(strip.layerSegments.near2, nearPx, "near2", PARALLAX_SPEED.near2);
+  appendLayerSegs(
+    strip.layerSegments.foreground,
+    nearPx,
+    "foreground",
+    PARALLAX_SPEED.foreground,
+  );
+  appendLayerSegs(
+    strip.layerSegments.near1,
+    nearPx,
+    "near1",
+    PARALLAX_SPEED.near1,
+  );
+  appendLayerSegs(
+    strip.layerSegments.near2,
+    nearPx,
+    "near2",
+    PARALLAX_SPEED.near2,
+  );
   appendLayerSegs(strip.layerSegments.mid, midPx, "mid", PARALLAX_SPEED.mid);
   appendLayerSegs(strip.layerSegments.far, farPx, "far", PARALLAX_SPEED.far);
 
@@ -441,7 +485,10 @@ export function extendStripWithTravel(strip, travel, viewW, viewH, options = {})
   strip.treeDecorations = buildTreeDecorations(strip);
   strip.groundTrees = buildGroundTrees(strip.layerSegments.ground, strip);
   strip.groundDetails = buildGroundDetails(strip.layerSegments.ground, strip);
-  strip.foregroundTrees = buildForegroundTrees(strip.layerSegments.ground, strip);
+  strip.foregroundTrees = buildForegroundTrees(
+    strip.layerSegments.ground,
+    strip,
+  );
 
   return strip;
 }
@@ -501,7 +548,8 @@ function expandFromStartX(
 function appendLayerSegs(target, pixelSegs, layerDepth, speedScale = 1.0) {
   // Scale pixel positions into layer-space so biome transitions stay
   // visually synchronised with ground-speed transitions at all progress values.
-  const scaledSegs = speedScale !== 1.0 ? scaleSegments(pixelSegs, speedScale) : pixelSegs;
+  const scaledSegs =
+    speedScale !== 1.0 ? scaleSegments(pixelSegs, speedScale) : pixelSegs;
 
   let newSegs = scaledSegs.map((seg) => {
     const biomeKey = seg.biomeKey ?? "plains";
@@ -594,7 +642,8 @@ function buildGroundTrees(groundSegments, strip = null) {
 
   for (const segment of groundSegments) {
     if (!segment || segment.isBlend) continue;
-    if (!segment.biomeKey || !TREE_ALLOWED_BIOMES.has(segment.biomeKey)) continue;
+    if (!segment.biomeKey || !TREE_ALLOWED_BIOMES.has(segment.biomeKey))
+      continue;
     if (segment.stripWidth < GROUND_TREE_CONFIG.minSegmentWidthPx) continue;
 
     const rng = createSeededRng(
@@ -602,8 +651,10 @@ function buildGroundTrees(groundSegments, strip = null) {
         `ground-tree:${segment.biomeKey}:${Number(segment.isSnow) ? 1 : 0}:${Math.round(segment.stripX)}:${Math.round(segment.stripWidth)}`,
       ),
     );
-    const segStart = segment.stripX + GROUND_TREE_CONFIG.edgePaddingPx + rng() * 16;
-    const segEnd = segment.stripX + segment.stripWidth - GROUND_TREE_CONFIG.edgePaddingPx;
+    const segStart =
+      segment.stripX + GROUND_TREE_CONFIG.edgePaddingPx + rng() * 16;
+    const segEnd =
+      segment.stripX + segment.stripWidth - GROUND_TREE_CONFIG.edgePaddingPx;
     const usableWidth = Math.max(0, segEnd - segStart);
     if (usableWidth < 36) continue;
 
@@ -632,7 +683,8 @@ function buildGroundTrees(groundSegments, strip = null) {
         segStart,
         Math.min(segEnd, segStart + usableWidth * t + jitter),
       );
-      if (isInsidePoiDecorationExclusionZone(stripX, poiExclusionZones)) continue;
+      if (isInsidePoiDecorationExclusionZone(stripX, poiExclusionZones))
+        continue;
       const treeVisual = pickTreeVisualForBiome(
         segment.biomeKey,
         segment.isSnow,
@@ -697,7 +749,8 @@ function buildGroundDetails(groundSegments, strip = null) {
         segStart,
         Math.min(segEnd, segStart + usableWidth * t + jitter),
       );
-      if (isInsidePoiDecorationExclusionZone(stripX, poiExclusionZones)) continue;
+      if (isInsidePoiDecorationExclusionZone(stripX, poiExclusionZones))
+        continue;
       details.push({
         stripX,
         biomeKey: segment.biomeKey,
@@ -714,12 +767,19 @@ function buildGroundDetails(groundSegments, strip = null) {
 
 function buildForegroundTrees(groundSegments, strip = null) {
   if (!groundSegments?.length) return [];
-  const poiExclusionZones = createPoiDecorationExclusionZones(strip, "foreground");
+  const poiExclusionZones = createPoiDecorationExclusionZones(
+    strip,
+    "foreground",
+  );
   const trees = [];
 
   for (const segment of groundSegments) {
     if (!segment || segment.isBlend) continue;
-    if (!segment.biomeKey || !FOREGROUND_TREE_ALLOWED_BIOMES.has(segment.biomeKey)) continue;
+    if (
+      !segment.biomeKey ||
+      !FOREGROUND_TREE_ALLOWED_BIOMES.has(segment.biomeKey)
+    )
+      continue;
     if (segment.stripWidth < FOREGROUND_TREE_CONFIG.minSegmentWidthPx) continue;
 
     const rng = createSeededRng(
@@ -763,7 +823,8 @@ function buildForegroundTrees(groundSegments, strip = null) {
         segStart,
         Math.min(segEnd, segStart + usableWidth * t + jitter),
       );
-      if (isInsidePoiDecorationExclusionZone(stripX, poiExclusionZones)) continue;
+      if (isInsidePoiDecorationExclusionZone(stripX, poiExclusionZones))
+        continue;
       const treeVisual = pickTreeVisualForBiome(
         segment.biomeKey,
         segment.isSnow,
@@ -799,7 +860,8 @@ function buildLayerTreeDecorations(layerSegments, layerName, strip = null) {
   const trees = [];
   for (const segment of layerSegments) {
     if (!segment || segment.isBlend || !segment.topEdgeSamples) continue;
-    if (!segment.biomeKey || TREE_BLOCKED_BIOMES.has(segment.biomeKey)) continue;
+    if (!segment.biomeKey || TREE_BLOCKED_BIOMES.has(segment.biomeKey))
+      continue;
     if (!TREE_ALLOWED_BIOMES.has(segment.biomeKey)) continue;
     if (segment.stripWidth < 16) continue;
 
@@ -825,8 +887,12 @@ function buildLayerTreeDecorations(layerSegments, layerName, strip = null) {
     for (let i = 0; i < targetCount; i += 1) {
       const t = (i + 0.15 + rng() * 0.7) / targetCount;
       const jitter = (rng() - 0.5) * avgSpacing * 0.2;
-      const cursor = Math.max(segStart, Math.min(segEnd, segStart + usableWidth * t + jitter));
-      if (isInsidePoiDecorationExclusionZone(cursor, poiExclusionZones)) continue;
+      const cursor = Math.max(
+        segStart,
+        Math.min(segEnd, segStart + usableWidth * t + jitter),
+      );
+      if (isInsidePoiDecorationExclusionZone(cursor, poiExclusionZones))
+        continue;
       const treeVisual = pickTreeVisualForBiome(
         segment.biomeKey,
         segment.isSnow,
@@ -936,10 +1002,14 @@ function computeTreeSpawnCountForSegment(baseCount, biomeKey, layerName, rng) {
 
 function getTreeSpawnTuningForBiome(layerName, biomeKey) {
   if (biomeKey === "desert") {
-    return DESERT_TREE_SPAWN_TUNING_BY_LAYER[layerName] ?? DEFAULT_TREE_SPAWN_TUNING;
+    return (
+      DESERT_TREE_SPAWN_TUNING_BY_LAYER[layerName] ?? DEFAULT_TREE_SPAWN_TUNING
+    );
   }
   if (biomeKey === "plains") {
-    return PLAINS_TREE_SPAWN_TUNING_BY_LAYER[layerName] ?? DEFAULT_TREE_SPAWN_TUNING;
+    return (
+      PLAINS_TREE_SPAWN_TUNING_BY_LAYER[layerName] ?? DEFAULT_TREE_SPAWN_TUNING
+    );
   }
   return DEFAULT_TREE_SPAWN_TUNING;
 }
@@ -976,8 +1046,7 @@ function getGroundDetailMotifs(biomeKey, isSnow) {
 
 function createPoiDecorationExclusionZones(strip, layerName) {
   if (!strip) return [];
-  const baseRadius =
-    POI_DECORATION_EXCLUSION_RADIUS_BY_LAYER[layerName] ?? 0;
+  const baseRadius = POI_DECORATION_EXCLUSION_RADIUS_BY_LAYER[layerName] ?? 0;
   if (baseRadius <= 0) return [];
   const speed = PARALLAX_SPEED[layerName] ?? 1;
   const startX = Number(strip.startMarkerStripX);
@@ -1013,7 +1082,7 @@ function isInsidePoiDecorationExclusionZone(stripX, zones) {
 }
 
 function createSeededRng(initialSeed) {
-  let state = (initialSeed | 0) || 1;
+  let state = initialSeed | 0 || 1;
   return function next() {
     state ^= state << 13;
     state ^= state >>> 17;
@@ -1039,7 +1108,10 @@ function createSeededRng(initialSeed) {
  */
 function truncateLayerAtX(layerSegs, cutX) {
   // Pop segments starting at or after the cut (0.5px tolerance for float drift)
-  while (layerSegs.length > 0 && layerSegs[layerSegs.length - 1].stripX >= cutX - 0.5) {
+  while (
+    layerSegs.length > 0 &&
+    layerSegs[layerSegs.length - 1].stripX >= cutX - 0.5
+  ) {
     layerSegs.pop();
   }
   // Trim the last segment if it overshoots
@@ -1048,7 +1120,10 @@ function truncateLayerAtX(layerSegs, cutX) {
     if (last.stripX + last.stripWidth > cutX) {
       const newWidth = Math.max(1, cutX - last.stripX);
       if (last.topEdgeSamples) {
-        last.topEdgeSamples = last.topEdgeSamples.slice(0, Math.ceil(newWidth) + 1);
+        last.topEdgeSamples = last.topEdgeSamples.slice(
+          0,
+          Math.ceil(newWidth) + 1,
+        );
       }
       last.stripWidth = newWidth;
     }
@@ -1236,11 +1311,14 @@ function injectBlendSeams(segments, layerDepth) {
       // Scale the blend zone down to fit inside both flanking segments.
       // Minimum 1px per side so we always attempt a transition rather than
       // leaving a hard seam when a segment is narrow.
-      const halfBz = Math.max(1, Math.min(
-        Math.round(BLEND_ZONE_PX / 2),
-        Math.floor(seg.stripWidth / 2) - 1,
-        Math.floor(next.stripWidth / 2) - 1,
-      ));
+      const halfBz = Math.max(
+        1,
+        Math.min(
+          Math.round(BLEND_ZONE_PX / 2),
+          Math.floor(seg.stripWidth / 2) - 1,
+          Math.floor(next.stripWidth / 2) - 1,
+        ),
+      );
       const BZ = halfBz * 2;
 
       const origSeamX = seg.stripX + seg.stripWidth;
@@ -1248,7 +1326,10 @@ function injectBlendSeams(segments, layerDepth) {
 
       // Trim right edge of A
       seg.stripWidth -= halfBz;
-      seg.topEdgeSamples = seg.topEdgeSamples.slice(0, Math.ceil(seg.stripWidth) + 1);
+      seg.topEdgeSamples = seg.topEdgeSamples.slice(
+        0,
+        Math.ceil(seg.stripWidth) + 1,
+      );
 
       // Build blend samples: BZ+1 points covering [blendStartX .. blendStartX+BZ].
       // The last point sits exactly on next.stripX (after trimming B below), so the
@@ -1259,7 +1340,8 @@ function injectBlendSeams(segments, layerDepth) {
         const tLin = bx / BZ;
         const t = tLin * tLin * (3 - 2 * tLin); // smoothstep
         blendSamples[bx] =
-          sampleSilhouetteAtX(seg.biomeKey, blendStartX + bx, layerDepth) * (1 - t) +
+          sampleSilhouetteAtX(seg.biomeKey, blendStartX + bx, layerDepth) *
+            (1 - t) +
           sampleSilhouetteAtX(next.biomeKey, blendStartX + bx, layerDepth) * t;
       }
 

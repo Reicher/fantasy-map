@@ -1,24 +1,29 @@
 import { clamp, distance } from "./utils.js";
 import { isFrozenLake } from "./generator/surfaceModel.js?v=20260402b";
-import { getPoiTitle } from "./poi/poiModel.js";
+import { getNodeTitle } from "./nodeModel.js";
 import { riverDistanceInCells } from "./query/rivers.js";
 
 export function inspectWorldAt(world, worldX, worldY, renderContext = null) {
   const x = clamp(Math.floor(worldX), 0, world.terrain.width - 1);
   const y = clamp(Math.floor(worldY), 0, world.terrain.height - 1);
   const index = y * world.terrain.width + x;
-  const { pointsOfInterest, lakes, biomeRegions, indices } = world.features;
+  const {
+    pointsOfInterest: nodes,
+    lakes,
+    biomeRegions,
+    indices,
+  } = world.features;
 
-  let nearestPoi = null;
-  for (const poi of pointsOfInterest) {
-    const d = distance(worldX, worldY, poi.x, poi.y);
-    if (d <= 4.8 && (!nearestPoi || d < nearestPoi.distance)) {
-      nearestPoi = { poi, distance: d };
+  let nearestNode = null;
+  for (const node of nodes) {
+    const d = distance(worldX, worldY, node.x, node.y);
+    if (d <= 4.8 && (!nearestNode || d < nearestNode.distance)) {
+      nearestNode = { node, distance: d };
     }
   }
-  if (nearestPoi) {
+  if (nearestNode) {
     return {
-      title: getPoiTitle(nearestPoi.poi),
+      title: getNodeTitle(nearestNode.node),
     };
   }
 
@@ -28,7 +33,9 @@ export function inspectWorldAt(world, worldX, worldY, renderContext = null) {
     return {
       title: lake.name,
       subtitle: "Sjö",
-      detail: isFrozenLake(world.climate, world.terrain, lake, true) ? "Genomfrusen" : "Inlandssjö"
+      detail: isFrozenLake(world.climate, world.terrain, lake, true)
+        ? "Genomfrusen"
+        : "Inlandssjö",
     };
   }
 
@@ -36,7 +43,7 @@ export function inspectWorldAt(world, worldX, worldY, renderContext = null) {
   if (riverHit && riverHit.distance <= 1.25) {
     return {
       title: riverHit.river.name,
-      subtitle: "Flod"
+      subtitle: "Flod",
     };
   }
 
@@ -44,7 +51,7 @@ export function inspectWorldAt(world, worldX, worldY, renderContext = null) {
   if (glyphMountainRegion) {
     return {
       title: glyphMountainRegion.name,
-      subtitle: "Bergsområde"
+      subtitle: "Bergsområde",
     };
   }
 
@@ -53,7 +60,7 @@ export function inspectWorldAt(world, worldX, worldY, renderContext = null) {
     const region = biomeRegions[biomeRegionId];
     return {
       title: region.name,
-      subtitle: region.biomeLabel
+      subtitle: region.biomeLabel,
     };
   }
 

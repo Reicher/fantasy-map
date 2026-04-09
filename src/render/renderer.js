@@ -4,7 +4,7 @@ import {
   drawOcean,
   drawFrame,
 } from "./backgroundLayer.js?v=20260401e";
-import { drawCities, drawPlayerMarker } from "./citiesLayer.js?v=20260403c";
+import { drawNodes, drawPlayerMarker } from "./nodesLayer.js?v=20260409a";
 import { drawTravelDebugOverlay } from "./debugLayer.js?v=20260404a";
 import { drawFogOfWar } from "./fogLayer.js?v=20260403h";
 import {
@@ -17,7 +17,7 @@ import {
   drawMountainGlyph,
   getMountainFootY,
 } from "./mountainsLayer.js?v=20260403h";
-import { drawRoads } from "./roadsLayer.js?v=20260403a";
+import { drawRoads } from "./roadsLayer.js?v=20260409d";
 import {
   drawBiomeBorders,
   drawTerrainRaster,
@@ -78,7 +78,8 @@ function renderScene(canvas, world, options = {}, scene = {}) {
   const ctx = canvas.getContext("2d");
   const viewport =
     options.viewport ?? createViewport(world, options.cameraState);
-  const { terrain, hydrology, climate, regions, cities, geometry } = world;
+  const { terrain, hydrology, climate, regions, geometry } = world;
+  const nodes = world.features?.pointsOfInterest ?? world.cities;
   const renderWidth = options.renderWidth ?? RENDER_WIDTH;
   const renderHeight = options.renderHeight ?? RENDER_HEIGHT;
   const scaleX = canvas.width / renderWidth;
@@ -179,7 +180,12 @@ function renderScene(canvas, world, options = {}, scene = {}) {
   }
   drawRoads(ctx, geometry, viewport);
   if (showCities) {
-    drawCities(ctx, cities, viewport, options.cityOverlay ?? {});
+    drawNodes(
+      ctx,
+      nodes,
+      viewport,
+      options.nodeOverlay ?? options.cityOverlay ?? {},
+    );
   }
   if (showFogOfWar && options.fogOfWar?.enabled) {
     drawFogOfWar(ctx, world, viewport, options.fogOfWar);
@@ -206,7 +212,7 @@ function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
   const ctx = canvas.getContext("2d");
   const viewport =
     options.viewport ?? createViewport(world, options.cameraState);
-  const { cities } = world;
+  const nodes = world.features?.pointsOfInterest ?? world.cities;
   const renderWidth = options.renderWidth ?? RENDER_WIDTH;
   const renderHeight = options.renderHeight ?? RENDER_HEIGHT;
   const scaleX = canvas.width / renderWidth;
@@ -245,7 +251,12 @@ function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
   );
   ctx.clip();
   if (showCities) {
-    drawCities(ctx, cities, viewport, options.cityOverlay ?? {});
+    drawNodes(
+      ctx,
+      nodes,
+      viewport,
+      options.nodeOverlay ?? options.cityOverlay ?? {},
+    );
   }
   if (showLabels) {
     drawLabels(ctx, world, viewport, options);

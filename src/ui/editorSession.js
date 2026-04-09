@@ -11,8 +11,8 @@ import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260408a";
 import { attachEditorController } from "./editorController.js?v=20260409a";
 import { renderEditorWorld } from "../render/renderer.js?v=20260409c";
 import { createMapAtlasCacheManager } from "./mapAtlasCache.js?v=20260408h";
-import { createPlayState } from "../game/travel.js?v=20260409f";
-import { findPoiAtWorldPoint } from "../game/playQueries.js?v=20260409e";
+import { createPlayState } from "../game/travel.js?v=20260409g";
+import { findNodeAtWorldPoint } from "../game/playQueries.js?v=20260409e";
 
 export function createEditorSession({ refs, state, syncViewUi }) {
   const mapCache = createMapAtlasCacheManager({
@@ -25,7 +25,7 @@ export function createEditorSession({ refs, state, syncViewUi }) {
       return [
         renderOptions.showSnow ? 1 : 0,
         renderOptions.showBiomeLabels ? 1 : 0,
-        renderOptions.showPoiLabels ? 1 : 0,
+        (renderOptions.showNodeLabels ?? renderOptions.showPoiLabels) ? 1 : 0,
         playerStart?.poiId ?? playerStart?.cityId ?? "-",
         playerStart?.x?.toFixed?.(2) ?? "-",
         playerStart?.y?.toFixed?.(2) ?? "-",
@@ -55,7 +55,7 @@ export function createEditorSession({ refs, state, syncViewUi }) {
     clampCamera,
     zoomCameraAroundPoint,
     getAdjacentEditorZoom,
-    findEditorPoiAtEvent,
+    findEditorNodeAtEvent,
     setEditorPlayerStart,
   });
 
@@ -181,7 +181,7 @@ export function createEditorSession({ refs, state, syncViewUi }) {
     rerenderCurrentWorld();
   }
 
-  function findEditorPoiAtEvent(event) {
+  function findEditorNodeAtEvent(event) {
     if (!state.currentWorld || !state.currentViewport) {
       return null;
     }
@@ -190,14 +190,17 @@ export function createEditorSession({ refs, state, syncViewUi }) {
     const canvasX = ((event.clientX - rect.left) / rect.width) * RENDER_WIDTH;
     const canvasY = ((event.clientY - rect.top) / rect.height) * RENDER_HEIGHT;
     const worldPoint = state.currentViewport.canvasToWorld(canvasX, canvasY);
-    const poiIds = new Set(
-      (state.currentWorld.features?.pointsOfInterest ?? state.currentWorld.cities)
-        .filter((poi) => poi && poi.id != null)
-        .map((poi) => poi.id),
+    const nodeIds = new Set(
+      (
+        state.currentWorld.features?.pointsOfInterest ??
+        state.currentWorld.cities
+      )
+        .filter((node) => node && node.id != null)
+        .map((node) => node.id),
     );
-    return findPoiAtWorldPoint(
+    return findNodeAtWorldPoint(
       state.currentWorld,
-      poiIds,
+      nodeIds,
       worldPoint.x,
       worldPoint.y,
     );
@@ -232,19 +235,20 @@ export function createEditorSession({ refs, state, syncViewUi }) {
       return state.currentWorld.playerStart;
     }
 
-    const currentPoiId = state.playState?.currentPoiId ?? state.playState?.currentCityId;
-    if (currentPoiId != null) {
-      const pois =
+    const currentNodeId =
+      state.playState?.currentNodeId ?? state.playState?.currentCityId;
+    if (currentNodeId != null) {
+      const nodes =
         state.currentWorld?.features?.pointsOfInterest ??
         state.currentWorld?.pointsOfInterest ??
         state.currentWorld?.cities;
-      const poi = pois?.[currentPoiId];
-      if (poi) {
+      const node = nodes?.[currentNodeId];
+      if (node) {
         return {
-          poiId: poi.id,
-          cityId: poi.id,
-          x: poi.x,
-          y: poi.y,
+          poiId: node.id,
+          cityId: node.id,
+          x: node.x,
+          y: node.y,
         };
       }
     }

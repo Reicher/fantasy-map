@@ -13,7 +13,9 @@ export function drawRoads(ctx, geometry, viewport) {
   for (let roadIndex = 0; roadIndex < roads.length; roadIndex += 1) {
     const road = roads[roadIndex];
     const worldPointKeys = road.points.map((point) => roadPointKey(point));
-    const points = road.points.map((point) => viewport.worldToCanvas(point.x - 0.5, point.y - 0.5));
+    const points = road.points.map((point) =>
+      viewport.worldToCanvas(point.x - 0.5, point.y - 0.5),
+    );
     if (points.length < 2) {
       continue;
     }
@@ -23,7 +25,7 @@ export function drawRoads(ctx, geometry, viewport) {
       worldPointKeys,
       lockedPointKeys,
       roadIndex,
-      (road.type === "sea-route" ? 0.44 : 0.52) * zoomScale
+      (road.type === "sea-route" ? 0.44 : 2.5) * zoomScale,
     );
 
     if (road.type === "sea-route") {
@@ -59,7 +61,12 @@ function strokeSmoothPath(ctx, points) {
   for (let index = 1; index < points.length - 1; index += 1) {
     const midpointX = (points[index].x + points[index + 1].x) * 0.5;
     const midpointY = (points[index].y + points[index + 1].y) * 0.5;
-    ctx.quadraticCurveTo(points[index].x, points[index].y, midpointX, midpointY);
+    ctx.quadraticCurveTo(
+      points[index].x,
+      points[index].y,
+      midpointX,
+      midpointY,
+    );
   }
   const last = points[points.length - 1];
   ctx.lineTo(last.x, last.y);
@@ -94,7 +101,7 @@ function getRoadWobblePoints(
 
     return {
       x: point.x + normalX * jitter,
-      y: point.y + normalY * jitter
+      y: point.y + normalY * jitter,
     };
   });
 }
@@ -130,7 +137,8 @@ function getRoadDashPattern(roadIndex, zoomScale) {
 }
 
 function roadNoise(roadIndex, pointIndex) {
-  const value = Math.sin((roadIndex + 1) * 127.1 + pointIndex * 311.7) * 43758.5453123;
+  const value =
+    Math.sin((roadIndex + 1) * 127.1 + pointIndex * 311.7) * 43758.5453123;
   return value - Math.floor(value);
 }
 

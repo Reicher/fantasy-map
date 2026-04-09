@@ -5,10 +5,16 @@ export function buildWorldNetwork(world) {
     cities: world.cities,
     roads: world.roads.roads,
     width: world.terrain.width,
+    crashSiteCells: world.crashSiteCells ?? [],
   });
 }
 
-export function buildRoadNetwork({ cities, roads, width }) {
+export function buildRoadNetwork({
+  cities,
+  roads,
+  width,
+  crashSiteCells = [],
+}) {
   const nodes = [];
   const nodeIdByCell = new Map();
 
@@ -24,6 +30,25 @@ export function buildRoadNetwork({ cities, roads, width }) {
     };
     nodes.push(node);
     nodeIdByCell.set(city.cell, node.id);
+  }
+
+  // Register abandoned-site cells as nodes BEFORE road endpoints so that
+  // buildRoadLinks splits road edges at these positions.
+  for (const cell of crashSiteCells) {
+    if (nodeIdByCell.has(cell)) {
+      continue;
+    }
+    const [x, y] = coordsOf(cell, width);
+    const node = {
+      id: nodes.length,
+      type: "abandoned",
+      cell,
+      x,
+      y,
+      name: "Övergiven plats",
+    };
+    nodes.push(node);
+    nodeIdByCell.set(cell, node.id);
   }
 
   for (const road of roads) {

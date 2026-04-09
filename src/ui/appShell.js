@@ -12,9 +12,10 @@ export function syncLabelButtons({ refs, renderOptions }) {
   refs.toggleBiomeLabelsButton.dataset.active = renderOptions.showBiomeLabels
     ? "true"
     : "false";
-  refs.toggleCityLabelsButton.dataset.active = renderOptions.showPoiLabels
-    ? "true"
-    : "false";
+  refs.toggleCityLabelsButton.dataset.active =
+    (renderOptions.showNodeLabels ?? renderOptions.showPoiLabels)
+      ? "true"
+      : "false";
   refs.toggleSnowButton.dataset.active = renderOptions.showSnow
     ? "true"
     : "false";
@@ -32,11 +33,7 @@ export function syncModeUi({ refs, state, updatePlaySubView }) {
 
 export function syncViewUi({ refs, cameraState }) {
   const zoom = getNearestEditorZoom(cameraState.zoom);
-  for (const button of [
-    refs.zoom1Button,
-    refs.zoom2Button,
-    refs.zoom3Button,
-  ]) {
+  for (const button of [refs.zoom1Button, refs.zoom2Button, refs.zoom3Button]) {
     if (!button) continue;
     button.dataset.active = String(
       Math.abs(Number(button.dataset.zoom) - zoom) < 0.001,
