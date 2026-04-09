@@ -2,19 +2,19 @@ import { PARAM_SCHEMA } from "../config.js";
 import { createNameGenerator } from "../naming.js?v=20260402d";
 import { createRng } from "../random.js";
 import { clamp } from "../utils.js";
-import { generateCities } from "./cities.js?v=20260407a";
+import { generateCities } from "./cities.js?v=20260409a";
 import { generateClimate } from "./climate.js?v=20260407a";
-import { compileGeometry } from "./compileGeometry.js?v=20260408c";
-import { buildFeatureCatalog } from "./features.js?v=20260408h";
+import { compileGeometry } from "./compileGeometry.js?v=20260403a";
+import { buildFeatureCatalog } from "./features.js?v=20260409a";
 import { generateHydrology } from "./hydrology.js?v=20260407a";
 import { buildWorldNetwork } from "./network.js?v=20260401i";
 import { applyFeatureNames } from "./nameFeatures.js";
 import { buildRegions } from "./regions.js?v=20260402c";
-import { generateRoads } from "./roads.js?v=20260408n";
+import { generateRoads } from "./roads.js?v=20260409a";
 import { buildSurfaceGeometry } from "./surface.js?v=20260403b";
 import { generateTerrain } from "./terrain.js?v=20260401i";
 import { buildTravelGraph } from "./travelGraph.js?v=20260401a";
-import { buildWorldStats } from "./worldStats.js?v=20260408a";
+import { buildWorldStats } from "./worldStats.js?v=20260402c";
 
 export function normalizeParams(input) {
   const source = input ?? {};
@@ -57,9 +57,20 @@ export function generateWorld(inputParams) {
   world.cities = generateCities(world, names);
   world.playerStart = selectPlayerStart(world.cities, params.seed);
   world.roads = generateRoads(world);
+
+  // Build an initial network on settlement-only cities. Feature generation for
+  // signposts/crash-sites depends on junctions and road topology in this pass.
+  world.network = buildWorldNetwork(world);
+  world.features = buildFeatureCatalog(world);
+
+  // Promote all POI entries (settlement + signpost + crash-site) into the
+  // playable node list so travel and click-targeting can include them.
+  world.cities = world.features.pointsOfInterest.map((poi) => ({ ...poi }));
+
+  // Rebuild network and travel graph with full POI set.
   world.network = buildWorldNetwork(world);
   world.travelGraph = buildTravelGraph(world.network, world.terrain.width);
-  world.features = buildFeatureCatalog(world);
+
   world.geometry = compileGeometry(world);
   world.title = "";
   world.stats = buildWorldStats(world);

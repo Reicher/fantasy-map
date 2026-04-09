@@ -123,7 +123,7 @@ export function selectCities({ width, candidates, desiredCount, minSpacing }) {
       cities,
       desiredCount,
       pool: candidates,
-      spacing: Math.max(7, minSpacing - 1.5),
+      spacing: Math.max(8, minSpacing - 1.25),
       preferSpread: true,
     });
   }
@@ -153,7 +153,7 @@ export function ensureInlandCities({
   // If no inland city exists yet, try adding one with a 60% chance (looser thresholds)
   if (currentInlandCount === 0 && rng.chance(0.6)) {
     const oddball = inlandCandidates.find((c) =>
-      canPlaceCandidate(width, cities, c, Math.max(5, minSpacing - 2)),
+      canPlaceCandidate(width, cities, c, Math.max(7.5, minSpacing - 1.8)),
     );
     if (oddball) {
       if (cities.length >= desiredCount) {
@@ -180,7 +180,7 @@ export function ensureInlandCities({
         width,
         cities,
         candidate,
-        Math.max(5.5, minSpacing - 2.5),
+        Math.max(8, minSpacing - 2.2),
       )
     ) {
       continue;
@@ -204,7 +204,7 @@ export function ensureInlandCities({
   // Last-resort fallback with relaxed spacing
   if (currentInlandCount < targetInlandCount && rng.chance(0.25)) {
     const fallback = strictCandidates.find((c) =>
-      canPlaceCandidate(width, cities, c, Math.max(4.5, minSpacing - 3)),
+      canPlaceCandidate(width, cities, c, Math.max(7, minSpacing - 2.8)),
     );
     if (fallback) {
       if (cities.length >= desiredCount) {
@@ -315,7 +315,7 @@ function findReplaceableCityIndex(cities, candidate, width, minSpacing) {
     }
 
     const distanceToCandidate = distance(cx, cy, city.x, city.y);
-    if (distanceToCandidate < Math.max(4.5, minSpacing - 3)) {
+    if (distanceToCandidate < Math.max(7, minSpacing - 2.6)) {
       continue;
     }
 

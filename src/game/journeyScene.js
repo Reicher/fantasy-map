@@ -16,12 +16,8 @@
 import {
   buildJourneyStrip,
   extendStripWithTravel,
-} from "./journey/journeyStrip.js";
-import {
-  JOURNEY_LAYOUT,
   PARALLAX_SPEED,
-  PLAYER_X_FRAC,
-} from "./journey/journeyConstants.js";
+} from "./journey/journeyStrip.js";
 import {
   drawPoiMarkerOnCanvas,
   drawPlayerFigure,
@@ -31,6 +27,9 @@ import {
 // Layout
 // ---------------------------------------------------------------------------
 
+// Player's fixed horizontal position (fraction of canvas width)
+const PLAYER_X_FRAC = 0.22;
+
 // Player's feet vertical position (fraction of canvas height).
 // Should sit slightly below the ground top edge.
 const PLAYER_FEET_Y_FRAC = 0.8;
@@ -39,6 +38,7 @@ const PLAYER_FEET_Y_FRAC = 0.8;
 const WALK_FRAME_MS = 220;
 
 const POI_MARKER_SCALE = 1.35;
+const PLAYER_VISUAL_HEIGHT_PX = 55;
 
 // Sky gradient – lighter at the horizon to reinforce atmospheric depth
 const SKY_TOP = "rgb(152, 204, 240)";
@@ -51,8 +51,6 @@ const LAYER_HAZE = { far: 0.42, mid: 0.20, near2: 0.07, near1: 0, foreground: 0 
 const SKY_HAZE_R = 210;
 const SKY_HAZE_G = 228;
 const SKY_HAZE_B = 240;
-const SILHOUETTE_LAYER_BLEED_PX = 1.25;
-const SILHOUETTE_FILL_OVERLAP_PX = 0.75;
 
 // ---------------------------------------------------------------------------
 // Factory
@@ -84,7 +82,6 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     const viewW = canvas.width;
     const viewH = canvas.height;
     const isTraveling = Boolean(playState?.travel);
-    const debugEnabled = Boolean(options.debug);
 
     // Rebuild strip only when a new travel starts (key changes to a non-null value).
     // When travel ends (key → null) we keep the existing strip so the scene
@@ -97,15 +94,11 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       if (state.strip === null) {
         // First journey – build full strip including the home-position extension before start
         state.strip = buildJourneyStrip(playState.travel, viewW, viewH);
-        if (debugEnabled) {
-          printStripSummary(state.strip, "New strip");
-        }
+        printStripSummary(state.strip, "New strip");
       } else {
         // Subsequent journey – extend the existing strip seamlessly from the current dest
-        extendStripWithTravel(state.strip, playState.travel, viewW);
-        if (debugEnabled) {
-          printStripSummary(state.strip, "Extended strip");
-        }
+        extendStripWithTravel(state.strip, playState.travel, viewW, viewH);
+        printStripSummary(state.strip, "Extended strip");
       }
       state.lastTravel = playState.travel;
       state.travelKey = nextKey;
@@ -115,9 +108,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       // Canvas resized – rebuild with the same travel data if we have it
       if (state.lastTravel) {
         state.strip = buildJourneyStrip(state.lastTravel, viewW, viewH);
-        if (debugEnabled) {
-          printStripSummary(state.strip, "Rebuilt strip (resize)");
-        }
+        printStripSummary(state.strip, "Rebuilt strip (resize)");
       }
       state.cachedW = viewW;
       state.cachedH = viewH;
@@ -128,7 +119,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       viewW,
       viewH,
       isTraveling,
-      debugEnabled,
+      options.debug ?? false,
       options.world ?? getWorld(),
     );
   }
@@ -218,7 +209,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     // 2. Ocean horizon (fully static – behind all silhouette layers).
     // Tall terrain in the far layer (mountains, forest, highlands) naturally
     // paints over this; flat terrain (plains, ocean biome) lets it show through.
-    drawOceanHorizon(ctx, viewW, viewH, strip);
+    drawOceanHorizon(ctx, viewW, viewH);
 
     if (!strip) return;
 
@@ -246,7 +237,17 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     drawGroundLayer(ctx, strip, scrollX, playerX, viewW);
 
     // 8. POI markers – behind the player but above all background layers
-    drawPoiMarkers(ctx, strip, scrollX, playerX, groundTopY, viewH, playState, world);
+    drawPoiMarkers(
+      ctx,
+      strip,
+      scrollX,
+      playerX,
+      groundTopY,
+      playerFeetY,
+      viewH,
+      playState,
+      world,
+    );
 
     // 9. Player (fixed – behind foreground so foreground overlaps lower body)
     drawPlayerFigure(
@@ -283,13 +284,9 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
    * forest, highlands) in the far layer naturally mask it while flat biomes
    * (plains, desert, ocean) let it show through near the horizon.
    */
-  function drawOceanHorizon(ctx, viewW, viewH, strip) {
-    const top =
-      strip?.layers?.far?.topY ??
-      Math.round(viewH * JOURNEY_LAYOUT.silhouetteZoneTopFrac);
-    const bottom =
-      strip?.layers?.ground?.topY ??
-      Math.round(viewH * JOURNEY_LAYOUT.groundTopFrac);
+  function drawOceanHorizon(ctx, viewW, viewH) {
+    const top    = Math.round(viewH * 0.42); // matches silhouetteZoneTop in strip
+    const bottom = Math.round(viewH * 0.67); // matches groundTopY in strip
     const h = bottom - top;
 
     // Main ocean gradient: airy horizon haze at top → deep ocean blue at bottom
@@ -329,15 +326,11 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     // 2. Colour-blend gradient at each biome boundary
     const segs = strip.layerSegments.ground;
     const bz = strip.blendZonePx ?? 48;
+    const half = bz / 2;
     for (let i = 0; i + 1 < segs.length; i++) {
       const a = segs[i];
       const b = segs[i + 1];
-      const sameSurface =
-        a.biomeKey === b.biomeKey && Boolean(a.isSnow) === Boolean(b.isSnow);
-      if (!a.colorRgb || !b.colorRgb || sameSurface) continue;
-      const half = getGroundBlendHalfWidth(a.stripWidth, b.stripWidth, bz);
-      if (half <= 0) continue;
-      const blendWidth = half * 2;
+      if (!a.colorRgb || !b.colorRgb || a.biomeKey === b.biomeKey) continue;
       const seamCanvasX = a.stripX + a.stripWidth - layerStripLeft;
       if (seamCanvasX + half < 0 || seamCanvasX - half > viewW) continue;
       const [ar, ag, ab] = a.colorRgb;
@@ -354,7 +347,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       ctx.fillRect(
         Math.floor(seamCanvasX - half),
         topY,
-        Math.ceil(blendWidth) + 1,
+        Math.ceil(bz) + 1,
         layerH,
       );
     }
@@ -372,71 +365,49 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     const { topY, bottomY } = band;
     const layerH = bottomY - topY;
 
-    const visibleSegs = [];
     for (const seg of segs) {
-      if (!seg.topEdgeSamples) continue;
+      const samples = seg.topEdgeSamples;
+      if (!samples) continue;
       const canvasX = seg.stripX - layerStripLeft;
       if (canvasX + seg.stripWidth < 0 || canvasX > viewW) continue;
-      visibleSegs.push({ seg, canvasX });
-    }
-    if (!visibleSegs.length) return;
 
-    const first = visibleSegs[0];
-    const last = visibleSegs[visibleSegs.length - 1];
-    const firstSamples = first.seg.topEdgeSamples;
-    const lastSamples = last.seg.topEdgeSamples;
-    const layerLeftX = first.canvasX - SILHOUETTE_LAYER_BLEED_PX;
-    const layerRightX =
-      last.canvasX + last.seg.stripWidth + SILHOUETTE_LAYER_BLEED_PX;
+      const width = samples.length;
 
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(layerLeftX, bottomY);
-    ctx.lineTo(layerLeftX, topY + firstSamples[0] * layerH);
-
-    let previousRightX = first.canvasX;
-    let previousRightY = topY + firstSamples[0] * layerH;
-
-    for (const { seg, canvasX } of visibleSegs) {
-      const samples = seg.topEdgeSamples;
-      const drawPx = Math.ceil(seg.stripWidth);
-      const segLeftY = topY + samples[0] * layerH;
-      if (canvasX > previousRightX + 0.01 || Math.abs(segLeftY - previousRightY) > 0.01) {
-        ctx.lineTo(canvasX, segLeftY);
+      // Fill style
+      const haze = LAYER_HAZE[layerName] ?? 0;
+      let fillStyle;
+      if (seg.isBlend && seg.colorA && seg.colorB) {
+        // Horizontal gradient across the blend zone
+        const hGrad = ctx.createLinearGradient(canvasX, 0, canvasX + seg.stripWidth, 0);
+        hGrad.addColorStop(0, `rgb(${seg.colorA[0]},${seg.colorA[1]},${seg.colorA[2]})`);
+        hGrad.addColorStop(1, `rgb(${seg.colorB[0]},${seg.colorB[1]},${seg.colorB[2]})`);
+        fillStyle = hGrad;
+      } else if (haze > 0 && seg.colorRgb) {
+        const [cr, cg, cb] = seg.colorRgb;
+        const vGrad = ctx.createLinearGradient(0, topY, 0, bottomY);
+        vGrad.addColorStop(0, `rgb(${Math.round(cr*(1-haze)+SKY_HAZE_R*haze)},${Math.round(cg*(1-haze)+SKY_HAZE_G*haze)},${Math.round(cb*(1-haze)+SKY_HAZE_B*haze)})`);
+        vGrad.addColorStop(1, seg.color);
+        fillStyle = vGrad;
+      } else {
+        fillStyle = seg.color;
       }
-      for (let i = 1; i < samples.length && i <= drawPx; i++) {
+
+      // Silhouette polygon. Samples are 1px apart in strip space.
+      // canvasX is a float — sub-pixel left edge gives smooth scrolling.
+      // We clamp the loop to Math.ceil(stripWidth) so we never overshoot
+      // into the adjacent segment's pixel column. Close the bottom at
+      // canvasX + stripWidth (exact float, no +1 rounding overshoot).
+      const drawPx = Math.ceil(seg.stripWidth); // max pixels to trace
+      ctx.beginPath();
+      ctx.moveTo(canvasX, bottomY);
+      for (let i = 0; i < width && i <= drawPx; i++) {
         ctx.lineTo(canvasX + i, topY + samples[i] * layerH);
       }
-      previousRightX = canvasX + seg.stripWidth;
-      previousRightY = topY + samples[Math.max(0, samples.length - 1)] * layerH;
-      ctx.lineTo(previousRightX, previousRightY);
+      ctx.lineTo(canvasX + seg.stripWidth, bottomY);
+      ctx.closePath();
+      ctx.fillStyle = fillStyle;
+      ctx.fill();
     }
-
-    ctx.lineTo(layerRightX, topY + lastSamples[Math.max(0, lastSamples.length - 1)] * layerH);
-    ctx.lineTo(layerRightX, bottomY);
-    ctx.closePath();
-    ctx.clip();
-
-    const haze = LAYER_HAZE[layerName] ?? 0;
-    for (const { seg, canvasX } of visibleSegs) {
-      const fillLeft = canvasX - SILHOUETTE_FILL_OVERLAP_PX;
-      const fillWidth = seg.stripWidth + SILHOUETTE_FILL_OVERLAP_PX * 2;
-      ctx.fillStyle = createSilhouetteFillStyle(ctx, seg, layerName, fillLeft, fillWidth, topY, bottomY);
-      ctx.fillRect(fillLeft, topY, fillWidth, layerH);
-    }
-
-    if (haze > 0) {
-      const hazeOverlay = ctx.createLinearGradient(0, topY, 0, bottomY);
-      hazeOverlay.addColorStop(
-        0,
-        `rgba(${SKY_HAZE_R}, ${SKY_HAZE_G}, ${SKY_HAZE_B}, ${Math.min(0.42, haze * 0.55)})`,
-      );
-      hazeOverlay.addColorStop(0.5, "rgba(210, 228, 240, 0)");
-      ctx.fillStyle = hazeOverlay;
-      ctx.fillRect(layerLeftX, topY, layerRightX - layerLeftX, layerH);
-    }
-
-    ctx.restore();
   }
 
   function drawPoiMarkers(
@@ -445,6 +416,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     scrollX,
     playerX,
     groundTopY,
+    playerFeetY,
     viewH,
     playState,
     world,
@@ -465,11 +437,15 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       marker: startMarker,
       scale: POI_MARKER_SCALE,
       highlighted: false,
+      groundY: playerFeetY,
+      minVisualHeightPx: PLAYER_VISUAL_HEIGHT_PX,
     });
     drawPoiMarkerOnCanvas(ctx, destCanvasX, markerY, {
       marker: destMarker,
       scale: POI_MARKER_SCALE,
       highlighted: true,
+      groundY: playerFeetY,
+      minVisualHeightPx: PLAYER_VISUAL_HEIGHT_PX,
     });
   }
 
@@ -553,36 +529,6 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
   }
 }
 
-function createSilhouetteFillStyle(ctx, seg, layerName, fillLeft, fillWidth, topY, bottomY) {
-  const haze = LAYER_HAZE[layerName] ?? 0;
-  if (seg.isBlend && seg.colorA && seg.colorB) {
-    const grad = ctx.createLinearGradient(fillLeft, 0, fillLeft + fillWidth, 0);
-    grad.addColorStop(0, `rgb(${seg.colorA[0]},${seg.colorA[1]},${seg.colorA[2]})`);
-    grad.addColorStop(1, `rgb(${seg.colorB[0]},${seg.colorB[1]},${seg.colorB[2]})`);
-    return grad;
-  }
-
-  if (haze > 0 && seg.colorRgb) {
-    const [cr, cg, cb] = seg.colorRgb;
-    const grad = ctx.createLinearGradient(0, topY, 0, bottomY);
-    grad.addColorStop(
-      0,
-      `rgb(${Math.round(cr * (1 - haze) + SKY_HAZE_R * haze)},${Math.round(cg * (1 - haze) + SKY_HAZE_G * haze)},${Math.round(cb * (1 - haze) + SKY_HAZE_B * haze)})`,
-    );
-    grad.addColorStop(1, seg.color);
-    return grad;
-  }
-
-  return seg.color;
-}
-
-function getGroundBlendHalfWidth(leftWidth, rightWidth, blendZonePx) {
-  const maxHalf = Math.round(blendZonePx / 2);
-  const leftRoom = Math.max(0, Math.floor(leftWidth) - 1);
-  const rightRoom = Math.max(0, Math.floor(rightWidth) - 1);
-  return Math.min(maxHalf, leftRoom, rightRoom);
-}
-
 // ---------------------------------------------------------------------------
 // Strip summary – printed once per strip build/extend
 // ---------------------------------------------------------------------------
@@ -611,6 +557,7 @@ function travelKey(travel) {
     travel.startCityId ?? "-",
     travel.targetCityId ?? "-",
     (travel.totalLength ?? 0).toFixed(2),
+    travel.biomeSegments?.length ?? 0,
     travel.biomeBandSegments?.near?.segments?.length ?? 0,
   ].join(":");
 }

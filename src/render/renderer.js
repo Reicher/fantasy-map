@@ -4,20 +4,20 @@ import {
   drawOcean,
   drawFrame,
 } from "./backgroundLayer.js?v=20260401e";
-import { drawCities, drawPlayerMarker } from "./citiesLayer.js?v=20260408h";
+import { drawCities, drawPlayerMarker } from "./citiesLayer.js?v=20260403c";
 import { drawTravelDebugOverlay } from "./debugLayer.js?v=20260404a";
 import { drawFogOfWar } from "./fogLayer.js?v=20260403h";
 import {
   collectForestRenderGlyphs,
   drawForestEntry,
 } from "./forestLayer.js?v=20260403o";
-import { drawLabels } from "./labelsLayer.js?v=20260408e";
+import { drawLabels } from "./labelsLayer.js?v=20260402l";
 import {
   collectMountainRenderGlyphs,
   drawMountainGlyph,
   getMountainFootY,
-} from "./mountainsLayer.js?v=20260408a";
-import { drawRoads } from "./roadsLayer.js?v=20260408b";
+} from "./mountainsLayer.js?v=20260403h";
+import { drawRoads } from "./roadsLayer.js?v=20260403a";
 import {
   drawBiomeBorders,
   drawTerrainRaster,
@@ -41,6 +41,11 @@ export function renderEditorWorld(canvas, world, options = {}) {
     showFrame: false,
     showPlayerMarker: true,
   });
+}
+
+export function renderPlayWorldScene(canvas, world, options = {}) {
+  renderPlayWorldStatic(canvas, world, options);
+  return renderPlayWorldDynamic(canvas, world, options);
 }
 
 export function renderPlayWorldStatic(canvas, world, options = {}) {
@@ -74,7 +79,7 @@ function renderScene(canvas, world, options = {}, scene = {}) {
   const viewport =
     options.viewport ?? createViewport(world, options.cameraState);
   const { terrain, hydrology, climate, regions, geometry } = world;
-  const pointsOfInterest = world.features.pointsOfInterest;
+  const pointsOfInterest = world.features?.pointsOfInterest ?? world.cities;
   const renderWidth = options.renderWidth ?? RENDER_WIDTH;
   const renderHeight = options.renderHeight ?? RENDER_HEIGHT;
   const scaleX = canvas.width / renderWidth;
@@ -98,7 +103,7 @@ function renderScene(canvas, world, options = {}, scene = {}) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.save();
   ctx.scale(scaleX, scaleY);
-  ctx.filter = "none";
+  ctx.filter = options.showMonochrome ? "grayscale(1)" : "none";
   if (showPaper) {
     drawPaper(ctx, renderWidth, renderHeight, world.params.seed);
   }
@@ -174,17 +179,17 @@ function renderScene(canvas, world, options = {}, scene = {}) {
     }
   }
   drawRoads(ctx, geometry, viewport);
-  if (showLabels) {
-    drawLabels(ctx, world, viewport, options);
-  }
   if (showCities) {
-    drawCities(ctx, pointsOfInterest, viewport, options.poiOverlay ?? {});
+    drawCities(ctx, pointsOfInterest, viewport, options.cityOverlay ?? {});
   }
   if (showFogOfWar && options.fogOfWar?.enabled) {
     drawFogOfWar(ctx, world, viewport, options.fogOfWar);
   }
   if (showPlayerMarker) {
     drawPlayerMarker(ctx, options.playerStart ?? null, viewport);
+  }
+  if (showLabels) {
+    drawLabels(ctx, world, viewport, options);
   }
   ctx.restore();
   if (showFrame) {
@@ -202,7 +207,7 @@ function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
   const ctx = canvas.getContext("2d");
   const viewport =
     options.viewport ?? createViewport(world, options.cameraState);
-  const pointsOfInterest = world.features.pointsOfInterest;
+  const pointsOfInterest = world.features?.pointsOfInterest ?? world.cities;
   const renderWidth = options.renderWidth ?? RENDER_WIDTH;
   const renderHeight = options.renderHeight ?? RENDER_HEIGHT;
   const scaleX = canvas.width / renderWidth;
@@ -216,7 +221,17 @@ function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
 
   ctx.save();
   ctx.scale(scaleX, scaleY);
-  ctx.filter = "none";
+  ctx.filter = options.showMonochrome ? "grayscale(1)" : "none";
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(
+    viewport.margin,
+    viewport.margin,
+    viewport.innerWidth,
+    viewport.innerHeight,
+  );
+  ctx.clip();
+  ctx.restore();
 
   if (showFogOfWar && options.fogOfWar?.enabled) {
     drawFogOfWar(ctx, world, viewport, options.fogOfWar);
@@ -230,11 +245,11 @@ function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
     viewport.innerHeight,
   );
   ctx.clip();
+  if (showCities) {
+    drawCities(ctx, pointsOfInterest, viewport, options.cityOverlay ?? {});
+  }
   if (showLabels) {
     drawLabels(ctx, world, viewport, options);
-  }
-  if (showCities) {
-    drawCities(ctx, pointsOfInterest, viewport, options.poiOverlay ?? {});
   }
   ctx.restore();
   if (showPlayerMarker) {

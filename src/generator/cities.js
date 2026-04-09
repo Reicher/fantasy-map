@@ -4,7 +4,7 @@ import {
   buildCityCandidates,
   ensureInlandCities,
   selectCities,
-} from "./cityModel.js?v=20260407a";
+} from "./cityModel.js?v=20260409a";
 
 export function generateCities(world, names) {
   const { params, terrain, climate, hydrology } = world;
@@ -13,7 +13,7 @@ export function generateCities(world, names) {
   const { coastDistance, waterDistance, riverStrength, lakeIdByCell } =
     hydrology;
 
-  const density = sliderFactor(params.cityDensity, 0.72);
+  const density = sliderFactor(params.cityDensity, 1.06);
   const rng = createRng(`${params.seed}::cities`);
   const { candidates, habitableArea } = buildCityCandidates({
     width,
@@ -31,12 +31,15 @@ export function generateCities(world, names) {
     rng,
     coastalBias: params.coastalBias,
   });
+  const densityMultiplier = 0.18 + density * 3.8;
+  const minCountByArea = clamp(Math.round(habitableArea / 1900), 2, 8);
+  const maxCountByArea = clamp(Math.round(habitableArea / 300), 18, 76);
   const desiredCount = clamp(
-    Math.round((habitableArea / 720) * (0.22 + density * 3.9)),
-    2,
-    32,
+    Math.round((habitableArea / 760) * densityMultiplier),
+    minCountByArea,
+    maxCountByArea,
   );
-  const minSpacing = 16 - density * 9;
+  const minSpacing = clamp(18 - density * 8.4, 8.5, 18);
   const cities = selectCities({ width, candidates, desiredCount, minSpacing });
   ensureInlandCities({
     width,

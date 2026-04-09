@@ -3,6 +3,7 @@ export function drawRoads(ctx, geometry, viewport) {
   if (roads.length === 0) {
     return;
   }
+  const lockedPointKeys = collectLockedRoadPointKeys(roads);
   const zoomScale = getRoadZoomScale(viewport);
 
   ctx.save();
@@ -11,6 +12,7 @@ export function drawRoads(ctx, geometry, viewport) {
 
   for (let roadIndex = 0; roadIndex < roads.length; roadIndex += 1) {
     const road = roads[roadIndex];
+    const worldPointKeys = road.points.map((point) => roadPointKey(point));
     const points = road.points.map((point) => viewport.worldToCanvas(point.x - 0.5, point.y - 0.5));
     if (points.length < 2) {
       continue;
@@ -18,8 +20,10 @@ export function drawRoads(ctx, geometry, viewport) {
 
     const wobblePoints = getRoadWobblePoints(
       points,
+      worldPointKeys,
+      lockedPointKeys,
       roadIndex,
-      (road.type === "sea-route" ? 0.55 : 0.7) * zoomScale
+      (road.type === "sea-route" ? 0.44 : 0.52) * zoomScale
     );
 
     if (road.type === "sea-route") {
@@ -62,11 +66,23 @@ function strokeSmoothPath(ctx, points) {
   ctx.stroke();
 }
 
-function getRoadWobblePoints(points, roadIndex, wobble) {
+function getRoadWobblePoints(
+  points,
+  worldPointKeys,
+  lockedPointKeys,
+  roadIndex,
+  wobble,
+) {
   return points.map((point, index) => {
-    if (index === 0 || index === points.length - 1) {
+    const key = worldPointKeys[index];
+    if (
+      index === 0 ||
+      index === points.length - 1 ||
+      (key != null && lockedPointKeys.has(key))
+    ) {
       return { x: point.x, y: point.y };
     }
+
     const previous = points[Math.max(0, index - 1)];
     const next = points[Math.min(points.length - 1, index + 1)];
     const tangentX = next.x - previous.x;
@@ -81,6 +97,28 @@ function getRoadWobblePoints(points, roadIndex, wobble) {
       y: point.y + normalY * jitter
     };
   });
+}
+
+function collectLockedRoadPointKeys(roads) {
+  const usageByKey = new Map();
+  for (const road of roads) {
+    for (const point of road.points ?? []) {
+      const key = roadPointKey(point);
+      usageByKey.set(key, (usageByKey.get(key) ?? 0) + 1);
+    }
+  }
+
+  const locked = new Set();
+  for (const [key, count] of usageByKey.entries()) {
+    if (count >= 2) {
+      locked.add(key);
+    }
+  }
+  return locked;
+}
+
+function roadPointKey(point) {
+  return `${Math.round(point.x * 10) / 10},${Math.round(point.y * 10) / 10}`;
 }
 
 function getRoadDashPattern(roadIndex, zoomScale) {

@@ -9,7 +9,7 @@ import { createJourneyScene } from "../game/journeyScene.js?v=20260408b";
 import {
   renderPlayWorldDynamic,
   renderPlayWorldStatic,
-} from "../render/renderer.js?v=20260408l";
+} from "../render/renderer.js?v=20260409a";
 import { inspectWorldAt } from "../inspector.js?v=20260408b";
 import { createPlayCamera as buildPlayCamera } from "./cameraState.js?v=20260407a";
 import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260408a";
@@ -107,7 +107,7 @@ export function createPlaySession({ refs, state, syncModeUi }) {
             playState: state.playState,
             radiusCells: state.currentWorld.params.fogVisionRadius,
           },
-          poiOverlay: {
+          cityOverlay: {
             validPoiIds,
             visiblePoiIds,
             onlyValid: true,

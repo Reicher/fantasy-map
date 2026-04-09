@@ -1,3 +1,4 @@
+import { BIOME_INFO } from "../../config.js";
 import {
   normalizeBiomeKey,
   getBiomeLayerColorRgb,
@@ -5,19 +6,13 @@ import {
   sampleSilhouetteAtX,
   rgbToCss,
 } from "./journeyStyle.js";
-import {
-  JOURNEY_LAYOUT,
-  PARALLAX_SPEED,
-  PLAYER_X_FRAC,
-  TRAVEL_BIOME_BANDS,
-} from "./journeyConstants.js";
 
 // ---------------------------------------------------------------------------
 // Fixed offsets for parallel sampling lines (world-space units).
 // These are HARDCODED and must not depend on travel length, zoom, or scale.
 // ---------------------------------------------------------------------------
-const MID_OFFSET_WORLD = TRAVEL_BIOME_BANDS.mid;
-const FAR_OFFSET_WORLD = TRAVEL_BIOME_BANDS.far;
+const MID_OFFSET_WORLD = 5;
+const FAR_OFFSET_WORLD = 10;
 
 // Pixels per world unit – the canonical scroll mapping.
 // One world unit of travel = this many pixels of strip scrolling.
@@ -26,18 +21,11 @@ const PX_PER_WORLD = 140;
 // How many world-units to extend the strip before and after the route.
 const ROUTE_EXTENSION_WORLD = 4;
 
+// Must match PLAYER_X_FRAC in journeyScene.js so extension math is consistent.
+const PLAYER_X_FRAC = 0.22;
+
 // Transition blend zone in pixels
 const BLEND_ZONE_PX = 48;
-const EXTENSION_PADDING_PX = 32;
-
-const LAYER_APPEND_PLAN = [
-  { layerName: "ground", sourceBand: "near" },
-  { layerName: "foreground", sourceBand: "near" },
-  { layerName: "near1", sourceBand: "near" },
-  { layerName: "near2", sourceBand: "near" },
-  { layerName: "mid", sourceBand: "mid" },
-  { layerName: "far", sourceBand: "far" },
-];
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -57,21 +45,129 @@ export function buildJourneyStrip(travel, viewW, viewH) {
     return createEmptyStrip();
   }
 
+  // --- 1. Compute pixel geometry ----------------------------------------
+
   const routeWorldLength = travel.totalLength ?? 0;
   const routePx = routeWorldLength * PX_PER_WORLD;
-  const { extBeforePx, extAfterPx } = computeExtensionBounds(viewW);
+
+  // Extension buffers: sized so every parallax layer fills the full screen
+  // at both the start (progress=0) and end (progress=total) of the journey.
+  //
+  // extBeforePx: slowest layer (far, s=FAR_SPEED) must cover the left screen
+  //   edge at the journey start:
+  //   extBeforePx ≥ playerX*(1/FAR_SPEED − 1) + viewW/2
+  //
+  // extAfterPx: with segment-scaling, the slowest layer also sets the upper
+  //   bound for post-extension.  At arrival the far layer's right visible
+  //   pixel is viewW/FAR_SPEED ahead in ground coords:
+  //   extAfterPx ≥ playerX*(1 − 1/FAR_SPEED) + viewW*(1/FAR_SPEED − 0.5)
+  const FAR_SPEED = 0.26; // must match PARALLAX_SPEED.far
+  const playerX = viewW * PLAYER_X_FRAC;
+
+  const minExtBefore =
+    Math.ceil(playerX * (1 / FAR_SPEED - 1) + viewW / 2) + 32;
+  const extBeforePx = Math.max(
+    ROUTE_EXTENSION_WORLD * PX_PER_WORLD,
+    minExtBefore,
+  );
+
+  // After segment scaling the slowest layer (far, s=FAR_SPEED) demands the
+  // most post-extension.  At arrival its rightmost visible layer-space pixel
+  // lies viewW/FAR_SPEED ahead in ground coords; subtracting what the layer
+  // already covers gives:
+  //   extAfterPx ≥ playerX*(1 − 1/FAR_SPEED) + viewW*(1/FAR_SPEED − 0.5)
+  // The foreground (fastest, s>1) needs only ~0.17*viewW — far less.
+  const minExtAfter =
+    Math.ceil(
+      playerX * (1 - 1 / FAR_SPEED) + viewW * (1 / FAR_SPEED - 0.5),
+    ) + 32;
+  const extAfterPx = Math.max(
+    ROUTE_EXTENSION_WORLD * PX_PER_WORLD,
+    minExtAfter,
+  );
+
+  // Total strip pixel width
   const totalStripPx = Math.ceil(extBeforePx + routePx + extAfterPx);
 
+  // POI marker positions on the strip (in strip-local pixel coords)
+  // Start marker sits at extBeforePx (beginning of the route on the strip).
+  // Dest  marker sits at extBeforePx + routePx (end of the route).
   const startMarkerStripX = extBeforePx;
   const destMarkerStripX = extBeforePx + routePx;
 
-  const layers = buildLayerBands(viewH);
-  const pixelBands = buildPixelBandsForFullRoute(
+  // --- 2. Vertical composition ------------------------------------------
+  //
+  //  sky gradient (static): 0 → groundTopY
+  //  groundTopY = 0.67 * viewH   ← upper edge of ground / base of silhouettes
+  //  ground fills lower 33%
+  //
+  // The four background silhouette layers (far, mid, near2, near1) are
+  // distributed as equal slices between silhouetteZoneTop and groundTopY.
+  // Each layer's bottomY extends 2px past groundTopY so that sub-pixel
+  // anti-aliasing never leaves a gap at the ground line.
+
+  const groundTopY = Math.round(viewH * 0.67);
+  const groundBottomY = viewH;
+
+  const silhouetteZoneTop = Math.round(viewH * 0.42);
+  const silhouetteZoneH = groundTopY - silhouetteZoneTop;
+  const sliceH = Math.round(silhouetteZoneH / 4);
+
+  const near1Top = groundTopY - sliceH;
+  const near2Top = groundTopY - sliceH * 2;
+  const midTop = groundTopY - sliceH * 3;
+  const farTop = silhouetteZoneTop;
+
+  const SILHOUETTE_BOTTOM = groundTopY + 2; // 2px overlap so ground covers the anti-aliased edge
+
+  const layers = {
+    ground: { topY: groundTopY, bottomY: groundBottomY },
+    foreground: { topY: Math.round(viewH * 0.8), bottomY: groundBottomY },
+    // All background silhouette layers share the same bottomY so that each
+    // layer's polygon fills from its own top edge all the way down to the
+    // ground line. Layers are drawn back-to-front (far → near1), so each
+    // closer layer's polygon naturally occludes the ones behind it.
+    near1: { topY: near1Top, bottomY: SILHOUETTE_BOTTOM },
+    near2: { topY: near2Top, bottomY: SILHOUETTE_BOTTOM },
+    mid:   { topY: midTop,   bottomY: SILHOUETTE_BOTTOM },
+    far:   { topY: farTop,   bottomY: SILHOUETTE_BOTTOM },
+  };
+
+  // --- 3. Sample biome segments for each layer --------------------------
+
+  const nearSegments = buildNearSegments(travel, extBeforePx, extAfterPx);
+  const midSegments = buildOffsetSegments(
     travel,
     extBeforePx,
     extAfterPx,
+    MID_OFFSET_WORLD,
   );
-  const layerSegments = buildAllLayerSegments(pixelBands);
+  const farSegments = buildOffsetSegments(
+    travel,
+    extBeforePx,
+    extAfterPx,
+    FAR_OFFSET_WORLD,
+  );
+
+  // --- 4. Build silhouette segment data for each layer ------------------
+  //  Each segment carries: { biomeKey, color, stripX, stripWidth, topEdgeSamples }
+  //
+  //  Each non-ground layer's strip coordinates are SCALED by the layer's
+  //  parallax speed.  This ensures that every biome transition appears at
+  //  the same screen position at the same travel progress regardless of speed.
+  //
+  //  Render formula in journeyScene:
+  //    canvasX = stripX - (scrollX * speed - playerX)
+  //  With stripX = groundStripX * speed:
+  //    canvasX = speed * (groundStripX - scrollX) + playerX
+  //  → at any progress the layer transition aligns with the ground transition.
+
+  const groundSegs = buildLayerSegments(nearSegments, "ground");
+  const fgSegs = buildLayerSegments(scaleSegments(nearSegments, PARALLAX_SPEED.foreground), "foreground");
+  const near1Segs = buildLayerSegments(scaleSegments(nearSegments, PARALLAX_SPEED.near1), "near1");
+  const near2Segs = buildLayerSegments(scaleSegments(nearSegments, PARALLAX_SPEED.near2), "near2");
+  const midSegs = buildLayerSegments(scaleSegments(midSegments, PARALLAX_SPEED.mid), "mid");
+  const farSegs = buildLayerSegments(scaleSegments(farSegments, PARALLAX_SPEED.far), "far");
 
   return {
     totalStripPx,
@@ -81,8 +177,17 @@ export function buildJourneyStrip(travel, viewW, viewH) {
     startMarkerStripX,
     destMarkerStripX,
     layers,
-    layerSegments,
+    layerSegments: {
+      ground: groundSegs,
+      foreground: fgSegs,
+      near1: near1Segs,
+      near2: near2Segs,
+      mid: midSegs,
+      far: farSegs,
+    },
     blendZonePx: BLEND_ZONE_PX,
+    viewW,
+    viewH,
   };
 }
 
@@ -96,168 +201,85 @@ export function buildJourneyStrip(travel, viewW, viewH) {
  * Append segments for a new travel onto an already-built strip.
  * Mutates the strip in-place and returns it.
  */
-export function extendStripWithTravel(strip, travel, viewW) {
+export function extendStripWithTravel(strip, travel, viewW, viewH) {
+  const FAR_SPEED = 0.26; // must match PARALLAX_SPEED.far — slowest layer drives post-ext size
+  const playerX = viewW * PLAYER_X_FRAC;
+
   const routeWorldLength = travel.totalLength ?? 0;
   const routePx = routeWorldLength * PX_PER_WORLD;
-  const { extAfterPx } = computeExtensionBounds(viewW);
 
   const newStartX = strip.destMarkerStripX;
   const newDestX = newStartX + routePx;
 
-  const pixelBands = buildPixelBandsFromStart(
-    travel,
+  // extAfterPx: cover the slowest layer (far) at arrival — same formula as
+  // buildJourneyStrip.  Critically, this does NOT depend on newDestX; the
+  // old FG_SPEED-based formula grew linearly with strip length, producing
+  // huge unnecessary allocations on each subsequent journey.
+  const minExtAfter =
+    Math.ceil(
+      playerX * (1 - 1 / FAR_SPEED) + viewW * (1 / FAR_SPEED - 0.5),
+    ) + 32;
+  const extAfterPx = Math.max(
+    ROUTE_EXTENSION_WORLD * PX_PER_WORLD,
+    minExtAfter,
+  );
+
+  // Raw biome segment arrays from travel
+  const rawNear =
+    travel.biomeBandSegments?.near?.segments ?? travel.biomeSegments ?? [];
+  const rawMid = travel.biomeBandSegments?.mid?.segments?.length
+    ? travel.biomeBandSegments.mid.segments
+    : rawNear;
+  const rawFar = travel.biomeBandSegments?.far?.segments?.length
+    ? travel.biomeBandSegments.far.segments
+    : rawNear;
+
+  const nearPx = expandFromStartX(
+    rawNear,
     newStartX,
     routeWorldLength,
     routePx,
     extAfterPx,
   );
-  appendPixelBandsToStrip(strip, pixelBands);
+  const midPx = expandFromStartX(
+    rawMid,
+    newStartX,
+    routeWorldLength,
+    routePx,
+    extAfterPx,
+  );
+  const farPx = expandFromStartX(
+    rawFar,
+    newStartX,
+    routeWorldLength,
+    routePx,
+    extAfterPx,
+  );
+
+  // Truncate the old post-extension from every layer before appending the
+  // new trip's segments.  Each layer's post-extension starts at
+  // destMarkerStripX * speed in layer-space — exactly where the new route
+  // also starts — so without this step the two would be double-drawn.
+  const cutGround = strip.destMarkerStripX;
+  truncateLayerAtX(strip.layerSegments.ground,     cutGround);
+  truncateLayerAtX(strip.layerSegments.foreground, cutGround * PARALLAX_SPEED.foreground);
+  truncateLayerAtX(strip.layerSegments.near1,      cutGround * PARALLAX_SPEED.near1);
+  truncateLayerAtX(strip.layerSegments.near2,      cutGround * PARALLAX_SPEED.near2);
+  truncateLayerAtX(strip.layerSegments.mid,        cutGround * PARALLAX_SPEED.mid);
+  truncateLayerAtX(strip.layerSegments.far,        cutGround * PARALLAX_SPEED.far);
+
+  appendLayerSegs(strip.layerSegments.ground, nearPx, "ground", 1.0);
+  appendLayerSegs(strip.layerSegments.foreground, nearPx, "foreground", PARALLAX_SPEED.foreground);
+  appendLayerSegs(strip.layerSegments.near1, nearPx, "near1", PARALLAX_SPEED.near1);
+  appendLayerSegs(strip.layerSegments.near2, nearPx, "near2", PARALLAX_SPEED.near2);
+  appendLayerSegs(strip.layerSegments.mid, midPx, "mid", PARALLAX_SPEED.mid);
+  appendLayerSegs(strip.layerSegments.far, farPx, "far", PARALLAX_SPEED.far);
 
   strip.startMarkerStripX = newStartX;
   strip.destMarkerStripX = newDestX;
   strip.totalStripPx = Math.ceil(newDestX + extAfterPx);
 
   return strip;
-}
-
-function computeExtensionBounds(viewW) {
-  const farSpeed = PARALLAX_SPEED.far;
-  const playerX = viewW * PLAYER_X_FRAC;
-  const minRouteExtension = ROUTE_EXTENSION_WORLD * PX_PER_WORLD;
-
-  const minExtBefore =
-    Math.ceil(playerX * (1 / farSpeed - 1) + viewW / 2) +
-    EXTENSION_PADDING_PX;
-  const minExtAfter =
-    Math.ceil(
-      playerX * (1 - 1 / farSpeed) + viewW * (1 / farSpeed - 0.5),
-    ) + EXTENSION_PADDING_PX;
-
-  return {
-    extBeforePx: Math.max(minRouteExtension, minExtBefore),
-    extAfterPx: Math.max(minRouteExtension, minExtAfter),
-  };
-}
-
-function buildLayerBands(viewH) {
-  const groundTopY = Math.round(viewH * JOURNEY_LAYOUT.groundTopFrac);
-  const groundBottomY = viewH;
-  const silhouetteZoneTop = Math.round(
-    viewH * JOURNEY_LAYOUT.silhouetteZoneTopFrac,
-  );
-  const silhouetteZoneH = groundTopY - silhouetteZoneTop;
-  const sliceH = Math.round(silhouetteZoneH / 4);
-  const near1Top = groundTopY - sliceH;
-  const near2Top = groundTopY - sliceH * 2;
-  const midTop = groundTopY - sliceH * 3;
-  const farTop = silhouetteZoneTop;
-  const silhouetteBottom =
-    groundTopY + JOURNEY_LAYOUT.silhouetteBottomOverlapPx;
-
-  return {
-    ground: { topY: groundTopY, bottomY: groundBottomY },
-    foreground: {
-      topY: Math.round(viewH * JOURNEY_LAYOUT.foregroundTopFrac),
-      bottomY: groundBottomY,
-    },
-    near1: { topY: near1Top, bottomY: silhouetteBottom },
-    near2: { topY: near2Top, bottomY: silhouetteBottom },
-    mid: { topY: midTop, bottomY: silhouetteBottom },
-    far: { topY: farTop, bottomY: silhouetteBottom },
-  };
-}
-
-function buildPixelBandsForFullRoute(travel, extBeforePx, extAfterPx) {
-  return {
-    near: buildNearSegments(travel, extBeforePx, extAfterPx),
-    mid: buildOffsetSegments(travel, extBeforePx, extAfterPx, MID_OFFSET_WORLD),
-    far: buildOffsetSegments(travel, extBeforePx, extAfterPx, FAR_OFFSET_WORLD),
-  };
-}
-
-function buildPixelBandsFromStart(
-  travel,
-  startX,
-  totalWorldLength,
-  routePx,
-  extAfterPx,
-) {
-  return {
-    near: expandFromStartX(
-      getRawBandSegments(travel, "near"),
-      startX,
-      totalWorldLength,
-      routePx,
-      extAfterPx,
-    ),
-    mid: expandFromStartX(
-      getRawBandSegments(travel, "mid"),
-      startX,
-      totalWorldLength,
-      routePx,
-      extAfterPx,
-    ),
-    far: expandFromStartX(
-      getRawBandSegments(travel, "far"),
-      startX,
-      totalWorldLength,
-      routePx,
-      extAfterPx,
-    ),
-  };
-}
-
-function getRawBandSegments(travel, bandName) {
-  const nearSegs = travel.biomeBandSegments?.near?.segments ?? [];
-  if (bandName === "mid") {
-    return travel.biomeBandSegments?.mid?.segments?.length
-      ? travel.biomeBandSegments.mid.segments
-      : nearSegs;
-  }
-  if (bandName === "far") {
-    return travel.biomeBandSegments?.far?.segments?.length
-      ? travel.biomeBandSegments.far.segments
-      : nearSegs;
-  }
-  return nearSegs;
-}
-
-function buildAllLayerSegments(pixelBands) {
-  const layerSegments = {};
-  for (const plan of LAYER_APPEND_PLAN) {
-    const sourceBand = pixelBands[plan.sourceBand] ?? [];
-    const layerSpeed = getLayerSpeed(plan.layerName);
-    const scaledSegs =
-      layerSpeed === 1 ? sourceBand : scaleSegments(sourceBand, layerSpeed);
-    layerSegments[plan.layerName] = buildLayerSegments(
-      scaledSegs,
-      plan.layerName,
-    );
-  }
-  return layerSegments;
-}
-
-function appendPixelBandsToStrip(strip, pixelBands) {
-  const cutGround = strip.destMarkerStripX;
-
-  for (const plan of LAYER_APPEND_PLAN) {
-    const cutX = cutGround * getLayerSpeed(plan.layerName);
-    truncateLayerAtX(strip.layerSegments[plan.layerName], cutX);
-  }
-
-  for (const plan of LAYER_APPEND_PLAN) {
-    const sourceBand = pixelBands[plan.sourceBand] ?? [];
-    appendLayerSegs(
-      strip.layerSegments[plan.layerName],
-      sourceBand,
-      plan.layerName,
-      getLayerSpeed(plan.layerName),
-    );
-  }
-}
-
-function getLayerSpeed(layerName) {
-  return PARALLAX_SPEED[layerName] ?? 1.0;
 }
 
 // Build pixel-space segments starting from startX (no before-extension).
@@ -272,22 +294,18 @@ function expandFromStartX(
   const firstBiome = normalizeBiomeKey(rawSegs[0]?.biome) ?? "plains";
   const lastBiome =
     normalizeBiomeKey(rawSegs[rawSegs.length - 1]?.biome) ?? firstBiome;
-  const firstIsSnow = segmentIsSnow(rawSegs[0]);
-  const lastIsSnow = segmentIsSnow(rawSegs[rawSegs.length - 1]);
   let cursor = startX;
 
   if (rawSegs.length && totalWorldLength > 0.0001) {
     for (const seg of rawSegs) {
       const biomeKey = normalizeBiomeKey(seg.biome) ?? firstBiome;
-      const isSnow = segmentIsSnow(seg);
       const px = Math.max(1, (seg.distance / totalWorldLength) * routePx);
-      result.push({ biomeKey, isSnow, stripX: cursor, stripWidth: px });
+      result.push({ biomeKey, stripX: cursor, stripWidth: px });
       cursor += px;
     }
   } else {
     result.push({
       biomeKey: firstBiome,
-      isSnow: firstIsSnow,
       stripX: cursor,
       stripWidth: Math.max(1, routePx),
     });
@@ -297,7 +315,6 @@ function expandFromStartX(
   if (extAfterPx > 0) {
     result.push({
       biomeKey: lastBiome,
-      isSnow: lastIsSnow,
       stripX: cursor,
       stripWidth: extAfterPx,
     });
@@ -310,16 +327,13 @@ function expandFromStartX(
 function appendLayerSegs(target, pixelSegs, layerDepth, speedScale = 1.0) {
   // Scale pixel positions into layer-space so biome transitions stay
   // visually synchronised with ground-speed transitions at all progress values.
-  const scaledSegs =
-    speedScale !== 1.0 ? scaleSegments(pixelSegs, speedScale) : pixelSegs;
+  const scaledSegs = speedScale !== 1.0 ? scaleSegments(pixelSegs, speedScale) : pixelSegs;
 
   let newSegs = scaledSegs.map((seg) => {
     const biomeKey = seg.biomeKey ?? "plains";
-    const isSnow = Boolean(seg.isSnow);
-    const colorRgb = getBiomeLayerColorRgb(biomeKey, layerDepth, { isSnow });
+    const colorRgb = getBiomeLayerColorRgb(biomeKey, layerDepth);
     return {
       biomeKey,
-      isSnow,
       color: rgbToCss(colorRgb),
       colorRgb,
       stripX: seg.stripX,
@@ -345,16 +359,13 @@ function appendLayerSegs(target, pixelSegs, layerDepth, speedScale = 1.0) {
   if (target.length > 0 && newSegs.length > 0) {
     const last = target[target.length - 1];
     const first = newSegs[0];
-    if (!last.isBlend && !first.isBlend && sameSurfaceStyle(last, first)) {
+    if (!last.isBlend && !first.isBlend && last.biomeKey === first.biomeKey) {
       if (first.topEdgeSamples && last.topEdgeSamples) {
         const merged = new Float32Array(
-          last.topEdgeSamples.length + first.topEdgeSamples.length - 1,
+          last.topEdgeSamples.length + first.topEdgeSamples.length,
         );
         merged.set(last.topEdgeSamples);
-        merged.set(
-          first.topEdgeSamples.subarray(1),
-          last.topEdgeSamples.length,
-        );
+        merged.set(first.topEdgeSamples, last.topEdgeSamples.length);
         last.topEdgeSamples = merged;
       }
       last.stripWidth += first.stripWidth;
@@ -366,6 +377,18 @@ function appendLayerSegs(target, pixelSegs, layerDepth, speedScale = 1.0) {
     target.push(s);
   }
 }
+
+// ---------------------------------------------------------------------------
+// ground = 1.0 (reference). Foreground moves faster.
+// ---------------------------------------------------------------------------
+export const PARALLAX_SPEED = {
+  ground: 1.0,
+  foreground: 1.72,
+  near1: 0.86,
+  near2: 0.68,
+  mid: 0.46,
+  far: 0.26,
+};
 
 /**
  * Remove the old post-extension from a layer segment array up to `cutX`.
@@ -383,10 +406,7 @@ function appendLayerSegs(target, pixelSegs, layerDepth, speedScale = 1.0) {
  */
 function truncateLayerAtX(layerSegs, cutX) {
   // Pop segments starting at or after the cut (0.5px tolerance for float drift)
-  while (
-    layerSegs.length > 0 &&
-    layerSegs[layerSegs.length - 1].stripX >= cutX - 0.5
-  ) {
+  while (layerSegs.length > 0 && layerSegs[layerSegs.length - 1].stripX >= cutX - 0.5) {
     layerSegs.pop();
   }
   // Trim the last segment if it overshoots
@@ -395,10 +415,7 @@ function truncateLayerAtX(layerSegs, cutX) {
     if (last.stripX + last.stripWidth > cutX) {
       const newWidth = Math.max(1, cutX - last.stripX);
       if (last.topEdgeSamples) {
-        last.topEdgeSamples = last.topEdgeSamples.slice(
-          0,
-          Math.ceil(newWidth) + 1,
-        );
+        last.topEdgeSamples = last.topEdgeSamples.slice(0, Math.ceil(newWidth) + 1);
       }
       last.stripWidth = newWidth;
     }
@@ -426,7 +443,8 @@ function scaleSegments(segs, speed) {
 function buildNearSegments(travel, extBeforePx, extAfterPx) {
   // Use the near biome band from travel if available, otherwise fall back to
   // sampling the straight start→dest line directly.
-  const rawSegs = travel.biomeBandSegments?.near?.segments ?? [];
+  const rawSegs =
+    travel.biomeBandSegments?.near?.segments ?? travel.biomeSegments ?? [];
 
   return expandSegmentsToPx(
     rawSegs,
@@ -437,7 +455,8 @@ function buildNearSegments(travel, extBeforePx, extAfterPx) {
 }
 
 function buildOffsetSegments(travel, extBeforePx, extAfterPx, offsetWorld) {
-  // Use mid/far band from travel when it matches the shared biome-band offsets.
+  // Use mid/far band from travel when it matches the offset.
+  // These constants must match TRAVEL_BIOME_BANDS in travel.js (mid:5, far:10).
   const isMid = Math.abs(offsetWorld - MID_OFFSET_WORLD) < 0.01;
   const isFar = Math.abs(offsetWorld - FAR_OFFSET_WORLD) < 0.01;
 
@@ -447,7 +466,8 @@ function buildOffsetSegments(travel, extBeforePx, extAfterPx, offsetWorld) {
   } else if (isFar && travel.biomeBandSegments?.far?.segments?.length) {
     rawSegs = travel.biomeBandSegments.far.segments;
   } else {
-    rawSegs = travel.biomeBandSegments?.near?.segments ?? [];
+    rawSegs =
+      travel.biomeBandSegments?.near?.segments ?? travel.biomeSegments ?? [];
   }
 
   return expandSegmentsToPx(
@@ -468,7 +488,7 @@ function mergeAdjacentSegments(segs) {
   for (let i = 1; i < segs.length; i++) {
     const prev = merged[merged.length - 1];
     const cur = segs[i];
-    if (sameSurfaceStyle(cur, prev)) {
+    if (cur.biomeKey === prev.biomeKey) {
       prev.stripWidth += cur.stripWidth;
     } else {
       merged.push({ ...cur });
@@ -491,17 +511,10 @@ function expandSegmentsToPx(
   const firstBiome = normalizeBiomeKey(rawSegs[0]?.biome) ?? "plains";
   const lastBiome =
     normalizeBiomeKey(rawSegs[rawSegs.length - 1]?.biome) ?? firstBiome;
-  const firstIsSnow = segmentIsSnow(rawSegs[0]);
-  const lastIsSnow = segmentIsSnow(rawSegs[rawSegs.length - 1]);
 
   // Pre-extension
   if (extBeforePx > 0) {
-    result.push({
-      biomeKey: firstBiome,
-      isSnow: firstIsSnow,
-      stripX: 0,
-      stripWidth: extBeforePx,
-    });
+    result.push({ biomeKey: firstBiome, stripX: 0, stripWidth: extBeforePx });
   }
 
   // Route segments scaled to pixels
@@ -511,16 +524,14 @@ function expandSegmentsToPx(
   if (rawSegs.length && totalWorldLength > 0.0001) {
     for (const seg of rawSegs) {
       const biomeKey = normalizeBiomeKey(seg.biome) ?? firstBiome;
-      const isSnow = segmentIsSnow(seg);
       const px = Math.max(1, (seg.distance / totalWorldLength) * routePx);
-      result.push({ biomeKey, isSnow, stripX: cursor, stripWidth: px });
+      result.push({ biomeKey, stripX: cursor, stripWidth: px });
       cursor += px;
     }
   } else {
     // No segment data – fill with fallback
     result.push({
       biomeKey: firstBiome,
-      isSnow: firstIsSnow,
       stripX: cursor,
       stripWidth: Math.max(1, routePx),
     });
@@ -531,7 +542,6 @@ function expandSegmentsToPx(
   if (extAfterPx > 0) {
     result.push({
       biomeKey: lastBiome,
-      isSnow: lastIsSnow,
       stripX: cursor,
       stripWidth: extAfterPx,
     });
@@ -563,20 +573,21 @@ function injectBlendSeams(segments, layerDepth) {
       next.topEdgeSamples !== null;
 
     if (canBlend) {
-      // Scale the blend zone down to fit inside both flanking segments while
-      // leaving at least 1px of solid segment on each side.
-      const halfBz = getBlendHalfWidth(seg.stripWidth, next.stripWidth);
-      if (halfBz <= 0) {
-        result.push(seg);
-        continue;
-      }
+      // Scale the blend zone down to fit inside both flanking segments.
+      // Minimum 1px per side so we always attempt a transition rather than
+      // leaving a hard seam when a segment is narrow.
+      const halfBz = Math.max(1, Math.min(
+        Math.round(BLEND_ZONE_PX / 2),
+        Math.floor(seg.stripWidth / 2) - 1,
+        Math.floor(next.stripWidth / 2) - 1,
+      ));
       const BZ = halfBz * 2;
 
       const origSeamX = seg.stripX + seg.stripWidth;
       const blendStartX = origSeamX - halfBz;
 
       // Trim right edge of A
-      seg.stripWidth = Math.max(1, seg.stripWidth - halfBz);
+      seg.stripWidth -= halfBz;
       seg.topEdgeSamples = seg.topEdgeSamples.slice(0, Math.ceil(seg.stripWidth) + 1);
 
       // Build blend samples: BZ+1 points covering [blendStartX .. blendStartX+BZ].
@@ -621,13 +632,6 @@ function injectBlendSeams(segments, layerDepth) {
   return result;
 }
 
-function getBlendHalfWidth(leftWidth, rightWidth) {
-  const maxHalf = Math.round(BLEND_ZONE_PX / 2);
-  const leftRoom = Math.max(0, Math.floor(leftWidth) - 1);
-  const rightRoom = Math.max(0, Math.floor(rightWidth) - 1);
-  return Math.min(maxHalf, leftRoom, rightRoom);
-}
-
 /**
  * For each pixel-space segment, pre-compute the silhouette top-edge sample
  * array and the fill color for the given layer.
@@ -635,8 +639,7 @@ function getBlendHalfWidth(leftWidth, rightWidth) {
 function buildLayerSegments(pixelSegments, layerDepth) {
   let segs = pixelSegments.map((seg) => {
     const biomeKey = seg.biomeKey ?? "plains";
-    const isSnow = Boolean(seg.isSnow);
-    const colorRgb = getBiomeLayerColorRgb(biomeKey, layerDepth, { isSnow });
+    const colorRgb = getBiomeLayerColorRgb(biomeKey, layerDepth);
     const topEdgeSamples =
       layerDepth === "ground"
         ? null // ground is a flat filled rect – no silhouette needed
@@ -648,7 +651,6 @@ function buildLayerSegments(pixelSegments, layerDepth) {
           );
     return {
       biomeKey,
-      isSnow,
       color: rgbToCss(colorRgb),
       colorRgb,
       stripX: seg.stripX,
@@ -664,17 +666,6 @@ function buildLayerSegments(pixelSegments, layerDepth) {
   return segs;
 }
 
-function segmentIsSnow(seg) {
-  return Boolean(seg?.isSnow ?? seg?.snow);
-}
-
-function sameSurfaceStyle(a, b) {
-  return (
-    (a?.biomeKey ?? null) === (b?.biomeKey ?? null) &&
-    segmentIsSnow(a) === segmentIsSnow(b)
-  );
-}
-
 function createEmptyStrip() {
   return {
     totalStripPx: 0,
@@ -684,18 +675,16 @@ function createEmptyStrip() {
     startMarkerStripX: 0,
     destMarkerStripX: 0,
     layers: {},
-    layerSegments: createEmptyLayerSegments(),
+    layerSegments: {
+      ground: [],
+      foreground: [],
+      near1: [],
+      near2: [],
+      mid: [],
+      far: [],
+    },
     blendZonePx: BLEND_ZONE_PX,
-  };
-}
-
-function createEmptyLayerSegments() {
-  return {
-    ground: [],
-    foreground: [],
-    near1: [],
-    near2: [],
-    mid: [],
-    far: [],
+    viewW: 0,
+    viewH: 0,
   };
 }

@@ -116,7 +116,12 @@ function getPoiCollisionScale(viewport) {
 }
 
 function resolveVisiblePoiIdsForLabels(options = {}) {
-  return options.poiOverlay?.visiblePoiIds ?? options.visiblePoiIds ?? null;
+  return (
+    options.cityOverlay?.visiblePoiIds ??
+    options.poiOverlay?.visiblePoiIds ??
+    options.visiblePoiIds ??
+    null
+  );
 }
 
 function drawLakeLabels(ctx, world, viewport, placedBoxes, settings, discoveredCells) {

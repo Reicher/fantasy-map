@@ -10,6 +10,8 @@ import {
 import { drawPoiMarkerGlyph } from "../../render/poiGlyph.js?v=20260408b";
 
 const SNOW_GROUND_RGB = WORLD_RGB.snow;
+const JOURNEY_SIGNPOST_IMAGE = createJourneySignpostImage();
+const JOURNEY_SIGNPOST_MIN_HEIGHT_PX = 56;
 
 /** Returns the depth-tinted biome colour as an [r, g, b] array.
  * Near = darker, warmer, richer. Far = lighter, cooler, atmospheric haze. */
@@ -191,12 +193,84 @@ export function drawPoiMarkerOnCanvas(
   y,
   options = {},
 ) {
+  const marker = options.marker;
+  if (marker === "signpost") {
+    const minVisualHeightPx = Math.max(
+      JOURNEY_SIGNPOST_MIN_HEIGHT_PX,
+      Math.round(options.minVisualHeightPx ?? JOURNEY_SIGNPOST_MIN_HEIGHT_PX),
+    );
+    const groundY = Number.isFinite(options.groundY) ? options.groundY : y;
+    if (
+      JOURNEY_SIGNPOST_IMAGE &&
+      JOURNEY_SIGNPOST_IMAGE.complete &&
+      JOURNEY_SIGNPOST_IMAGE.naturalWidth > 0 &&
+      JOURNEY_SIGNPOST_IMAGE.naturalHeight > 0
+    ) {
+      drawJourneySignpostImage(ctx, x, groundY, minVisualHeightPx, {
+        highlighted: options.highlighted ?? true,
+      });
+      return;
+    }
+    const fallbackScale = minVisualHeightPx / 9.2;
+    drawPoiMarkerGlyph(ctx, x, groundY, marker, {
+      scale: fallbackScale,
+      iconLift: 4.6 * fallbackScale,
+      highlighted: options.highlighted ?? true,
+      hovered: false,
+      pressed: false,
+    });
+    return;
+  }
+
   drawPoiMarkerGlyph(ctx, x, y, options.marker, {
     scale: options.scale ?? 1.25,
     highlighted: options.highlighted ?? true,
     hovered: false,
     pressed: false,
   });
+}
+
+function drawJourneySignpostImage(
+  ctx,
+  x,
+  groundY,
+  minVisualHeightPx,
+  { highlighted = true } = {},
+) {
+  const sourceWidth = JOURNEY_SIGNPOST_IMAGE.naturalWidth;
+  const sourceHeight = JOURNEY_SIGNPOST_IMAGE.naturalHeight;
+  if (sourceWidth <= 0 || sourceHeight <= 0) return;
+
+  const targetHeight = Math.max(JOURNEY_SIGNPOST_MIN_HEIGHT_PX, minVisualHeightPx);
+  const targetWidth = targetHeight * (sourceWidth / sourceHeight);
+  const drawLeft = Math.round(x - targetWidth * 0.5);
+  const drawTop = Math.round(groundY - targetHeight);
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  if (highlighted) {
+    ctx.shadowColor = "rgba(255, 208, 128, 0.35)";
+    ctx.shadowBlur = 7;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 1;
+  }
+  ctx.drawImage(
+    JOURNEY_SIGNPOST_IMAGE,
+    drawLeft,
+    drawTop,
+    Math.round(targetWidth),
+    Math.round(targetHeight),
+  );
+  ctx.restore();
+}
+
+function createJourneySignpostImage() {
+  if (typeof Image !== "function") return null;
+  const image = new Image();
+  image.decoding = "async";
+  image.src = new URL("../../assets/journey/signpost-marker.png", import.meta.url).href;
+  return image;
 }
 
 // ---------------------------------------------------------------------------

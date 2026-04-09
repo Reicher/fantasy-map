@@ -9,7 +9,7 @@ import {
 } from "./cameraState.js?v=20260407a";
 import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260408a";
 import { attachEditorController } from "./editorController.js?v=20260407a";
-import { renderEditorWorld } from "../render/renderer.js?v=20260408l";
+import { renderEditorWorld } from "../render/renderer.js?v=20260409a";
 import { createMapAtlasCacheManager } from "./mapAtlasCache.js?v=20260408h";
 
 export function createEditorSession({ refs, state, syncViewUi }) {

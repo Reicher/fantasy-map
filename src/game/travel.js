@@ -1,10 +1,13 @@
 import { BIOME_INFO } from "../config.js";
-import { isSnowCell } from "../generator/surfaceModel.js";
 import { dedupePoints } from "../utils.js";
-import { TRAVEL_BIOME_BANDS } from "./journey/journeyConstants.js";
 import { regionAtCell, regionAtPosition } from "./playQueries.js";
 
 export const TRAVEL_SPEED = 3.75;
+const TRAVEL_BIOME_BANDS = {
+  near: 0,
+  mid: 5,
+  far: 10,
+};
 
 export function createPlayState(world) {
   const currentCityId =
@@ -34,6 +37,7 @@ export function createPlayState(world) {
     pressedCityId: null,
     travel: null,
     discoveredCells,
+    fogDirty: true,
   };
 }
 
@@ -100,12 +104,16 @@ export function advanceTravel(playState, world, deltaMs) {
   const discoveredCells =
     playState.discoveredCells ??
     new Uint8Array(world.terrain.width * world.terrain.height);
-  revealAroundPosition(world, discoveredCells, sample.point);
+  const revealed = revealAroundPosition(world, discoveredCells, sample.point);
 
   if (nextProgress >= playState.travel.totalLength - 0.0001) {
     const city = world.cities[playState.travel.targetCityId];
     const finalPosition = city ? { x: city.x, y: city.y } : sample.point;
-    revealAroundPosition(world, discoveredCells, finalPosition);
+    const finalReveal = revealAroundPosition(
+      world,
+      discoveredCells,
+      finalPosition,
+    );
     return {
       ...playState,
       currentCityId: playState.travel.targetCityId,
@@ -116,6 +124,7 @@ export function advanceTravel(playState, world, deltaMs) {
           : lastRegionId,
       travel: null,
       discoveredCells,
+      fogDirty: playState.fogDirty || revealed || finalReveal,
     };
   }
 
@@ -124,6 +133,7 @@ export function advanceTravel(playState, world, deltaMs) {
     position: sample.point,
     lastRegionId,
     discoveredCells,
+    fogDirty: playState.fogDirty || revealed,
     travel: {
       ...playState.travel,
       progress: nextProgress,
@@ -159,10 +169,17 @@ function createTravel(
     totalLength,
     progress: 0,
     biomeBandSegments,
+    biomeSegments: biomeBandSegments.near.segments,
+    midDistantBiomeSegments: biomeBandSegments.mid.segments,
+    farDistantBiomeSegments: biomeBandSegments.far.segments,
   };
 }
 
-function buildOffsetTravelBiomeSegments(
+export function buildTravelBiomeSegments(world, points) {
+  return buildBiomeSegmentsFromPoints(world, dedupePoints(points));
+}
+
+export function buildOffsetTravelBiomeSegments(
   world,
   points,
   offsetDistance = TRAVEL_BIOME_BANDS.mid,
@@ -256,7 +273,7 @@ function buildBiomeSegmentsFromPoints(world, points) {
 
   for (let index = 0; index < points.length; index += 1) {
     const point = points[index];
-    const { biomeKey, snow } = sampleSurfaceAtPoint(world, point);
+    const biomeKey = biomeKeyAtPoint(world, point);
     const biomeInfo = BIOME_INFO[biomeKey] ?? {
       key: "unknown",
       label: "Okänd",
@@ -266,15 +283,10 @@ function buildBiomeSegmentsFromPoints(world, points) {
       ? Math.hypot(nextPoint.x - point.x, nextPoint.y - point.y)
       : 0;
 
-    if (
-      !current ||
-      current.biome !== biomeInfo.key ||
-      current.snow !== snow
-    ) {
+    if (!current || current.biome !== biomeInfo.key) {
       current = {
         biome: biomeInfo.key,
         label: biomeInfo.label,
-        snow,
         distance: 0,
       };
       segments.push(current);
@@ -369,10 +381,8 @@ function offsetPointLeft(points, index, offsetDistance) {
     return { x: current.x, y: current.y };
   }
 
-  // In our map/screen space, +y points downward, so "left of travel"
-  // is the tangent rotated -90deg (dy, -dx).
-  const normalX = tangentY / tangentLength;
-  const normalY = -tangentX / tangentLength;
+  const normalX = -tangentY / tangentLength;
+  const normalY = tangentX / tangentLength;
 
   return {
     x: current.x + normalX * offsetDistance,
@@ -400,36 +410,15 @@ function offsetSamplePointLeft(points, sample, offsetDistance) {
     return sample.point;
   }
 
-  const normalX = tangentY / tangentLength;
-  const normalY = -tangentX / tangentLength;
+  const normalX = -tangentY / tangentLength;
+  const normalY = tangentX / tangentLength;
   return {
     x: sample.point.x + normalX * offsetDistance,
     y: sample.point.y + normalY * offsetDistance,
   };
 }
 
-function sampleSurfaceAtPoint(world, position) {
-  const cellIndex = cellIndexAtPosition(world, position);
-  if (cellIndex == null) {
-    return { biomeKey: null, snow: false };
-  }
-
-  const biomeKey = world.climate.biome[cellIndex] ?? null;
-  return {
-    biomeKey,
-    snow:
-      biomeKey != null &&
-      isSnowCell(
-        biomeKey,
-        world.terrain.elevation[cellIndex],
-        world.terrain.mountainField[cellIndex],
-        world.climate.temperature[cellIndex],
-        true,
-      ),
-  };
-}
-
-function cellIndexAtPosition(world, position) {
+function biomeKeyAtPoint(world, position) {
   if (!world || !position) {
     return null;
   }
@@ -442,7 +431,7 @@ function cellIndexAtPosition(world, position) {
     0,
     Math.min(world.terrain.height - 1, Math.floor(position.y)),
   );
-  return y * world.terrain.width + x;
+  return world.climate.biome[y * world.terrain.width + x];
 }
 
 function revealAroundPosition(world, discoveredCells, position) {
@@ -450,7 +439,7 @@ function revealAroundPosition(world, discoveredCells, position) {
     return false;
   }
 
-  const baseRadius = Math.max(1, world.params.fogVisionRadius);
+  const baseRadius = Math.max(1, Number(world.params?.fogVisionRadius ?? 18));
   const radius = Math.max(1, Math.round(baseRadius * 1.5));
   const radiusSq = (radius + 0.35) * (radius + 0.35);
   const minX = Math.max(0, Math.floor(position.x - radius));

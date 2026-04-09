@@ -1,123 +1,25 @@
 import { BIOME_KEYS } from "../config.js";
 import { buildRoadNetwork } from "./network.js?v=20260401i";
-import { clamp, coordsOf, dedupeCells, distance, forEachNeighbor, indexOf } from "../utils.js";
-
-const DEFAULT_LAND_NEAREST_NEIGHBORS = 4;
-const DEFAULT_LAND_REDUNDANCY_RATIO = 1.75;
-const DEFAULT_LAND_EXTRA_LINK_FACTOR = 0;
-const DEFAULT_LAND_HOP_BRIDGE_FACTOR = 0.1;
-const DEFAULT_LAND_HOP_BRIDGE_MIN_DETOUR_RATIO = 2.1;
-const DEFAULT_LAND_HOP_BRIDGE_MAX_DIRECT_TO_DETOUR = 0.72;
-const DEFAULT_LAND_HOP_BRIDGE_LOCAL_CHEAP_FACTOR = 1.9;
-const DEFAULT_CITY_PROXIMITY_RADIUS = 6;
-const DEFAULT_CITY_PROXIMITY_PENALTY = 12;
-const DEFAULT_REUSE_ON_ROAD_MULTIPLIER = 0.9;
-const DEFAULT_REUSE_TOUCHING_ROAD_MULTIPLIER = 0.96;
-const DEFAULT_ROAD_PRESSURE_OFFROAD_PENALTY = 0.3;
-const DEFAULT_ROAD_PRESSURE_ONROAD_PENALTY = 0.07;
-const ROAD_PRESSURE_SELF = 1;
-const ROAD_PRESSURE_NEAR = 0.56;
-const ROAD_PRESSURE_MID = 0.18;
-const ROAD_SEARCH_HEURISTIC_SCALE = 0.55;
-const ROAD_SEARCH_MAX_EXPANSION_FACTOR = 1.6;
-const ROAD_INTERSECTION_MIN_SPACING = 5;
+import { buildRoadPlanningState } from "./roadPlanning.js?v=20260409a";
+import { clamp, coordsOf, distance, forEachNeighbor, indexOf } from "../utils.js";
 
 const BIOME_TRAVEL_COST = {
   [BIOME_KEYS.OCEAN]: Number.POSITIVE_INFINITY,
   [BIOME_KEYS.LAKE]: Number.POSITIVE_INFINITY,
-  [BIOME_KEYS.PLAINS]: 0.85,
+  [BIOME_KEYS.PLAINS]: 0.9,
   [BIOME_KEYS.FOREST]: 1.45,
-  [BIOME_KEYS.RAINFOREST]: 2.9,
-  [BIOME_KEYS.DESERT]: 1.25,
-  [BIOME_KEYS.TUNDRA]: 1.55,
-  [BIOME_KEYS.HIGHLANDS]: 2.15,
-  [BIOME_KEYS.MOUNTAIN]: 9.5
+  [BIOME_KEYS.RAINFOREST]: 1.8,
+  [BIOME_KEYS.DESERT]: 1.28,
+  [BIOME_KEYS.TUNDRA]: 1.52,
+  [BIOME_KEYS.HIGHLANDS]: 2.25,
+  [BIOME_KEYS.MOUNTAIN]: 4.8
 };
 
-function resolveRoadSettings(params) {
-  const shortcut = clamp(params.roadShortcutAggression, 0, 100) / 100;
-  const reuse = clamp(params.roadReuseBias, 0, 100) / 100;
-  const cityAvoidance = clamp(params.roadCityAvoidance, 0, 100) / 100;
-  const shortcutDelta = shortcut - 0.5;
-  const reuseDelta = reuse - 0.5;
-  const cityAvoidanceDelta = cityAvoidance - 0.5;
-
-  return {
-    maxRoadsPerCity: clamp(
-      Math.round(params.roadMaxConnectionsPerCity),
-      2,
-      8
-    ),
-    nearestNeighbors: clamp(
-      Math.round(DEFAULT_LAND_NEAREST_NEIGHBORS + shortcutDelta * 8),
-      3,
-      8
-    ),
-    redundancyRatio: DEFAULT_LAND_REDUNDANCY_RATIO,
-    extraLinkFactor: clamp(
-      DEFAULT_LAND_EXTRA_LINK_FACTOR + Math.max(0, shortcut - 0.45) * 0.42,
-      0,
-      0.24
-    ),
-    hopBridgeFactor: clamp(
-      DEFAULT_LAND_HOP_BRIDGE_FACTOR + shortcutDelta * 0.24,
-      0.02,
-      0.3
-    ),
-    hopBridgeMinDetourRatio: clamp(
-      DEFAULT_LAND_HOP_BRIDGE_MIN_DETOUR_RATIO - shortcutDelta * 1.2,
-      1.35,
-      2.8
-    ),
-    hopBridgeMaxDirectToDetour: clamp(
-      DEFAULT_LAND_HOP_BRIDGE_MAX_DIRECT_TO_DETOUR + shortcutDelta * 0.28,
-      0.48,
-      0.9
-    ),
-    hopBridgeLocalCheapFactor: clamp(
-      DEFAULT_LAND_HOP_BRIDGE_LOCAL_CHEAP_FACTOR + shortcutDelta * 0.9,
-      1.2,
-      2.6
-    ),
-    cityProximityRadius: clamp(
-      Math.round(DEFAULT_CITY_PROXIMITY_RADIUS + cityAvoidanceDelta * 6),
-      2,
-      10
-    ),
-    cityProximityPenalty: clamp(
-      DEFAULT_CITY_PROXIMITY_PENALTY + cityAvoidanceDelta * 16,
-      2,
-      28
-    ),
-    reuseOnRoadMultiplier: clamp(
-      DEFAULT_REUSE_ON_ROAD_MULTIPLIER - reuseDelta * 0.2,
-      0.78,
-      1
-    ),
-    reuseTouchingRoadMultiplier: clamp(
-      DEFAULT_REUSE_TOUCHING_ROAD_MULTIPLIER - reuseDelta * 0.08,
-      0.88,
-      1
-    ),
-    roadPressureOffroadPenalty: clamp(
-      DEFAULT_ROAD_PRESSURE_OFFROAD_PENALTY - reuseDelta * 0.15,
-      0.14,
-      0.44
-    ),
-    roadPressureOnroadPenalty: clamp(
-      DEFAULT_ROAD_PRESSURE_ONROAD_PENALTY - reuseDelta * 0.05,
-      0.03,
-      0.12
-    ),
-  };
-}
-
 export function generateRoads(world) {
-  const { terrain, climate, hydrology, cities } = world;
-  const { width, height, size, isLand, mountainField } = terrain;
+  const { params, terrain, climate, hydrology, cities } = world;
+  const { width, height, size, isLand, elevation, mountainField } = terrain;
   const { biome } = climate;
   const { lakeIdByCell, riverStrength } = hydrology;
-  const roadSettings = resolveRoadSettings(world.params);
 
   if (cities.length < 2) {
     return {
@@ -127,32 +29,82 @@ export function generateRoads(world) {
     };
   }
 
-  const baseCost = buildRoadBaseCost(size, isLand, lakeIdByCell, biome, mountainField);
-  const landComponentByCell = buildLandComponents(width, height, isLand);
-  const cityIdsByLandComponent = groupCityIdsByLandComponent(cities, landComponentByCell);
+  const baseCost = buildRoadBaseCost(size, isLand, lakeIdByCell, biome, elevation, mountainField);
   const cityByCell = buildCityByCell(cities);
   const roadUsage = new Uint16Array(size);
-  const roadPressure = new Float32Array(size);
-  const cityRoadDegree = new Uint8Array(cities.length);
   const roads = [];
+  const seedCityIds = new Set();
+  let componentCount = 0;
 
-  for (const cityIds of cityIdsByLandComponent.values()) {
-    connectCitiesOnLandComponent({
+  while (true) {
+    if (seedCityIds.size === 0) {
+      const hub = pickRoadHub(cities, new Set(cities.map((city) => city.id)));
+      seedCityIds.add(hub.id);
+      componentCount += 1;
+    }
+
+    const planning = buildRoadPlanningState({
       cities,
-      cityIds,
+      roads,
+      width,
+      seedCityIds
+    });
+    if (planning.pendingCityIds.size === 0) {
+      break;
+    }
+
+    const search = runRoadSearch({
       width,
       height,
       size,
       isLand,
       lakeIdByCell,
       riverStrength,
-      baseCost,
       roadUsage,
-      roadPressure,
-      roads,
-      cityRoadDegree,
-      roadSettings
+      baseCost,
+      sources: planning.sourceCells,
+      sourceSeedCostByCell: planning.sourceSeedCostByCell,
     });
+    const target = pickNextRoadTarget(cities, planning.pendingCityIds, search.distance);
+
+    if (!target) {
+      const hub = pickRoadHub(cities, planning.pendingCityIds);
+      seedCityIds.add(hub.id);
+      componentCount += 1;
+      continue;
+    }
+
+    const path = reconstructPath(target.city.cell, search.previous);
+    if (path.length < 2) {
+      seedCityIds.add(target.city.id);
+      continue;
+    }
+
+    const fromCityId = findConnectedCityOnPath(path, cityByCell, planning.activeCityIds);
+    roads.push({
+      id: roads.length,
+      type: "road",
+      cityId: target.city.id,
+      fromCityId,
+      cells: path,
+      length: path.length,
+      cost: target.cost
+    });
+    markRoadUsage(path, roadUsage);
+  }
+
+  const normalizedRoads = collapseShortSettlementSpurs({
+    roads,
+    cities,
+    width,
+  });
+  roads.length = 0;
+  roads.push(...normalizedRoads);
+  roadUsage.fill(0);
+  for (const road of roads) {
+    if (road.type === "road") {
+      markRoadUsage(road.cells, roadUsage);
+    }
   }
 
   const seaRoutes = buildSeaRoutes({
@@ -162,836 +114,179 @@ export function generateRoads(world) {
     climate
   });
   roads.push(...seaRoutes);
-  const normalizedRoads = dedupeRoadSegments(
-    splitRoadsAtIntersections(roads, cityByCell, size, width)
-  );
-  const componentCount = buildRoadNetwork({ cities, roads: normalizedRoads, width }).components.filter(
-    (component) => component.cityIds.length > 0
-  ).length;
 
   return {
-    roads: normalizedRoads,
+    roads,
     roadUsage,
     componentCount
   };
 }
 
-function connectCitiesOnLandComponent({
-  cities,
-  cityIds,
-  width,
-  height,
-  size,
-  isLand,
-  lakeIdByCell,
-  riverStrength,
-  baseCost,
-  roadUsage,
-  roadPressure,
+function collapseShortSettlementSpurs({
   roads,
-  cityRoadDegree,
-  roadSettings
-}) {
-  if (!cityIds || cityIds.length < 2) {
-    return;
-  }
-
-  const componentCities = cityIds.map((cityId) => cities[cityId]).filter(Boolean);
-  const candidateLinks = buildCandidateCityLinks(
-    componentCities,
-    roadSettings.nearestNeighbors
-  );
-  if (candidateLinks.length === 0) {
-    return;
-  }
-  const plannedLinks = selectPlannedLandLinks(cityIds, candidateLinks, roadSettings);
-  const cityPenalty = buildCityProximityPenaltyField(
-    width,
-    height,
-    size,
-    componentCities,
-    roadSettings.cityProximityRadius,
-    roadSettings.cityProximityPenalty
-  );
-  const cityCellMask = buildCityCellMask(size, componentCities);
-  const connectivity = new DisjointSet(cityIds);
-  const failedPlannedLinks = [];
-
-  for (const link of plannedLinks) {
-    const added = addLandRoad({
-      link,
-      cities,
-      width,
-      height,
-      size,
-      isLand,
-      lakeIdByCell,
-      riverStrength,
-      roadUsage,
-      roadPressure,
-      baseCost,
-      cityPenalty,
-      cityCellMask,
-      roads,
-      cityRoadDegree,
-      roadSettings,
-      enforceDegreeLimit: true,
-      preferRoadReuse: true
-    });
-    if (added) {
-      connectivity.union(link.fromCityId, link.toCityId);
-    } else {
-      failedPlannedLinks.push(link);
-    }
-  }
-
-  for (const link of failedPlannedLinks) {
-    if (connectivity.find(link.fromCityId) === connectivity.find(link.toCityId)) {
-      continue;
-    }
-    const added = addLandRoad({
-      link,
-      cities,
-      width,
-      height,
-      size,
-      isLand,
-      lakeIdByCell,
-      riverStrength,
-      roadUsage,
-      roadPressure,
-      baseCost,
-      cityPenalty,
-      cityCellMask,
-      roads,
-      cityRoadDegree,
-      roadSettings,
-      enforceDegreeLimit: false,
-      preferRoadReuse: false
-    });
-    if (added) {
-      connectivity.union(link.fromCityId, link.toCityId);
-    }
-  }
-
-  if (connectivity.componentCount <= 1) {
-    return;
-  }
-
-  const plannedKeys = new Set(plannedLinks.map((link) => makeLinkKey(link.fromCityId, link.toCityId)));
-  const fallbackLinks = candidateLinks.filter(
-    (link) => !plannedKeys.has(makeLinkKey(link.fromCityId, link.toCityId))
-  );
-  const recoveryLinks = [...failedPlannedLinks, ...fallbackLinks];
-
-  for (const link of recoveryLinks) {
-    if (connectivity.componentCount <= 1) {
-      break;
-    }
-    if (connectivity.find(link.fromCityId) === connectivity.find(link.toCityId)) {
-      continue;
-    }
-
-    const added = addLandRoad({
-      link,
-      cities,
-      width,
-      height,
-      size,
-      isLand,
-      lakeIdByCell,
-      riverStrength,
-      roadUsage,
-      roadPressure,
-      baseCost,
-      cityPenalty,
-      cityCellMask,
-      roads,
-      cityRoadDegree,
-      roadSettings,
-      enforceDegreeLimit: false,
-      preferRoadReuse: false
-    });
-    if (added) {
-      connectivity.union(link.fromCityId, link.toCityId);
-    }
-  }
-}
-
-function addLandRoad({
-  link,
   cities,
   width,
-  height,
-  size,
-  isLand,
-  lakeIdByCell,
-  riverStrength,
-  roadUsage,
-  roadPressure,
-  baseCost,
-  cityPenalty,
-  cityCellMask,
-  roads,
-  cityRoadDegree,
-  roadSettings,
-  enforceDegreeLimit,
-  preferRoadReuse
+  maxSpurSteps = 4,
 }) {
-  const fromCity = cities[link.fromCityId];
-  const toCity = cities[link.toCityId];
-  if (!fromCity || !toCity) {
-    return false;
-  }
-  if (
-    enforceDegreeLimit &&
-    (
-      cityRoadDegree[fromCity.id] >= roadSettings.maxRoadsPerCity ||
-      cityRoadDegree[toCity.id] >= roadSettings.maxRoadsPerCity
-    )
-  ) {
-    return false;
+  const nextRoads = roads
+    .filter((road) => road?.type === "road" && (road.cells?.length ?? 0) >= 2)
+    .map((road) => ({
+      ...road,
+      cells: [...road.cells],
+      length: road.cells.length,
+    }));
+  const movableCities = cities.filter((city) => city?.cell != null);
+  if (!nextRoads.length || !movableCities.length) {
+    return nextRoads;
   }
 
-  const path = findLandPathBetweenCities({
-    width,
-    height,
-    size,
-    isLand,
-    lakeIdByCell,
-    riverStrength,
-    roadUsage,
-    roadPressure,
-    baseCost,
-    cityPenalty,
-    cityCellMask,
-    sourceCell: fromCity.cell,
-    targetCell: toCity.cell,
-    preferRoadReuse,
-    reuseOnRoadMultiplier: roadSettings.reuseOnRoadMultiplier,
-    reuseTouchingRoadMultiplier: roadSettings.reuseTouchingRoadMultiplier,
-    roadPressureOffroadPenalty: roadSettings.roadPressureOffroadPenalty,
-    roadPressureOnroadPenalty: roadSettings.roadPressureOnroadPenalty
-  });
-  if (!path || path.cells.length < 2) {
-    return false;
-  }
+  let changed = true;
+  let iterations = 0;
+  while (changed && iterations < 6) {
+    iterations += 1;
+    changed = false;
 
-  roads.push({
-    id: roads.length,
-    type: "road",
-    cityId: toCity.id,
-    fromCityId: fromCity.id,
-    cells: path.cells,
-    length: path.cells.length,
-    cost: path.cost
-  });
-  markRoadUsage(path.cells, roadUsage, roadPressure, width, height);
-  cityRoadDegree[fromCity.id] = Math.min(255, cityRoadDegree[fromCity.id] + 1);
-  cityRoadDegree[toCity.id] = Math.min(255, cityRoadDegree[toCity.id] + 1);
-  return true;
-}
-
-function buildCityCellMask(size, cities) {
-  const mask = new Uint8Array(size);
-  for (const city of cities ?? []) {
-    if (city?.cell == null || city.cell < 0 || city.cell >= size) {
-      continue;
+    const degreeByCell = buildRoadCellDegree(nextRoads);
+    const cityByCell = new Map();
+    for (const city of movableCities) {
+      cityByCell.set(city.cell, city);
     }
-    mask[city.cell] = 1;
-  }
-  return mask;
-}
 
-function buildCandidateCityLinks(componentCities, nearestNeighborCount = DEFAULT_LAND_NEAREST_NEIGHBORS) {
-  if (!componentCities || componentCities.length < 2) {
-    return [];
-  }
-
-  const cityIds = componentCities.map((city) => city.id);
-  const maxNeighbors = Math.max(1, componentCities.length - 1);
-  let neighbors = Math.min(nearestNeighborCount, maxNeighbors);
-  let links = [];
-
-  while (neighbors <= maxNeighbors) {
-    links = collectNearestNeighborLinks(componentCities, neighbors);
-    if (isLinkSetConnected(cityIds, links) || neighbors >= maxNeighbors) {
-      break;
-    }
-    neighbors = Math.min(maxNeighbors, neighbors + 2);
-  }
-
-  return links.sort((a, b) => {
-    if (Math.abs(a.weight - b.weight) > 1e-6) {
-      return a.weight - b.weight;
-    }
-    return a.distance - b.distance;
-  });
-}
-
-function collectNearestNeighborLinks(componentCities, neighborCount) {
-  const links = [];
-  const seen = new Set();
-
-  for (const city of componentCities) {
-    const nearest = componentCities
-      .filter((candidate) => candidate.id !== city.id)
-      .map((candidate) => ({
-        city: candidate,
-        distance: distance(city.x, city.y, candidate.x, candidate.y)
-      }))
-      .sort((a, b) => a.distance - b.distance)
-      .slice(0, neighborCount);
-
-    for (const entry of nearest) {
-      const a = Math.min(city.id, entry.city.id);
-      const b = Math.max(city.id, entry.city.id);
-      const key = `${a}:${b}`;
-      if (seen.has(key)) {
+    for (const city of movableCities) {
+      const cityCell = city.cell;
+      const endpointRoads = findEndpointRoadsForCity(nextRoads, cityCell);
+      if (!endpointRoads.length) {
         continue;
       }
-      seen.add(key);
 
-      const cityScoreFactor = 1 - clamp((city.score + entry.city.score) / 420, 0, 0.2);
-      links.push({
-        fromCityId: a,
-        toCityId: b,
-        distance: entry.distance,
-        weight: entry.distance * cityScoreFactor
-      });
-    }
-  }
-
-  return links;
-}
-
-function isLinkSetConnected(cityIds, links) {
-  if (cityIds.length <= 1) {
-    return true;
-  }
-  const set = new DisjointSet(cityIds);
-  for (const link of links) {
-    set.union(link.fromCityId, link.toCityId);
-  }
-  return set.componentCount <= 1;
-}
-
-function selectPlannedLandLinks(cityIds, candidateLinks, roadSettings) {
-  const selected = buildMinimumSpanningLinks(cityIds, candidateLinks);
-  const selectedKeys = new Set(selected.map((link) => makeLinkKey(link.fromCityId, link.toCityId)));
-  const degreeByCityId = new Map(cityIds.map((cityId) => [cityId, 0]));
-  const adjacency = new Map(cityIds.map((cityId) => [cityId, []]));
-  const nearestDistanceByCity = new Map(cityIds.map((cityId) => [cityId, Number.POSITIVE_INFINITY]));
-
-  for (const link of candidateLinks) {
-    nearestDistanceByCity.set(
-      link.fromCityId,
-      Math.min(nearestDistanceByCity.get(link.fromCityId) ?? Number.POSITIVE_INFINITY, link.distance)
-    );
-    nearestDistanceByCity.set(
-      link.toCityId,
-      Math.min(nearestDistanceByCity.get(link.toCityId) ?? Number.POSITIVE_INFINITY, link.distance)
-    );
-  }
-
-  for (const link of selected) {
-    degreeByCityId.set(link.fromCityId, (degreeByCityId.get(link.fromCityId) ?? 0) + 1);
-    degreeByCityId.set(link.toCityId, (degreeByCityId.get(link.toCityId) ?? 0) + 1);
-    adjacency.get(link.fromCityId).push({ cityId: link.toCityId, cost: link.distance });
-    adjacency.get(link.toCityId).push({ cityId: link.fromCityId, cost: link.distance });
-  }
-
-  const canUseDegree = (link) =>
-    (degreeByCityId.get(link.fromCityId) ?? 0) < roadSettings.maxRoadsPerCity &&
-    (degreeByCityId.get(link.toCityId) ?? 0) < roadSettings.maxRoadsPerCity;
-
-  const addSelectedLink = (link) => {
-    selected.push(link);
-    selectedKeys.add(makeLinkKey(link.fromCityId, link.toCityId));
-    degreeByCityId.set(link.fromCityId, (degreeByCityId.get(link.fromCityId) ?? 0) + 1);
-    degreeByCityId.set(link.toCityId, (degreeByCityId.get(link.toCityId) ?? 0) + 1);
-    adjacency.get(link.fromCityId).push({ cityId: link.toCityId, cost: link.distance });
-    adjacency.get(link.toCityId).push({ cityId: link.fromCityId, cost: link.distance });
-  };
-
-  const maxExtraLinks = Math.max(0, Math.min(12, Math.round(cityIds.length * roadSettings.extraLinkFactor)));
-  let extraCount = 0;
-  const extraCandidates = [];
-
-  for (const link of candidateLinks) {
-    const linkKey = makeLinkKey(link.fromCityId, link.toCityId);
-    if (selectedKeys.has(linkKey)) {
-      continue;
-    }
-    if (!canUseDegree(link)) {
-      continue;
-    }
-
-    const detourCost = getGraphDistance(adjacency, link.fromCityId, link.toCityId);
-    if (Number.isFinite(detourCost) && detourCost <= link.distance * roadSettings.redundancyRatio) {
-      continue;
-    }
-    const detourRatio = Number.isFinite(detourCost)
-      ? detourCost / Math.max(link.distance, 0.001)
-      : roadSettings.redundancyRatio + 1.4;
-    const localReferenceDistance = Math.max(
-      nearestDistanceByCity.get(link.fromCityId) ?? Number.POSITIVE_INFINITY,
-      nearestDistanceByCity.get(link.toCityId) ?? Number.POSITIVE_INFINITY
-    );
-    const localCheapness = Number.isFinite(localReferenceDistance)
-      ? clamp(localReferenceDistance / Math.max(link.distance, 0.001), 0.35, 2.4)
-      : 1;
-    extraCandidates.push({
-      link,
-      score:
-        (detourRatio - roadSettings.redundancyRatio) * 2.15 +
-        localCheapness * 0.7 -
-        link.distance * 0.0028
-    });
-  }
-
-  extraCandidates.sort((a, b) => {
-    if (Math.abs(a.score - b.score) > 1e-6) {
-      return b.score - a.score;
-    }
-    return a.link.distance - b.link.distance;
-  });
-
-  for (const candidate of extraCandidates) {
-    if (extraCount >= maxExtraLinks) {
-      break;
-    }
-    const { link } = candidate;
-    const linkKey = makeLinkKey(link.fromCityId, link.toCityId);
-    if (selectedKeys.has(linkKey) || !canUseDegree(link)) {
-      continue;
-    }
-    const detourCost = getGraphDistance(adjacency, link.fromCityId, link.toCityId);
-    if (Number.isFinite(detourCost) && detourCost <= link.distance * roadSettings.redundancyRatio) {
-      continue;
-    }
-
-    addSelectedLink(link);
-    extraCount += 1;
-  }
-
-  const maxHopBridgeLinks = Math.max(
-    0,
-    Math.min(8, Math.round(cityIds.length * roadSettings.hopBridgeFactor))
-  );
-  let hopBridgeCount = 0;
-  const hopCandidates = [];
-
-  for (const link of candidateLinks) {
-    const linkKey = makeLinkKey(link.fromCityId, link.toCityId);
-    if (selectedKeys.has(linkKey)) {
-      continue;
-    }
-    if (!canUseDegree(link)) {
-      continue;
-    }
-
-    const detourCost = getGraphDistance(adjacency, link.fromCityId, link.toCityId);
-    if (!Number.isFinite(detourCost)) {
-      continue;
-    }
-    const detourRatio = detourCost / Math.max(link.distance, 0.001);
-    if (detourRatio < roadSettings.hopBridgeMinDetourRatio) {
-      continue;
-    }
-    const maxDirectDistanceFromDetour = detourCost * roadSettings.hopBridgeMaxDirectToDetour;
-    if (link.distance > maxDirectDistanceFromDetour) {
-      continue;
-    }
-
-    const localReferenceDistance = Math.max(
-      nearestDistanceByCity.get(link.fromCityId) ?? Number.POSITIVE_INFINITY,
-      nearestDistanceByCity.get(link.toCityId) ?? Number.POSITIVE_INFINITY
-    );
-    if (!Number.isFinite(localReferenceDistance)) {
-      continue;
-    }
-    if (link.distance > localReferenceDistance * roadSettings.hopBridgeLocalCheapFactor) {
-      continue;
-    }
-
-    hopCandidates.push({
-      link,
-      score:
-        (detourRatio - roadSettings.hopBridgeMinDetourRatio) * 2.05 +
-        clamp(localReferenceDistance / Math.max(link.distance, 0.001), 0.35, 2.8) -
-        link.distance * 0.0021
-    });
-  }
-
-  hopCandidates.sort((a, b) => {
-    if (Math.abs(a.score - b.score) > 1e-6) {
-      return b.score - a.score;
-    }
-    return a.link.distance - b.link.distance;
-  });
-
-  for (const candidate of hopCandidates) {
-    if (hopBridgeCount >= maxHopBridgeLinks) {
-      break;
-    }
-    const { link } = candidate;
-    const linkKey = makeLinkKey(link.fromCityId, link.toCityId);
-    if (selectedKeys.has(linkKey) || !canUseDegree(link)) {
-      continue;
-    }
-
-    const detourCost = getGraphDistance(adjacency, link.fromCityId, link.toCityId);
-    if (!Number.isFinite(detourCost)) {
-      continue;
-    }
-    const detourRatio = detourCost / Math.max(link.distance, 0.001);
-    if (detourRatio < roadSettings.hopBridgeMinDetourRatio) {
-      continue;
-    }
-    const maxDirectDistanceFromDetour = detourCost * roadSettings.hopBridgeMaxDirectToDetour;
-    if (link.distance > maxDirectDistanceFromDetour) {
-      continue;
-    }
-
-    const localReferenceDistance = Math.max(
-      nearestDistanceByCity.get(link.fromCityId) ?? Number.POSITIVE_INFINITY,
-      nearestDistanceByCity.get(link.toCityId) ?? Number.POSITIVE_INFINITY
-    );
-    if (!Number.isFinite(localReferenceDistance)) {
-      continue;
-    }
-    if (link.distance > localReferenceDistance * roadSettings.hopBridgeLocalCheapFactor) {
-      continue;
-    }
-
-    addSelectedLink(link);
-    hopBridgeCount += 1;
-  }
-
-  return selected.sort((a, b) => a.distance - b.distance);
-}
-
-function buildMinimumSpanningLinks(cityIds, candidateLinks) {
-  const disjointSet = new DisjointSet(cityIds);
-  const links = [];
-
-  for (const link of candidateLinks) {
-    if (!disjointSet.union(link.fromCityId, link.toCityId)) {
-      continue;
-    }
-    links.push(link);
-    if (links.length >= cityIds.length - 1) {
-      break;
-    }
-  }
-
-  return links;
-}
-
-function getGraphDistance(adjacency, fromCityId, toCityId) {
-  if (fromCityId === toCityId) {
-    return 0;
-  }
-
-  const heap = new MinHeap();
-  const best = new Map();
-  best.set(fromCityId, 0);
-  heap.push(fromCityId, 0);
-
-  while (heap.size > 0) {
-    const { index: cityId, priority } = heap.pop();
-    const known = best.get(cityId);
-    if (known == null || priority > known + 1e-4) {
-      continue;
-    }
-    if (cityId === toCityId) {
-      return priority;
-    }
-
-    for (const edge of adjacency.get(cityId) ?? []) {
-      const nextCost = priority + edge.cost;
-      const previousCost = best.get(edge.cityId);
-      if (previousCost != null && nextCost >= previousCost - 1e-4) {
-        continue;
-      }
-      best.set(edge.cityId, nextCost);
-      heap.push(edge.cityId, nextCost);
-    }
-  }
-
-  return Number.POSITIVE_INFINITY;
-}
-
-function findLandPathBetweenCities({
-  width,
-  height,
-  size,
-  isLand,
-  lakeIdByCell,
-  riverStrength,
-  roadUsage,
-  roadPressure,
-  baseCost,
-  cityPenalty,
-  cityCellMask,
-  sourceCell,
-  targetCell,
-  preferRoadReuse,
-  reuseOnRoadMultiplier,
-  reuseTouchingRoadMultiplier,
-  roadPressureOffroadPenalty,
-  roadPressureOnroadPenalty
-}) {
-  const search = runRoadSearch({
-    width,
-    height,
-    size,
-    isLand,
-    lakeIdByCell,
-    riverStrength,
-    roadUsage,
-    roadPressure,
-    baseCost,
-    cityPenalty,
-    cityCellMask,
-    sources: [sourceCell],
-    targetCell,
-    endpointCellA: sourceCell,
-    endpointCellB: targetCell,
-    preferRoadReuse,
-    reuseOnRoadMultiplier,
-    reuseTouchingRoadMultiplier,
-    roadPressureOffroadPenalty,
-    roadPressureOnroadPenalty
-  });
-
-  const totalCost = search.distance[targetCell];
-  if (!Number.isFinite(totalCost)) {
-    return null;
-  }
-
-  const cells = reconstructPath(targetCell, search.previous).reverse();
-  return {
-    cells: dedupeCells(cells),
-    cost: totalCost
-  };
-}
-
-function buildCityProximityPenaltyField(width, height, size, cities, radius, maxPenalty) {
-  const penaltyField = new Float32Array(size);
-  if (!cities?.length || radius <= 0 || maxPenalty <= 0) {
-    return penaltyField;
-  }
-
-  const radiusSq = radius * radius;
-  const searchRadius = Math.ceil(radius);
-
-  for (const city of cities) {
-    const [centerX, centerY] = coordsOf(city.cell, width);
-    const minX = Math.max(0, centerX - searchRadius);
-    const maxX = Math.min(width - 1, centerX + searchRadius);
-    const minY = Math.max(0, centerY - searchRadius);
-    const maxY = Math.min(height - 1, centerY + searchRadius);
-
-    for (let y = minY; y <= maxY; y += 1) {
-      for (let x = minX; x <= maxX; x += 1) {
-        const dx = x - centerX;
-        const dy = y - centerY;
-        const distSq = dx * dx + dy * dy;
-        if (distSq > radiusSq) {
+      let bestMove = null;
+      for (const endpoint of endpointRoads) {
+        const spur = findNearbyJunctionOnEndpointRoad(
+          endpoint.road.cells,
+          endpoint.atStart,
+          degreeByCell,
+          maxSpurSteps,
+        );
+        if (!spur) {
           continue;
         }
-
-        const dist = Math.sqrt(distSq);
-        const influence = 1 - dist / radius;
-        const penalty = maxPenalty * influence * influence;
-        const cell = indexOf(x, y, width);
-        penaltyField[cell] = Math.max(penaltyField[cell], penalty);
-      }
-    }
-  }
-
-  return penaltyField;
-}
-
-function makeLinkKey(a, b) {
-  return `${Math.min(a, b)}:${Math.max(a, b)}`;
-}
-
-function splitRoadsAtIntersections(roads, cityByCell, size, width) {
-  const directionMaskByCell = new Uint16Array(size);
-  const directionToBit = (dx, dy) => {
-    if (dx === -1 && dy === -1) return 1 << 0;
-    if (dx === 0 && dy === -1) return 1 << 1;
-    if (dx === 1 && dy === -1) return 1 << 2;
-    if (dx === -1 && dy === 0) return 1 << 3;
-    if (dx === 1 && dy === 0) return 1 << 4;
-    if (dx === -1 && dy === 1) return 1 << 5;
-    if (dx === 0 && dy === 1) return 1 << 6;
-    if (dx === 1 && dy === 1) return 1 << 7;
-    return 0;
-  };
-
-  for (const road of roads) {
-    if (road.type !== "road" || !road.cells || road.cells.length < 2) {
-      continue;
-    }
-
-    for (let index = 0; index < road.cells.length - 1; index += 1) {
-      const from = road.cells[index];
-      const to = road.cells[index + 1];
-      const [fromX, fromY] = coordsOf(from, width);
-      const [toX, toY] = coordsOf(to, width);
-      const dx = clamp(toX - fromX, -1, 1);
-      const dy = clamp(toY - fromY, -1, 1);
-      const outBit = directionToBit(dx, dy);
-      const inBit = directionToBit(-dx, -dy);
-      directionMaskByCell[from] |= outBit;
-      directionMaskByCell[to] |= inBit;
-    }
-  }
-
-  const bitCount = (value) => {
-    let bits = value;
-    let count = 0;
-    while (bits > 0) {
-      bits &= bits - 1;
-      count += 1;
-    }
-    return count;
-  };
-
-  const normalized = [];
-  for (const road of roads) {
-    if (road.type !== "road" || !road.cells || road.cells.length < 2) {
-      normalized.push({ ...road });
-      continue;
-    }
-
-    const breakpoints = [0];
-    let previousIntersection = false;
-    for (let index = 1; index < road.cells.length - 1; index += 1) {
-      const cell = road.cells[index];
-      const isIntersection = bitCount(directionMaskByCell[cell]) >= 3;
-      const isCityCell = cityByCell.has(cell);
-
-      if (isCityCell) {
-        if (index > breakpoints[breakpoints.length - 1]) {
-          breakpoints.push(index);
+        if (cityByCell.has(spur.junctionCell)) {
+          continue;
         }
-        previousIntersection = false;
+        if (!bestMove || spur.steps < bestMove.spur.steps) {
+          bestMove = { endpoint, spur };
+        }
+      }
+
+      if (!bestMove) {
         continue;
       }
 
-      const minSpacing = ROAD_INTERSECTION_MIN_SPACING;
-      const lastBreakpoint = breakpoints[breakpoints.length - 1];
-      if (isIntersection && !previousIntersection && index - lastBreakpoint >= minSpacing) {
-        breakpoints.push(index);
-      }
-      previousIntersection = isIntersection;
+      const { endpoint, spur } = bestMove;
+      const oldCell = city.cell;
+      city.cell = spur.junctionCell;
+      const [nextX, nextY] = coordsOf(spur.junctionCell, width);
+      city.x = nextX;
+      city.y = nextY;
+
+      endpoint.road.cells = trimRoadFromEndpoint(
+        endpoint.road.cells,
+        endpoint.atStart,
+        spur.steps,
+      );
+
+      changed = true;
+      cityByCell.delete(oldCell);
+      cityByCell.set(city.cell, city);
     }
-    breakpoints.push(road.cells.length - 1);
 
-    for (let index = 1; index < breakpoints.length; index += 1) {
-      const startIndex = breakpoints[index - 1];
-      const endIndex = breakpoints[index];
-      if (endIndex <= startIndex) {
-        continue;
+    for (let index = nextRoads.length - 1; index >= 0; index -= 1) {
+      if ((nextRoads[index].cells?.length ?? 0) < 2) {
+        nextRoads.splice(index, 1);
       }
-
-      const cells = dedupeCells(road.cells.slice(startIndex, endIndex + 1));
-      if (cells.length < 2) {
-        continue;
-      }
-
-      const startCity = cityByCell.get(cells[0])?.id ?? null;
-      const endCity = cityByCell.get(cells[cells.length - 1])?.id ?? null;
-      normalized.push({
-        ...road,
-        id: -1,
-        fromCityId: startCity,
-        cityId: endCity,
-        cells,
-        length: cells.length,
-        cost: Number.isFinite(road.cost) && road.length > 0 ? road.cost * (cells.length / road.length) : road.cost
-      });
     }
   }
 
-  for (let index = 0; index < normalized.length; index += 1) {
-    normalized[index].id = index;
-  }
-
-  return normalized;
+  return nextRoads.map((road, index) => {
+    const cells = dedupePath(road.cells);
+    return {
+      ...road,
+      id: index,
+      cells,
+      length: cells.length,
+    };
+  });
 }
 
-function dedupeRoadSegments(roads) {
-  const unique = [];
-  const canonicalIndexByPath = new Map();
-
+function findEndpointRoadsForCity(roads, cityCell) {
+  const matches = [];
   for (const road of roads) {
-    if (road.type !== "road" || !road.cells || road.cells.length < 2) {
-      unique.push({ ...road });
+    if (!road?.cells?.length) {
       continue;
     }
-
-    const key = buildCanonicalPathKey(road.cells);
-    const existingIndex = canonicalIndexByPath.get(key);
-    if (existingIndex == null) {
-      canonicalIndexByPath.set(key, unique.length);
-      unique.push({ ...road });
-      continue;
-    }
-
-    const existing = unique[existingIndex];
-    const existingCost = Number.isFinite(existing.cost) ? existing.cost : Number.POSITIVE_INFINITY;
-    const candidateCost = Number.isFinite(road.cost) ? road.cost : Number.POSITIVE_INFINITY;
-
-    if (candidateCost + 1e-4 < existingCost) {
-      unique[existingIndex] = { ...road };
-      continue;
-    }
-
-    if (existing.fromCityId == null && road.fromCityId != null) {
-      existing.fromCityId = road.fromCityId;
-    }
-    if (existing.cityId == null && road.cityId != null) {
-      existing.cityId = road.cityId;
+    const start = road.cells[0];
+    const end = road.cells[road.cells.length - 1];
+    if (start === cityCell) {
+      matches.push({ road, atStart: true });
+    } else if (end === cityCell) {
+      matches.push({ road, atStart: false });
     }
   }
-
-  for (let index = 0; index < unique.length; index += 1) {
-    unique[index].id = index;
-  }
-
-  return unique;
+  return matches;
 }
 
-function buildCanonicalPathKey(cells) {
-  const forward = cells.join(",");
-  const reverse = [...cells].reverse().join(",");
-  return forward < reverse ? forward : reverse;
-}
-
-function groupCityIdsByLandComponent(cities, landComponentByCell) {
-  const cityIdsByLandComponent = new Map();
-
-  for (const city of cities) {
-    const componentId = landComponentByCell[city.cell];
-    if (componentId < 0) {
-      continue;
+function findNearbyJunctionOnEndpointRoad(
+  cells,
+  atStart,
+  degreeByCell,
+  maxSpurSteps,
+) {
+  const maxSteps = Math.min(maxSpurSteps, Math.max(0, cells.length - 1));
+  for (let steps = 1; steps <= maxSteps; steps += 1) {
+    const cell = atStart ? cells[steps] : cells[cells.length - 1 - steps];
+    const degree = degreeByCell.get(cell) ?? 0;
+    if (degree >= 3) {
+      return { junctionCell: cell, steps };
     }
-    if (!cityIdsByLandComponent.has(componentId)) {
-      cityIdsByLandComponent.set(componentId, []);
-    }
-    cityIdsByLandComponent.get(componentId).push(city.id);
   }
-
-  return cityIdsByLandComponent;
+  return null;
 }
 
-function buildRoadBaseCost(size, isLand, lakeIdByCell, biome, mountainField) {
+function trimRoadFromEndpoint(cells, atStart, steps) {
+  if (steps <= 0) {
+    return cells;
+  }
+  return atStart
+    ? cells.slice(steps)
+    : cells.slice(0, Math.max(0, cells.length - steps));
+}
+
+function buildRoadCellDegree(roads) {
+  const neighborsByCell = new Map();
+  for (const road of roads) {
+    const cells = road?.cells ?? [];
+    for (let index = 1; index < cells.length; index += 1) {
+      addRoadNeighbor(neighborsByCell, cells[index - 1], cells[index]);
+      addRoadNeighbor(neighborsByCell, cells[index], cells[index - 1]);
+    }
+  }
+  const degreeByCell = new Map();
+  for (const [cell, neighbors] of neighborsByCell.entries()) {
+    degreeByCell.set(cell, neighbors.size);
+  }
+  return degreeByCell;
+}
+
+function addRoadNeighbor(neighborsByCell, fromCell, toCell) {
+  let neighbors = neighborsByCell.get(fromCell);
+  if (!neighbors) {
+    neighbors = new Set();
+    neighborsByCell.set(fromCell, neighbors);
+  }
+  neighbors.add(toCell);
+}
+
+function buildRoadBaseCost(size, isLand, lakeIdByCell, biome, elevation, mountainField) {
   const baseCost = new Float32Array(size);
 
   for (let index = 0; index < size; index += 1) {
@@ -1001,16 +296,58 @@ function buildRoadBaseCost(size, isLand, lakeIdByCell, biome, mountainField) {
     }
 
     const biomeCost = BIOME_TRAVEL_COST[biome[index]] ?? 1.2;
-    const mountain = mountainField[index];
-    const mountainPenalty =
-      mountain * 4.4 +
-      Math.pow(Math.max(0, mountain - 0.46), 2) * 22 +
-      Math.pow(Math.max(0, mountain - 0.62), 2) * 52 +
-      Math.pow(Math.max(0, mountain - 0.79), 3) * 260;
-    baseCost[index] = biomeCost + mountainPenalty;
+    const slopePenalty = elevation[index] * 0.8;
+    const mountainPenalty = mountainField[index] * 2.9 + Math.max(0, mountainField[index] - 0.68) * 4.2;
+    baseCost[index] = biomeCost + slopePenalty + mountainPenalty;
   }
 
   return baseCost;
+}
+
+function pickRoadHub(cities, allowedCityIds) {
+  let best = null;
+  const center = cities.reduce(
+    (acc, city) => {
+      acc.x += city.x;
+      acc.y += city.y;
+      return acc;
+    },
+    { x: 0, y: 0 }
+  );
+  center.x /= Math.max(1, cities.length);
+  center.y /= Math.max(1, cities.length);
+
+  for (const city of cities) {
+    if (!allowedCityIds.has(city.id)) {
+      continue;
+    }
+    const centrality = distance(city.x, city.y, center.x, center.y);
+    const value = city.score * 1.2 - centrality * 0.04;
+    if (!best || value > best.value) {
+      best = { city, value };
+    }
+  }
+
+  return best.city;
+}
+
+function pickNextRoadTarget(cities, remainingCityIds, distances) {
+  let best = null;
+
+  for (const cityId of remainingCityIds) {
+    const city = cities[cityId];
+    const cost = distances[city.cell];
+    if (!Number.isFinite(cost)) {
+      continue;
+    }
+
+    const score = cost - city.score * 0.4;
+    if (!best || score < best.score) {
+      best = { city, cost, score };
+    }
+  }
+
+  return best;
 }
 
 function buildSeaRoutes({ cities, roads, terrain, climate }) {
@@ -1070,7 +407,7 @@ function findBestSeaRouteByRadiusSteps({
   isLand,
   biome
 }) {
-  const radiusSteps = [40, 60, 84, 112, 150, 220, 320, 460, Number.POSITIVE_INFINITY];
+  const radiusSteps = [40, 60, 84, 112, 150, 220];
   for (const maxCityDistance of radiusSteps) {
     const candidate = findBestSeaRouteCandidate({
       components,
@@ -1133,7 +470,7 @@ function findBestSeaRouteCandidate({
           }
 
           const cityDistance = distance(fromCity.x, fromCity.y, toCity.x, toCity.y);
-          if (Number.isFinite(maxCityDistance) && cityDistance > maxCityDistance) {
+          if (cityDistance > maxCityDistance) {
             continue;
           }
 
@@ -1180,7 +517,7 @@ function materializeSeaRoute({ city, candidate, waterPath, cityByCell }) {
     return null;
   }
 
-  const cells = dedupeCells([city.cell, ...waterPath, candidate.cell]);
+  const cells = dedupePath([city.cell, ...waterPath, candidate.cell]);
   const viaCityId = findSeaRouteTouchCity(cells, cityByCell, city.id, candidate.id);
 
   return {
@@ -1203,7 +540,7 @@ function buildHarborMap(cities, width, height, isLand, biome) {
       height,
       isLand,
       biome,
-      city.coastal ? 4 : 16
+      city.coastal ? 4 : 8
     );
     if (harbor != null) {
       harborByCityId.set(city.id, harbor);
@@ -1333,6 +670,17 @@ function buildCityByCell(cities) {
   return new Map(cities.map((city) => [city.cell, city]));
 }
 
+function findConnectedCityOnPath(path, cityByCell, connectedCityIds) {
+  for (let index = path.length - 1; index >= 0; index -= 1) {
+    const city = cityByCell.get(path[index]);
+    if (city && connectedCityIds.has(city.id)) {
+      return city.id;
+    }
+  }
+
+  return null;
+}
+
 function findSeaRouteTouchCity(cells, cityByCell, sourceCityId, targetCityId) {
   for (let index = 1; index < cells.length - 1; index += 1) {
     const city = cityByCell.get(cells[index]);
@@ -1344,39 +692,20 @@ function findSeaRouteTouchCity(cells, cityByCell, sourceCityId, targetCityId) {
   return null;
 }
 
-function markRoadUsage(path, roadUsage, roadPressure, width, height) {
+function markRoadUsage(path, roadUsage) {
   for (const cell of path) {
     roadUsage[cell] = Math.min(roadUsage[cell] + 1, 65535);
-    if (!roadPressure) {
-      continue;
-    }
+  }
+}
 
-    const [centerX, centerY] = coordsOf(cell, width);
-    const minX = Math.max(0, centerX - 2);
-    const maxX = Math.min(width - 1, centerX + 2);
-    const minY = Math.max(0, centerY - 2);
-    const maxY = Math.min(height - 1, centerY + 2);
-
-    roadPressure[cell] += ROAD_PRESSURE_SELF;
-
-    for (let y = minY; y <= maxY; y += 1) {
-      for (let x = minX; x <= maxX; x += 1) {
-        const dx = x - centerX;
-        const dy = y - centerY;
-        const distSq = dx * dx + dy * dy;
-        if (distSq === 0 || distSq > 4) {
-          continue;
-        }
-
-        const target = indexOf(x, y, width);
-        if (distSq <= 2) {
-          roadPressure[target] += ROAD_PRESSURE_NEAR;
-        } else {
-          roadPressure[target] += ROAD_PRESSURE_MID;
-        }
-      }
+function dedupePath(path) {
+  const deduped = [];
+  for (const cell of path) {
+    if (deduped[deduped.length - 1] !== cell) {
+      deduped.push(cell);
     }
   }
+  return deduped;
 }
 
 function reconstructPath(start, previous) {
@@ -1401,65 +730,35 @@ function runRoadSearch({
   lakeIdByCell,
   riverStrength,
   roadUsage,
-  roadPressure,
   baseCost,
-  cityPenalty,
-  cityCellMask,
   sources,
-  targetCell = null,
-  endpointCellA = -1,
-  endpointCellB = -1,
-  preferRoadReuse = true,
-  reuseOnRoadMultiplier = DEFAULT_REUSE_ON_ROAD_MULTIPLIER,
-  reuseTouchingRoadMultiplier = DEFAULT_REUSE_TOUCHING_ROAD_MULTIPLIER,
-  roadPressureOffroadPenalty = DEFAULT_ROAD_PRESSURE_OFFROAD_PENALTY,
-  roadPressureOnroadPenalty = DEFAULT_ROAD_PRESSURE_ONROAD_PENALTY
+  sourceSeedCostByCell = new Map(),
 }) {
   const distanceField = new Float32Array(size);
   distanceField.fill(Number.POSITIVE_INFINITY);
   const previous = new Int32Array(size);
   previous.fill(-1);
   const heap = new MinHeap();
-  const maxExpansions = Math.max(4096, Math.floor(size * ROAD_SEARCH_MAX_EXPANSION_FACTOR));
-  let expansions = 0;
-
-  let targetX = -1;
-  let targetY = -1;
-  if (targetCell != null) {
-    [targetX, targetY] = coordsOf(targetCell, width);
-  }
-  const heuristic = (cell) => {
-    if (targetCell == null) {
-      return 0;
-    }
-    const [x, y] = coordsOf(cell, width);
-    return distance(x, y, targetX, targetY) * ROAD_SEARCH_HEURISTIC_SCALE;
-  };
 
   for (const source of sources) {
     if (!Number.isFinite(baseCost[source])) {
       continue;
     }
-    if (distanceField[source] <= 0) {
+    const seedCost = Math.max(
+      0,
+      Number(sourceSeedCostByCell.get(source) ?? 0),
+    );
+    if (distanceField[source] <= seedCost) {
       continue;
     }
-    distanceField[source] = 0;
-    heap.push(source, heuristic(source));
+    distanceField[source] = seedCost;
+    heap.push(source, distanceField[source]);
   }
 
   while (heap.size > 0) {
     const { index: current, priority } = heap.pop();
-    expansions += 1;
-    if (expansions > maxExpansions) {
-      break;
-    }
-
-    const expectedPriority = distanceField[current] + heuristic(current);
-    if (priority > expectedPriority + 1e-4) {
+    if (priority > distanceField[current] + 1e-4) {
       continue;
-    }
-    if (targetCell != null && current === targetCell) {
-      break;
     }
 
     const [x, y] = coordsOf(current, width);
@@ -1473,27 +772,17 @@ function runRoadSearch({
         lakeIdByCell,
         riverStrength,
         roadUsage,
-        roadPressure,
-        baseCost,
-        cityPenalty,
-        cityCellMask,
-        endpointCellA,
-        endpointCellB,
-        preferRoadReuse,
-        reuseOnRoadMultiplier,
-        reuseTouchingRoadMultiplier,
-        roadPressureOffroadPenalty,
-        roadPressureOnroadPenalty
+        baseCost
       );
       if (!Number.isFinite(stepCost)) {
         return;
       }
 
-      const nextCost = distanceField[current] + stepCost;
+      const nextCost = priority + stepCost;
       if (nextCost < distanceField[neighbor]) {
         distanceField[neighbor] = nextCost;
         previous[neighbor] = current;
-        heap.push(neighbor, nextCost + heuristic(neighbor));
+        heap.push(neighbor, distanceField[neighbor]);
       }
     });
   }
@@ -1504,26 +793,7 @@ function runRoadSearch({
   };
 }
 
-function computeStepCost(
-  current,
-  neighbor,
-  diagonal,
-  isLand,
-  lakeIdByCell,
-  riverStrength,
-  roadUsage,
-  roadPressure,
-  baseCost,
-  cityPenalty,
-  cityCellMask,
-  endpointCellA,
-  endpointCellB,
-  preferRoadReuse,
-  reuseOnRoadMultiplier,
-  reuseTouchingRoadMultiplier,
-  roadPressureOffroadPenalty,
-  roadPressureOnroadPenalty
-) {
+function computeStepCost(current, neighbor, diagonal, isLand, lakeIdByCell, riverStrength, roadUsage, baseCost) {
   if (!isLand[neighbor] || lakeIdByCell[neighbor] >= 0) {
     return Number.POSITIVE_INFINITY;
   }
@@ -1538,104 +808,13 @@ function computeStepCost(
     cost += 3.6 + clamp(riverPenalty, 0, 4) * 4.8;
   }
 
-  const isOnRoad = roadUsage[current] > 0 && roadUsage[neighbor] > 0;
-  const isTouchingRoad = roadUsage[current] > 0 || roadUsage[neighbor] > 0;
-
-  if (cityPenalty) {
-    const currentIsCity = Boolean(cityCellMask?.[current]);
-    const neighborIsCity = Boolean(cityCellMask?.[neighbor]);
-    const currentPenalty =
-      current === endpointCellA || current === endpointCellB || currentIsCity
-        ? 0
-        : cityPenalty[current] ?? 0;
-    const neighborPenalty =
-      neighbor === endpointCellA || neighbor === endpointCellB || neighborIsCity
-        ? 0
-        : cityPenalty[neighbor] ?? 0;
-
-    let cityPenaltyFactor = 1;
-    if (currentIsCity || neighborIsCity) {
-      cityPenaltyFactor = 0;
-    } else if (isOnRoad) {
-      cityPenaltyFactor = 0.38;
-    } else if (isTouchingRoad) {
-      cityPenaltyFactor = 0.56;
-    }
-    cost += (currentPenalty + neighborPenalty) * 0.5 * stepLength * cityPenaltyFactor;
-  }
-
-  if (roadPressure) {
-    const localPressure = (roadPressure[current] + roadPressure[neighbor]) * 0.5;
-    if (localPressure > 0) {
-      const pressurePenalty = isOnRoad ? roadPressureOnroadPenalty : roadPressureOffroadPenalty;
-      cost += localPressure * pressurePenalty * stepLength;
-    }
-  }
-
-  if (preferRoadReuse) {
-    if (isOnRoad) {
-      cost *= reuseOnRoadMultiplier;
-    } else if (isTouchingRoad) {
-      cost *= reuseTouchingRoadMultiplier;
-    }
+  if (roadUsage[current] > 0 && roadUsage[neighbor] > 0) {
+    cost *= 0.18;
+  } else if (roadUsage[current] > 0 || roadUsage[neighbor] > 0) {
+    cost *= 0.46;
   }
 
   return cost;
-}
-
-class DisjointSet {
-  constructor(ids) {
-    this.parent = new Map();
-    this.rank = new Map();
-    this.componentCount = 0;
-
-    for (const id of ids) {
-      this.parent.set(id, id);
-      this.rank.set(id, 0);
-      this.componentCount += 1;
-    }
-  }
-
-  find(id) {
-    if (!this.parent.has(id)) {
-      return null;
-    }
-    let current = id;
-    while (this.parent.get(current) !== current) {
-      current = this.parent.get(current);
-    }
-
-    let node = id;
-    while (this.parent.get(node) !== node) {
-      const next = this.parent.get(node);
-      this.parent.set(node, current);
-      node = next;
-    }
-
-    return current;
-  }
-
-  union(a, b) {
-    const rootA = this.find(a);
-    const rootB = this.find(b);
-    if (rootA == null || rootB == null || rootA === rootB) {
-      return false;
-    }
-
-    const rankA = this.rank.get(rootA) ?? 0;
-    const rankB = this.rank.get(rootB) ?? 0;
-    if (rankA < rankB) {
-      this.parent.set(rootA, rootB);
-    } else if (rankA > rankB) {
-      this.parent.set(rootB, rootA);
-    } else {
-      this.parent.set(rootB, rootA);
-      this.rank.set(rootA, rankA + 1);
-    }
-
-    this.componentCount = Math.max(0, this.componentCount - 1);
-    return true;
-  }
 }
 
 class MinHeap {

@@ -6,7 +6,7 @@ import {
 import {
   generateWorld,
   normalizeParams,
-} from "./generator/worldGenerator.js?v=20260408v";
+} from "./generator/worldGenerator.js?v=20260409b";
 import {
   bindRangeLabels,
   getFormValues,
