@@ -1,6 +1,6 @@
 import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
 import { createViewport } from "../render/renderer.js?v=20260409a";
-import { findPlayableCityAtWorldPoint } from "../game/playQueries.js?v=20260409a";
+import { findPlayablePoiAtWorldPoint } from "../game/playQueries.js?v=20260409b";
 import { getPoiTitle } from "../poi/poiModel.js";
 
 export function createPlayController({
@@ -34,15 +34,16 @@ export function createPlayController({
     const canvasY = ((event.clientY - rect.top) / rect.height) * RENDER_HEIGHT;
     const viewport = createViewport(state.currentWorld, createPlayCamera());
     const worldPoint = viewport.canvasToWorld(canvasX, canvasY);
-    const hoveredCityId = state.playState.travel
+    const hoveredPoiId = state.playState.travel
       ? null
-      : findPlayableCityAtEvent(event);
+      : findPlayablePoiAtEvent(event);
 
-    if (hoveredCityId != null) {
-      const city = state.currentWorld.cities[hoveredCityId];
+    if (hoveredPoiId != null) {
+      const pois = state.currentWorld.pointsOfInterest ?? state.currentWorld.cities;
+      const poi = pois[hoveredPoiId];
       showHoverHit(
         {
-          title: getPoiTitle(city),
+          title: getPoiTitle(poi),
         },
         tooltip,
         event.clientX,
@@ -70,11 +71,13 @@ export function createPlayController({
 
     if (state.playState.travel) {
       if (
-        state.playState.hoveredCityId != null ||
-        state.playState.pressedCityId != null
+        state.playState.hoveredPoiId != null ||
+        state.playState.pressedPoiId != null
       ) {
         state.playState = {
           ...state.playState,
+          hoveredPoiId: null,
+          pressedPoiId: null,
           hoveredCityId: null,
           pressedCityId: null,
         };
@@ -84,20 +87,26 @@ export function createPlayController({
       return;
     }
 
-    if (hoveredCityId === state.playState.hoveredCityId) {
+    if (hoveredPoiId === state.playState.hoveredPoiId) {
       return;
     }
 
     state.playState = {
       ...state.playState,
-      hoveredCityId,
+      hoveredPoiId,
+      hoveredCityId: hoveredPoiId,
+      pressedPoiId:
+        state.playState.pressedPoiId &&
+        state.playState.pressedPoiId === hoveredPoiId
+          ? state.playState.pressedPoiId
+          : null,
       pressedCityId:
-        state.playState.pressedCityId &&
-        state.playState.pressedCityId === hoveredCityId
-          ? state.playState.pressedCityId
+        state.playState.pressedPoiId &&
+        state.playState.pressedPoiId === hoveredPoiId
+          ? state.playState.pressedPoiId
           : null,
     };
-    playCanvas.style.cursor = hoveredCityId != null ? "pointer" : "default";
+    playCanvas.style.cursor = hoveredPoiId != null ? "pointer" : "default";
     renderPlayWorld();
   });
 
@@ -112,15 +121,17 @@ export function createPlayController({
       return;
     }
 
-    const pressedCityId = findPlayableCityAtEvent(event);
-    if (pressedCityId == null) {
+    const pressedPoiId = findPlayablePoiAtEvent(event);
+    if (pressedPoiId == null) {
       return;
     }
 
     state.playState = {
       ...state.playState,
-      hoveredCityId: pressedCityId,
-      pressedCityId,
+      hoveredPoiId: pressedPoiId,
+      hoveredCityId: pressedPoiId,
+      pressedPoiId,
+      pressedCityId: pressedPoiId,
     };
     renderPlayWorld();
   });
@@ -135,19 +146,21 @@ export function createPlayController({
       return;
     }
 
-    const targetCityId = findPlayableCityAtEvent(event);
+    const targetPoiId = findPlayablePoiAtEvent(event);
     const shouldTravel =
-      targetCityId != null && targetCityId === state.playState.pressedCityId;
+      targetPoiId != null && targetPoiId === state.playState.pressedPoiId;
     state.playState = {
       ...state.playState,
+      pressedPoiId: null,
       pressedCityId: null,
-      hoveredCityId: targetCityId,
+      hoveredPoiId: targetPoiId,
+      hoveredCityId: targetPoiId,
     };
 
     if (shouldTravel) {
       const nextPlayState = beginTravel(
         state.playState,
-        targetCityId,
+        targetPoiId,
         state.currentWorld,
       );
       state.playState = {
@@ -170,6 +183,8 @@ export function createPlayController({
     clearHover(tooltip);
     state.playState = {
       ...state.playState,
+      hoveredPoiId: null,
+      pressedPoiId: null,
       hoveredCityId: null,
       pressedCityId: null,
     };
@@ -181,9 +196,9 @@ export function createPlayController({
     stopAnimation,
   };
 
-  function findPlayableCityAtEvent(event) {
-    const validCityIds = new Set(getValidTargetIds(state.playState));
-    if (validCityIds.size === 0) {
+  function findPlayablePoiAtEvent(event) {
+    const validPoiIds = new Set(getValidTargetIds(state.playState));
+    if (validPoiIds.size === 0) {
       return null;
     }
 
@@ -192,10 +207,10 @@ export function createPlayController({
     const canvasY = ((event.clientY - rect.top) / rect.height) * RENDER_HEIGHT;
     const viewport = createViewport(state.currentWorld, createPlayCamera());
     const worldPoint = viewport.canvasToWorld(canvasX, canvasY);
-    return findPlayableCityAtWorldPoint(
+    return findPlayablePoiAtWorldPoint(
       state.currentWorld,
       state.playState,
-      validCityIds,
+      validPoiIds,
       worldPoint.x,
       worldPoint.y,
     );

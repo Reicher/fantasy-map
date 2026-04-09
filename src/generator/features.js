@@ -1,18 +1,19 @@
 import { createRng } from "../random.js";
 import { clamp, coordsOf, distance } from "../utils.js";
-import { describePoi, generatePoiName } from "../poi/poiModel.js";
+import { describePoi } from "../poi/poiModel.js";
 
 const DEFAULT_POI_WEIGHT = 50;
 
-export function buildFeatureCatalog(world) {
+export function buildFeatureCatalog(world, names) {
   const roadDegreeByCityId = buildRoadDegreeByCityId(
     world.network,
     world.cities.length,
   );
-  const settlementPois = buildSettlementPois(world, roadDegreeByCityId);
+  const settlementPois = buildSettlementPois(world, names, roadDegreeByCityId);
   const signpostPois = buildDedicatedSignpostPois(world, settlementPois);
   const crashSitePois = buildDedicatedCrashSitePois(
     world,
+    names,
     settlementPois,
     signpostPois,
   );
@@ -33,15 +34,14 @@ export function buildFeatureCatalog(world) {
   };
 }
 
-function buildSettlementPois(world, roadDegreeByCityId) {
+function buildSettlementPois(world, names, roadDegreeByCityId) {
   const descriptor = describePoi({ marker: "settlement", roadDegree: 0 });
-  const fallbackNameRng = createRng(`${world.params.seed}::poi-settlements`);
 
   return world.cities.map((city) => {
     const roadDegree = roadDegreeByCityId[city.id] ?? 0;
     const name = String(city.name ?? "").trim()
       ? city.name
-      : generatePoiName(fallbackNameRng.fork(`settlement-${city.id}`), "settlement");
+      : names.pointOfInterestName("settlement", `settlement-${city.id}`);
     const enriched = {
       ...city,
       name,
@@ -176,7 +176,7 @@ function buildDedicatedSignpostPois(world, settlementPois) {
   });
 }
 
-function buildDedicatedCrashSitePois(world, settlementPois, signpostPois) {
+function buildDedicatedCrashSitePois(world, names, settlementPois, signpostPois) {
   const roads = world.roads?.roads ?? [];
   if (!roads.length) {
     return [];
@@ -317,17 +317,13 @@ function buildDedicatedCrashSitePois(world, settlementPois, signpostPois) {
   });
 
   const descriptor = describePoi({ marker: "crash-site", roadDegree: 2 });
-  const nameRng = createRng(`${world.params.seed}::poi-crash-names`);
   const baseId = settlementPois.length + signpostPois.length;
   return selected.map((entry, index) => ({
     id: baseId + index,
     cell: entry.cell,
     x: entry.x,
     y: entry.y,
-    name: generatePoiName(
-      nameRng.fork(`crash-${entry.cell}-${index}`),
-      "crash-site",
-    ),
+    name: names.pointOfInterestName("crash-site", `crash-${entry.cell}-${index}`),
     marker: descriptor.marker,
     kind: descriptor.kind,
     roadDegree: entry.degree,

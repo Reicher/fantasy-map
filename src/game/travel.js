@@ -2,6 +2,10 @@ import { BIOME_INFO } from "../config.js";
 import { isSnowCell } from "../generator/surfaceModel.js";
 import { dedupePoints } from "../utils.js";
 import { regionAtCell, regionAtPosition } from "./playQueries.js";
+import {
+  advanceTimeOfDayHours,
+  DEFAULT_TIME_OF_DAY_HOURS,
+} from "./timeOfDay.js";
 
 export const TRAVEL_SPEED = 3.75;
 const TRAVEL_BIOME_BANDS = {
@@ -11,13 +15,13 @@ const TRAVEL_BIOME_BANDS = {
 };
 
 export function createPlayState(world) {
-  const currentCityId =
-    world.playerStart?.cityId ?? world.cities[0]?.id ?? null;
-  const currentCity =
-    currentCityId == null ? null : world.cities[currentCityId];
+  const pois = getWorldPois(world);
+  const currentPoiId =
+    world.playerStart?.poiId ?? world.playerStart?.cityId ?? pois[0]?.id ?? null;
+  const currentPoi = currentPoiId == null ? null : pois[currentPoiId];
   const lastRegionId =
-    currentCity && currentCity.cell != null
-      ? (regionAtCell(world, currentCity.cell)?.id ?? null)
+    currentPoi && currentPoi.cell != null
+      ? (regionAtCell(world, currentPoi.cell)?.id ?? null)
       : null;
   const discoveredCells = new Uint8Array(
     world.terrain.width * world.terrain.height,
@@ -25,15 +29,19 @@ export function createPlayState(world) {
   revealAroundPosition(
     world,
     discoveredCells,
-    currentCity ? { x: currentCity.x, y: currentCity.y } : null,
+    currentPoi ? { x: currentPoi.x, y: currentPoi.y } : null,
   );
 
   return {
     graph: world.travelGraph,
     viewMode: "map",
-    currentCityId,
-    position: currentCity ? { x: currentCity.x, y: currentCity.y } : null,
+    timeOfDayHours: DEFAULT_TIME_OF_DAY_HOURS,
+    currentPoiId,
+    currentCityId: currentPoiId,
+    position: currentPoi ? { x: currentPoi.x, y: currentPoi.y } : null,
     lastRegionId,
+    hoveredPoiId: null,
+    pressedPoiId: null,
     hoveredCityId: null,
     pressedCityId: null,
     travel: null,
@@ -51,10 +59,11 @@ export function getValidTargetIds(playState) {
     return [];
   }
 
-  return [...(playState.graph.get(playState.currentCityId)?.keys() ?? [])];
+  const currentPoiId = playState.currentPoiId ?? playState.currentCityId;
+  return [...(playState.graph.get(currentPoiId)?.keys() ?? [])];
 }
 
-export function beginTravel(playState, targetCityId, world = null) {
+export function beginTravel(playState, targetPoiId, world = null) {
   if (!playState) {
     return playState;
   }
@@ -63,7 +72,8 @@ export function beginTravel(playState, targetCityId, world = null) {
     return playState;
   }
 
-  const path = playState.graph.get(playState.currentCityId)?.get(targetCityId);
+  const currentPoiId = playState.currentPoiId ?? playState.currentCityId;
+  const path = playState.graph.get(currentPoiId)?.get(targetPoiId);
   if (!path) {
     return playState;
   }
@@ -75,12 +85,14 @@ export function beginTravel(playState, targetCityId, world = null) {
   return {
     ...playState,
     travel: createTravel(
-      playState.currentCityId,
-      targetCityId,
+      currentPoiId,
+      targetPoiId,
       path.points,
       path.routeType,
       biomeBandSegments,
     ),
+    hoveredPoiId: null,
+    pressedPoiId: null,
     hoveredCityId: null,
     pressedCityId: null,
   };
@@ -91,6 +103,10 @@ export function advanceTravel(playState, world, deltaMs) {
     return playState;
   }
 
+  const nextTimeOfDayHours = advanceTimeOfDayHours(
+    playState.timeOfDayHours,
+    deltaMs,
+  );
   const nextProgress = Math.min(
     playState.travel.totalLength,
     playState.travel.progress + (deltaMs / 1000) * TRAVEL_SPEED,
@@ -108,8 +124,11 @@ export function advanceTravel(playState, world, deltaMs) {
   const revealed = revealAroundPosition(world, discoveredCells, sample.point);
 
   if (nextProgress >= playState.travel.totalLength - 0.0001) {
-    const city = world.cities[playState.travel.targetCityId];
-    const finalPosition = city ? { x: city.x, y: city.y } : sample.point;
+    const pois = getWorldPois(world);
+    const targetPoiId =
+      playState.travel.targetPoiId ?? playState.travel.targetCityId ?? null;
+    const poi = targetPoiId == null ? null : pois[targetPoiId];
+    const finalPosition = poi ? { x: poi.x, y: poi.y } : sample.point;
     const finalReveal = revealAroundPosition(
       world,
       discoveredCells,
@@ -117,11 +136,13 @@ export function advanceTravel(playState, world, deltaMs) {
     );
     return {
       ...playState,
-      currentCityId: playState.travel.targetCityId,
+      timeOfDayHours: nextTimeOfDayHours,
+      currentPoiId: targetPoiId,
+      currentCityId: targetPoiId,
       position: finalPosition,
       lastRegionId:
-        city && city.cell != null
-          ? (regionAtCell(world, city.cell)?.id ?? lastRegionId)
+        poi && poi.cell != null
+          ? (regionAtCell(world, poi.cell)?.id ?? lastRegionId)
           : lastRegionId,
       travel: null,
       discoveredCells,
@@ -131,6 +152,7 @@ export function advanceTravel(playState, world, deltaMs) {
 
   return {
     ...playState,
+    timeOfDayHours: nextTimeOfDayHours,
     position: sample.point,
     lastRegionId,
     discoveredCells,
@@ -143,8 +165,8 @@ export function advanceTravel(playState, world, deltaMs) {
 }
 
 function createTravel(
-  startCityId,
-  targetCityId,
+  startPoiId,
+  targetPoiId,
   points,
   routeType = "road",
   biomeBandSegments = createEmptyTravelBiomeBands(),
@@ -162,8 +184,10 @@ function createTravel(
   }
 
   return {
-    startCityId,
-    targetCityId,
+    startPoiId,
+    targetPoiId,
+    startCityId: startPoiId,
+    targetCityId: targetPoiId,
     routeType,
     points: normalizedPoints,
     segmentLengths,
@@ -453,6 +477,10 @@ function isSnowPoint(world, position) {
     world.climate.temperature[index],
     true,
   );
+}
+
+function getWorldPois(world) {
+  return world?.pointsOfInterest ?? world?.cities ?? [];
 }
 
 function revealAroundPosition(world, discoveredCells, position) {

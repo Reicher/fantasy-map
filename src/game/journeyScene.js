@@ -17,13 +17,17 @@ import {
   buildJourneyStrip,
   extendStripWithTravel,
   PARALLAX_SPEED,
-} from "./journey/journeyStrip.js?v=20260409o";
+} from "./journey/journeyStrip.js?v=20260409q";
 import { buildTravelBiomeBandSegments } from "./travel.js?v=20260409c";
 import {
   drawPoiMarkerOnCanvas,
   drawJourneyTreeOnCanvas,
   drawPlayerFigure,
-} from "./journey/journeyStyle.js?v=20260409j";
+} from "./journey/journeyStyle.js?v=20260409l";
+import {
+  DEFAULT_TIME_OF_DAY_HOURS,
+  normalizeTimeOfDayHours,
+} from "./timeOfDay.js";
 
 // ---------------------------------------------------------------------------
 // Layout
@@ -47,17 +51,18 @@ const IDLE_PREVIEW_POINT_COUNT = 14;
 const IDLE_PREVIEW_SPAN_MIN = 14;
 const IDLE_PREVIEW_SPAN_MAX = 34;
 
-// Sky gradient – lighter at the horizon to reinforce atmospheric depth
-const SKY_TOP = "rgb(152, 204, 240)";
-const SKY_BTM = "rgb(210, 228, 240)";
+// Sky colour presets used by the time-of-day interpolator.
+const DAY_SKY_TOP_RGB = [140, 197, 236];
+const DAY_SKY_BOTTOM_RGB = [210, 228, 240];
+const TWILIGHT_SKY_TOP_RGB = [79, 109, 171];
+const TWILIGHT_SKY_BOTTOM_RGB = [246, 170, 120];
+const NIGHT_SKY_TOP_RGB = [14, 24, 48];
+const NIGHT_SKY_BOTTOM_RGB = [49, 70, 104];
 
 // Atmospheric haze per silhouette layer: how much the top of each layer
 // fades toward the sky horizon colour. 0 = none, 1 = full sky colour.
 const LAYER_HAZE = { far: 0.42, mid: 0.20, near2: 0.07, near1: 0, foreground: 0 };
-// RGB decomposition of SKY_BTM – must stay in sync with the value above.
-const SKY_HAZE_R = 210;
-const SKY_HAZE_G = 228;
-const SKY_HAZE_B = 240;
+const TAU = Math.PI * 2;
 
 // ---------------------------------------------------------------------------
 // Factory
@@ -258,14 +263,16 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
 
     // Clear
     ctx.clearRect(0, 0, viewW, viewH);
+    const skyState = createSkyState(playState?.timeOfDayHours, viewW, viewH);
+    const skyHazeRgb = skyState.horizonRgb;
 
     // 1. Sky (fully static)
-    drawSky(ctx, viewW, viewH);
+    drawSky(ctx, viewW, viewH, skyState);
 
     // 2. Ocean horizon (fully static – behind all silhouette layers).
     // Tall terrain in the far layer (mountains, forest, highlands) naturally
     // paints over this; flat terrain (plains, ocean biome) lets it show through.
-    drawOceanHorizon(ctx, viewW, viewH);
+    drawOceanHorizon(ctx, viewW, viewH, skyState);
 
     if (!strip) return;
 
@@ -278,17 +285,17 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     // and canvasX = stripX - layerStripLeft
 
     // 3. Far (slowest)
-    drawSilhouetteLayer(ctx, strip, "far", scrollX, playerX, viewW);
+    drawSilhouetteLayer(ctx, strip, "far", scrollX, playerX, viewW, skyHazeRgb);
 
     // 4. Mid
-    drawSilhouetteLayer(ctx, strip, "mid", scrollX, playerX, viewW);
+    drawSilhouetteLayer(ctx, strip, "mid", scrollX, playerX, viewW, skyHazeRgb);
 
     // 5. Near2
-    drawSilhouetteLayer(ctx, strip, "near2", scrollX, playerX, viewW);
+    drawSilhouetteLayer(ctx, strip, "near2", scrollX, playerX, viewW, skyHazeRgb);
     drawTreeDecorationsForLayer(ctx, strip, "near2", scrollX, playerX, viewW);
 
     // 6. Near1
-    drawSilhouetteLayer(ctx, strip, "near1", scrollX, playerX, viewW);
+    drawSilhouetteLayer(ctx, strip, "near1", scrollX, playerX, viewW, skyHazeRgb);
     drawTreeDecorationsForLayer(ctx, strip, "near1", scrollX, playerX, viewW);
 
     // 7. Ground (flat solid bands, ground speed = 1.0)
@@ -317,9 +324,10 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       isTraveling ? state.walkFrame : 0,
     );
 
-    // 10. Foreground (fastest – in front of player and POI markers)
-    drawSilhouetteLayer(ctx, strip, "foreground", scrollX, playerX, viewW);
+    // 10. Foreground sprite layer (fastest – in front of player and POI markers)
+    // No polygon fill here; only sprite props (trees/cacti/etc.) should swish past.
     drawForegroundCanopyTrees(ctx, strip, scrollX, playerX, viewW, viewH);
+    drawNightVeil(ctx, viewW, viewH, skyState);
 
     // 11. Debug overlay (segment boundaries) – only when enabled
     if (debug) {
@@ -331,12 +339,16 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
   // Layer drawing
   // -------------------------------------------------------------------------
 
-  function drawSky(ctx, viewW, viewH) {
-    const grad = ctx.createLinearGradient(0, 0, 0, viewH * 0.72);
-    grad.addColorStop(0, SKY_TOP);
-    grad.addColorStop(1, SKY_BTM);
+  function drawSky(ctx, viewW, viewH, skyState) {
+    const grad = ctx.createLinearGradient(0, 0, 0, viewH * 0.78);
+    grad.addColorStop(0, rgbCssFromArray(skyState.topRgb));
+    grad.addColorStop(0.62, rgbCssFromArray(skyState.middleRgb));
+    grad.addColorStop(1, rgbCssFromArray(skyState.bottomRgb));
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, viewW, viewH);
+
+    drawSun(ctx, skyState);
+    drawMoon(ctx, skyState);
   }
 
   /**
@@ -345,18 +357,26 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
    * forest, highlands) in the far layer naturally mask it while flat biomes
    * (plains, desert, ocean) let it show through near the horizon.
    */
-  function drawOceanHorizon(ctx, viewW, viewH) {
+  function drawOceanHorizon(ctx, viewW, viewH, skyState) {
     const top    = Math.round(viewH * 0.42); // matches silhouetteZoneTop in strip
     const bottom = Math.round(viewH * 0.67); // matches groundTopY in strip
     const h = bottom - top;
+    const horizon = skyState.horizonRgb;
+    const daylight = skyState.daylight;
+    const night = skyState.night;
+    const twilight = skyState.twilight;
+    const nearHorizon = lerpRgb(horizon, [183, 208, 230], daylight * 0.5);
+    const midOcean = lerpRgb([55, 86, 125], [96, 152, 188], daylight);
+    const deepOcean = lerpRgb([38, 62, 96], [63, 114, 155], daylight);
+    const floorOcean = lerpRgb([28, 46, 76], [50, 100, 144], daylight);
 
     // Main ocean gradient: airy horizon haze at top → deep ocean blue at bottom
     const ocean = ctx.createLinearGradient(0, top, 0, bottom);
-    ocean.addColorStop(0.00, `rgb(${SKY_HAZE_R}, ${SKY_HAZE_G}, ${SKY_HAZE_B})`); // flush with sky horizon
-    ocean.addColorStop(0.12, 'rgb(168, 200, 222)'); // pale ocean near horizon
-    ocean.addColorStop(0.38, 'rgb(98,  150, 186)'); // mid ocean
-    ocean.addColorStop(0.70, 'rgb(72,  122, 162)'); // deeper ocean
-    ocean.addColorStop(1.00, 'rgb(60,  108, 150)'); // darkest – bottom of zone
+    ocean.addColorStop(0.00, rgbCssFromArray(horizon)); // flush with sky horizon
+    ocean.addColorStop(0.12, rgbCssFromArray(nearHorizon)); // pale ocean near horizon
+    ocean.addColorStop(0.38, rgbCssFromArray(midOcean)); // mid ocean
+    ocean.addColorStop(0.70, rgbCssFromArray(deepOcean)); // deeper ocean
+    ocean.addColorStop(1.00, rgbCssFromArray(floorOcean)); // darkest – bottom of zone
     ctx.fillStyle = ocean;
     ctx.fillRect(0, top, viewW, h);
 
@@ -364,7 +384,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     const glareY = top + Math.round(h * 0.10);
     const glare = ctx.createLinearGradient(0, glareY - 1, 0, glareY + 3);
     glare.addColorStop(0,   'rgba(255, 255, 255, 0)');
-    glare.addColorStop(0.4, 'rgba(255, 255, 255, 0.28)');
+    glare.addColorStop(0.4, `rgba(255, 255, 255, ${0.11 + daylight * 0.2 + twilight * 0.1 - night * 0.07})`);
     glare.addColorStop(1,   'rgba(255, 255, 255, 0)');
     ctx.fillStyle = glare;
     ctx.fillRect(0, glareY - 1, viewW, 4);
@@ -414,7 +434,15 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     }
   }
 
-  function drawSilhouetteLayer(ctx, strip, layerName, scrollX, playerX, viewW) {
+  function drawSilhouetteLayer(
+    ctx,
+    strip,
+    layerName,
+    scrollX,
+    playerX,
+    viewW,
+    skyHazeRgb,
+  ) {
     const segs = strip.layerSegments[layerName];
     if (!segs?.length) return;
 
@@ -455,8 +483,8 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
         ctx.save();
         ctx.clip();
         const slices = Math.max(2, Math.ceil(seg.stripWidth));
-        const topA = tintRgbWithSky(seg.colorA, haze);
-        const topB = tintRgbWithSky(seg.colorB, haze);
+        const topA = tintRgbWithSky(seg.colorA, haze, skyHazeRgb);
+        const topB = tintRgbWithSky(seg.colorB, haze, skyHazeRgb);
         for (let slice = 0; slice < slices; slice += 1) {
           const t0 = slice / slices;
           const t1 = (slice + 1) / slices;
@@ -482,7 +510,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
         hGrad.addColorStop(1, `rgb(${seg.colorB[0]},${seg.colorB[1]},${seg.colorB[2]})`);
         fillStyle = hGrad;
       } else if (haze > 0 && seg.colorRgb) {
-        const topColor = tintRgbWithSky(seg.colorRgb, haze);
+        const topColor = tintRgbWithSky(seg.colorRgb, haze, skyHazeRgb);
         const vGrad = ctx.createLinearGradient(0, topY, 0, bottomY);
         vGrad.addColorStop(0, rgbCssFromArray(topColor));
         vGrad.addColorStop(1, seg.color);
@@ -965,12 +993,13 @@ function clampValue(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function tintRgbWithSky(rgb, haze) {
+function tintRgbWithSky(rgb, haze, skyRgb = DAY_SKY_BOTTOM_RGB) {
   const [r, g, b] = rgb;
+  const [skyR, skyG, skyB] = skyRgb;
   return [
-    r * (1 - haze) + SKY_HAZE_R * haze,
-    g * (1 - haze) + SKY_HAZE_G * haze,
-    b * (1 - haze) + SKY_HAZE_B * haze,
+    r * (1 - haze) + skyR * haze,
+    g * (1 - haze) + skyG * haze,
+    b * (1 - haze) + skyB * haze,
   ];
 }
 
@@ -984,4 +1013,141 @@ function lerpRgb(a, b, t) {
 
 function rgbCssFromArray(rgb) {
   return `rgb(${Math.round(rgb[0])},${Math.round(rgb[1])},${Math.round(rgb[2])})`;
+}
+
+function createSkyState(timeOfDayHours, viewW, viewH) {
+  const hour = normalizeTimeOfDayHours(
+    Number.isFinite(timeOfDayHours) ? timeOfDayHours : DEFAULT_TIME_OF_DAY_HOURS,
+  );
+  const horizonY = Math.round(viewH * 0.67);
+  const orbitCenterX = viewW / 2;
+  const orbitRadiusX = Math.max(80, viewW * 0.5 - Math.max(18, viewW * 0.02));
+  const orbitRadiusY = Math.max(64, horizonY - Math.max(54, viewH * 0.065));
+  const angle = ((hour - 12) / 24) * TAU - Math.PI / 2;
+  const sunPos = {
+    x: orbitCenterX + Math.cos(angle) * orbitRadiusX,
+    y: horizonY + Math.sin(angle) * orbitRadiusY,
+  };
+  const moonAngle = angle + Math.PI;
+  const moonPos = {
+    x: orbitCenterX + Math.cos(moonAngle) * orbitRadiusX,
+    y: horizonY + Math.sin(moonAngle) * orbitRadiusY,
+  };
+  const sunAltitude = clampValue(
+    (horizonY - sunPos.y) / orbitRadiusY,
+    -1,
+    1,
+  );
+  const moonAltitude = clampValue(
+    (horizonY - moonPos.y) / orbitRadiusY,
+    -1,
+    1,
+  );
+  const daylight = clamp01((sunAltitude + 0.16) / 1.16);
+  const night = 1 - daylight;
+  const twilight = clamp01(1 - Math.abs(sunAltitude) * 2.4);
+  const twilightTopWeight = twilight * (0.3 + night * 0.15);
+  const twilightBottomWeight = twilight * (0.62 + night * 0.2);
+  const baseTop = lerpRgb(NIGHT_SKY_TOP_RGB, DAY_SKY_TOP_RGB, daylight);
+  const baseBottom = lerpRgb(NIGHT_SKY_BOTTOM_RGB, DAY_SKY_BOTTOM_RGB, daylight);
+  const topRgb = lerpRgb(baseTop, TWILIGHT_SKY_TOP_RGB, twilightTopWeight);
+  const bottomRgb = lerpRgb(
+    baseBottom,
+    TWILIGHT_SKY_BOTTOM_RGB,
+    twilightBottomWeight,
+  );
+  const middleRgb = lerpRgb(topRgb, bottomRgb, 0.5);
+  const horizonRgb = lerpRgb(
+    bottomRgb,
+    [248, 206, 150],
+    twilight * (0.34 + daylight * 0.16),
+  );
+  const sunVisible = clamp01((sunAltitude + 0.18) / 0.48);
+  const moonVisible = clamp01((moonAltitude + 0.2) / 0.54) * (0.35 + night * 0.72);
+
+  return {
+    hour,
+    daylight,
+    night,
+    twilight,
+    horizonY,
+    topRgb,
+    middleRgb,
+    bottomRgb,
+    horizonRgb,
+    sun: {
+      ...sunPos,
+      visible: sunVisible,
+      radius: Math.max(14, viewH * 0.024),
+    },
+    moon: {
+      ...moonPos,
+      visible: moonVisible,
+      radius: Math.max(10, viewH * 0.017),
+    },
+  };
+}
+
+function drawSun(ctx, skyState) {
+  const sun = skyState.sun;
+  if (sun.visible <= 0.001) return;
+  const glowRadius = sun.radius * (3.4 + skyState.twilight * 0.8);
+  const glow = ctx.createRadialGradient(
+    sun.x,
+    sun.y,
+    0,
+    sun.x,
+    sun.y,
+    glowRadius,
+  );
+  glow.addColorStop(
+    0,
+    `rgba(255, 246, 208, ${0.5 * sun.visible + 0.2 * skyState.daylight})`,
+  );
+  glow.addColorStop(0.5, `rgba(255, 198, 128, ${0.35 * sun.visible})`);
+  glow.addColorStop(1, "rgba(255, 182, 102, 0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(sun.x, sun.y, glowRadius, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = `rgba(255, 242, 201, ${0.72 + sun.visible * 0.22})`;
+  ctx.beginPath();
+  ctx.arc(sun.x, sun.y, sun.radius, 0, TAU);
+  ctx.fill();
+}
+
+function drawMoon(ctx, skyState) {
+  const moon = skyState.moon;
+  if (moon.visible <= 0.001) return;
+  const glowRadius = moon.radius * 3.1;
+  const glow = ctx.createRadialGradient(
+    moon.x,
+    moon.y,
+    0,
+    moon.x,
+    moon.y,
+    glowRadius,
+  );
+  glow.addColorStop(0, `rgba(237, 244, 255, ${0.18 + moon.visible * 0.3})`);
+  glow.addColorStop(1, "rgba(215, 231, 255, 0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(moon.x, moon.y, glowRadius, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = `rgba(235, 243, 255, ${0.44 + moon.visible * 0.5})`;
+  ctx.beginPath();
+  ctx.arc(moon.x, moon.y, moon.radius, 0, TAU);
+  ctx.fill();
+}
+
+function drawNightVeil(ctx, viewW, viewH, skyState) {
+  const alpha = clamp01(skyState.night * 0.46 + skyState.twilight * 0.08);
+  if (alpha <= 0.01) return;
+  const veil = ctx.createLinearGradient(0, 0, 0, viewH);
+  veil.addColorStop(0, `rgba(6, 11, 24, ${alpha * 0.72})`);
+  veil.addColorStop(1, `rgba(8, 14, 26, ${alpha})`);
+  ctx.fillStyle = veil;
+  ctx.fillRect(0, 0, viewW, viewH);
 }

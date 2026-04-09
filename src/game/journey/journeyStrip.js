@@ -5,7 +5,7 @@ import {
   buildSilhouetteTopEdge,
   sampleSilhouetteAtX,
   rgbToCss,
-} from "./journeyStyle.js?v=20260409j";
+} from "./journeyStyle.js?v=20260409l";
 
 // ---------------------------------------------------------------------------
 // Fixed offsets for parallel sampling lines (world-space units).
@@ -27,17 +27,26 @@ const PLAYER_X_FRAC = 0.22;
 // Transition blend zone in pixels
 const BLEND_ZONE_PX = 48;
 const TREE_BLOCKED_BIOMES = new Set(["ocean", "lake"]);
-const TREE_ALLOWED_BIOMES = new Set(["forest", "rainforest", "highlands", "tundra", "desert"]);
+const TREE_ALLOWED_BIOMES = new Set([
+  "forest",
+  "rainforest",
+  "highlands",
+  "tundra",
+  "desert",
+  "plains",
+]);
 const FOREGROUND_SUPPRESSED_BIOMES = new Set(["forest", "rainforest", "tundra"]);
 const FOREGROUND_TREE_ALLOWED_BIOMES = new Set([
   ...FOREGROUND_SUPPRESSED_BIOMES,
   "desert",
+  "plains",
 ]);
 const PINE_TEMPERATE_VARIANT_COUNT = 3;
 const PINE_SNOW_VARIANT_START = 3;
 const PINE_SNOW_VARIANT_COUNT = 2;
 const DEAD_TREE_VARIANT_COUNT = 3;
 const CACTUS_VARIANT_COUNT = 2;
+const PLAINS_TUFT_VARIANT_COUNT = 4;
 const DEAD_TREE_CHANCE_BY_BIOME = Object.freeze({
   ocean: 0,
   lake: 0,
@@ -56,24 +65,46 @@ const DEFAULT_TREE_SPAWN_TUNING = Object.freeze({
 });
 const DESERT_TREE_SPAWN_TUNING_BY_LAYER = Object.freeze({
   ground: Object.freeze({
-    segmentChance: 0.24,
-    countScale: 0.24,
-    maxCount: 2,
+    segmentChance: 1,
+    countScale: 0.56,
+    maxCount: 5,
   }),
   near1: Object.freeze({
-    segmentChance: 0.18,
-    countScale: 0.16,
-    maxCount: 2,
+    segmentChance: 1,
+    countScale: 0.44,
+    maxCount: 4,
   }),
   near2: Object.freeze({
-    segmentChance: 0.14,
-    countScale: 0.14,
-    maxCount: 1,
+    segmentChance: 1,
+    countScale: 0.34,
+    maxCount: 3,
   }),
   foreground: Object.freeze({
-    segmentChance: 0.12,
-    countScale: 0.14,
-    maxCount: 2,
+    segmentChance: 1,
+    countScale: 0.32,
+    maxCount: 4,
+  }),
+});
+const PLAINS_TREE_SPAWN_TUNING_BY_LAYER = Object.freeze({
+  ground: Object.freeze({
+    segmentChance: 1,
+    countScale: 0.76,
+    maxCount: 6,
+  }),
+  near1: Object.freeze({
+    segmentChance: 1,
+    countScale: 0.62,
+    maxCount: 5,
+  }),
+  near2: Object.freeze({
+    segmentChance: 1,
+    countScale: 0.52,
+    maxCount: 4,
+  }),
+  foreground: Object.freeze({
+    segmentChance: 1,
+    countScale: 0.46,
+    maxCount: 5,
   }),
 });
 const TREE_LAYER_CONFIG = {
@@ -808,6 +839,15 @@ function buildLayerTreeDecorations(layerSegments, layerName) {
 
 function pickTreeVisualForBiome(biomeKey, isSnow, roll = 0) {
   const normalizedRoll = clamp01(roll);
+  if (biomeKey === "plains") {
+    return {
+      treeFamily: "tuft",
+      variantIndex: Math.min(
+        PLAINS_TUFT_VARIANT_COUNT - 1,
+        Math.floor(normalizedRoll * PLAINS_TUFT_VARIANT_COUNT),
+      ),
+    };
+  }
   if (biomeKey === "desert") {
     return {
       treeFamily: "cactus",
@@ -879,6 +919,9 @@ function computeTreeSpawnCountForSegment(baseCount, biomeKey, layerName, rng) {
 function getTreeSpawnTuningForBiome(layerName, biomeKey) {
   if (biomeKey === "desert") {
     return DESERT_TREE_SPAWN_TUNING_BY_LAYER[layerName] ?? DEFAULT_TREE_SPAWN_TUNING;
+  }
+  if (biomeKey === "plains") {
+    return PLAINS_TREE_SPAWN_TUNING_BY_LAYER[layerName] ?? DEFAULT_TREE_SPAWN_TUNING;
   }
   return DEFAULT_TREE_SPAWN_TUNING;
 }

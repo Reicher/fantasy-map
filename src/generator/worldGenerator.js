@@ -1,11 +1,11 @@
 import { PARAM_SCHEMA } from "../config.js";
-import { createNameGenerator } from "../naming.js?v=20260402d";
+import { createNameGenerator } from "../naming.js?v=20260409b";
 import { createRng } from "../random.js";
 import { clamp } from "../utils.js";
 import { generateCities } from "./cities.js?v=20260409a";
 import { generateClimate } from "./climate.js?v=20260407a";
 import { compileGeometry } from "./compileGeometry.js?v=20260403a";
-import { buildFeatureCatalog } from "./features.js?v=20260409a";
+import { buildFeatureCatalog } from "./features.js?v=20260409b";
 import { generateHydrology } from "./hydrology.js?v=20260407a";
 import { buildWorldNetwork } from "./network.js?v=20260401i";
 import { applyFeatureNames } from "./nameFeatures.js";
@@ -61,11 +61,12 @@ export function generateWorld(inputParams) {
   // Build an initial network on settlement-only cities. Feature generation for
   // signposts/crash-sites depends on junctions and road topology in this pass.
   world.network = buildWorldNetwork(world);
-  world.features = buildFeatureCatalog(world);
+  world.features = buildFeatureCatalog(world, names);
 
   // Promote all POI entries (settlement + signpost + crash-site) into the
   // playable node list so travel and click-targeting can include them.
-  world.cities = world.features.pointsOfInterest.map((poi) => ({ ...poi }));
+  world.pointsOfInterest = world.features.pointsOfInterest.map((poi) => ({ ...poi }));
+  world.cities = world.pointsOfInterest;
 
   // Rebuild network and travel graph with full POI set.
   world.network = buildWorldNetwork(world);
@@ -83,17 +84,18 @@ function selectPlayerStart(cities, seed) {
     return null;
   }
 
-  const coastalCities = cities.filter((city) => city.coastal);
-  const candidates = coastalCities.length > 0 ? coastalCities : cities;
+  const coastalPois = cities.filter((poi) => poi.coastal);
+  const candidates = coastalPois.length > 0 ? coastalPois : cities;
   const rng = createRng(`${seed}::player-start`);
-  const city = rng.weighted(candidates, (candidate) =>
+  const poi = rng.weighted(candidates, (candidate) =>
     Math.max(1, candidate.score),
   );
 
   return {
-    cityId: city.id,
-    x: city.x,
-    y: city.y,
+    poiId: poi.id,
+    cityId: poi.id,
+    x: poi.x,
+    y: poi.y,
   };
 }
 

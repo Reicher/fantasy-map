@@ -26,7 +26,7 @@ export function createEditorSession({ refs, state, syncViewUi }) {
         renderOptions.showSnow ? 1 : 0,
         renderOptions.showBiomeLabels ? 1 : 0,
         renderOptions.showPoiLabels ? 1 : 0,
-        playerStart?.cityId ?? "-",
+        playerStart?.poiId ?? playerStart?.cityId ?? "-",
         playerStart?.x?.toFixed?.(2) ?? "-",
         playerStart?.y?.toFixed?.(2) ?? "-",
       ].join(":");
@@ -202,20 +202,22 @@ export function createEditorSession({ refs, state, syncViewUi }) {
     );
   }
 
-  function setEditorPlayerStart(cityId) {
-    if (!state.currentWorld || cityId == null) {
+  function setEditorPlayerStart(poiId) {
+    if (!state.currentWorld || poiId == null) {
       return false;
     }
 
-    const city = state.currentWorld.cities[cityId];
-    if (!city) {
+    const pois = state.currentWorld.pointsOfInterest ?? state.currentWorld.cities;
+    const poi = pois[poiId];
+    if (!poi) {
       return false;
     }
 
     state.currentWorld.playerStart = {
-      cityId,
-      x: city.x,
-      y: city.y,
+      poiId,
+      cityId: poiId,
+      x: poi.x,
+      y: poi.y,
     };
     state.playState = createPlayState(state.currentWorld);
     return true;
@@ -226,13 +228,16 @@ export function createEditorSession({ refs, state, syncViewUi }) {
       return state.currentWorld.playerStart;
     }
 
-    if (state.playState?.currentCityId != null) {
-      const city = state.currentWorld?.cities?.[state.playState.currentCityId];
-      if (city) {
+    const currentPoiId = state.playState?.currentPoiId ?? state.playState?.currentCityId;
+    if (currentPoiId != null) {
+      const pois = state.currentWorld?.pointsOfInterest ?? state.currentWorld?.cities;
+      const poi = pois?.[currentPoiId];
+      if (poi) {
         return {
-          cityId: city.id,
-          x: city.x,
-          y: city.y,
+          poiId: poi.id,
+          cityId: poi.id,
+          x: poi.x,
+          y: poi.y,
         };
       }
     }

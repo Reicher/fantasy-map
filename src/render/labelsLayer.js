@@ -117,8 +117,8 @@ function getPoiCollisionScale(viewport) {
 
 function resolveVisiblePoiIdsForLabels(options = {}) {
   return (
-    options.cityOverlay?.visiblePoiIds ??
     options.poiOverlay?.visiblePoiIds ??
+    options.cityOverlay?.visiblePoiIds ??
     options.visiblePoiIds ??
     null
   );

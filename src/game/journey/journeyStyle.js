@@ -24,17 +24,21 @@ const JOURNEY_TREE_SPRITESHEET_BY_FAMILY = {
   cactus: createJourneyTreeSpritesheet(
     new URL("../../assets/journey/journey-cacti.png", import.meta.url).href,
   ),
+  tuft: createJourneyTreeSpritesheet(
+    new URL("../../assets/journey/journey-plains-tufts.png", import.meta.url).href,
+  ),
 };
 const JOURNEY_TREE_VARIANT_COUNT_BY_FAMILY = {
   pine: 5,
   dead: 3,
   cactus: 2,
+  tuft: 4,
 };
 const TREE_CHROMA_TOLERANCE = 24;
 const SNOW_AFFECTED_LAYERS = new Set(["ground", "near1", "near2", "foreground"]);
-const JOURNEY_NEAR_SHADE_SCALE = {
-  near1: 0.36,
-  near2: 0.34,
+const JOURNEY_NEAR_LIGHTEN_FRAC = {
+  near1: 0.08,
+  near2: 0.16,
 };
 const journeyTreeVariantsByFamily = new Map();
 
@@ -46,19 +50,27 @@ export function getBiomeLayerColorRgb(
   { isSnow = false } = {},
 ) {
   const normalizedBiome = normalizeBiomeKey(biomeKey) ?? "plains";
+  const biomeBase = hexToRgb(getBiomeBaseHex(normalizedBiome));
   if (isSnow && layerDepth === "ground") {
     return SNOW_GROUND_RGB;
+  }
+  if (layerDepth === "ground") {
+    return biomeBase;
+  }
+  if (layerDepth === "near1" || layerDepth === "near2") {
+    const nearBase = isSnow ? SNOW_GROUND_RGB : biomeBase;
+    const nearLightenFrac = JOURNEY_NEAR_LIGHTEN_FRAC[layerDepth] ?? 0;
+    return mixRgb(nearBase, [255, 255, 255], nearLightenFrac);
   }
 
   const base = isSnow && SNOW_AFFECTED_LAYERS.has(layerDepth)
     ? SNOW_GROUND_RGB
-    : hexToRgb(getBiomeBaseHex(normalizedBiome));
+    : biomeBase;
   const shade = DEPTH_SHADE_BY_LAYER[layerDepth] ?? DEPTH_SHADE_BY_LAYER.ground;
   if (!shade.target) {
     return isSnow ? capToGamePalette(base) : capToBiomePalette(base, normalizedBiome);
   }
-  const shadeScale = JOURNEY_NEAR_SHADE_SCALE[layerDepth] ?? 1;
-  const mixed = mixRgb(base, shade.target, shade.amount * shadeScale);
+  const mixed = mixRgb(base, shade.target, shade.amount);
   return isSnow ? capToGamePalette(mixed) : capToBiomePalette(mixed, normalizedBiome);
 }
 
@@ -498,6 +510,7 @@ function computeTreeGroundAnchorFrac(imageData, frameHeight) {
 function resolveTreeFamily(treeFamily) {
   if (treeFamily === "dead") return "dead";
   if (treeFamily === "cactus") return "cactus";
+  if (treeFamily === "tuft") return "tuft";
   return "pine";
 }
 

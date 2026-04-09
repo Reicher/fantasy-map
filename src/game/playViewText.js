@@ -11,18 +11,21 @@ export function describePlayView(world, playState) {
   }
 
   if (playState.travel) {
-    const fromCity = world.cities[playState.travel.startCityId];
-    const toCity = world.cities[playState.travel.targetCityId];
+    const pois = world.pointsOfInterest ?? world.cities;
+    const fromPoi =
+      pois[playState.travel.startPoiId ?? playState.travel.startCityId];
+    const toPoi =
+      pois[playState.travel.targetPoiId ?? playState.travel.targetCityId];
     const region =
       playState.travel.routeType === "sea-route"
         ? null
         : regionFromPlayState(world, playState);
-    const regionForBiome = travelRegionFromPlayState(world, playState, toCity);
+    const regionForBiome = travelRegionFromPlayState(world, playState, toPoi);
 
     return {
       title:
-        fromCity && toCity
-          ? `${getPoiTitle(fromCity)} till ${getPoiTitle(toCity)}`
+        fromPoi && toPoi
+          ? `${getPoiTitle(fromPoi)} till ${getPoiTitle(toPoi)}`
           : "På resa",
       subtitle:
         playState.travel.routeType === "sea-route"
@@ -32,13 +35,14 @@ export function describePlayView(world, playState) {
     };
   }
 
-  const city = world.cities[playState.currentCityId];
-  const region = city
-    ? regionAtCell(world, city.cell)
+  const pois = world.pointsOfInterest ?? world.cities;
+  const currentPoi = pois[playState.currentPoiId ?? playState.currentCityId];
+  const region = currentPoi
+    ? regionAtCell(world, currentPoi.cell)
     : regionAtPosition(world, playState.position);
 
   return {
-    title: city ? getPoiTitle(city) : "Okänd plats",
+    title: currentPoi ? getPoiTitle(currentPoi) : "Okänd plats",
     subtitle: formatRegionLine(region) ?? "Okänd region",
     biomeKey: region?.biome ?? null,
   };
@@ -62,14 +66,14 @@ function regionFromPlayState(world, playState) {
   return regionAtPosition(world, playState?.position);
 }
 
-function travelRegionFromPlayState(world, playState, fallbackCity) {
+function travelRegionFromPlayState(world, playState, fallbackPoi) {
   const lastRegion = regionFromPlayState(world, playState);
   if (lastRegion) {
     return lastRegion;
   }
 
-  if (fallbackCity?.cell != null) {
-    return regionAtCell(world, fallbackCity.cell);
+  if (fallbackPoi?.cell != null) {
+    return regionAtCell(world, fallbackPoi.cell);
   }
 
   return regionAtPosition(world, playState?.position);

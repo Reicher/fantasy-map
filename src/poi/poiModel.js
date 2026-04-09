@@ -1,81 +1,5 @@
 export const POI_MARKERS = ["settlement", "crash-site", "signpost"];
 
-const FAMILY_NAMES = [
-  "Reicher",
-  "Hanson",
-  "Karlsson",
-  "Persson",
-  "Lind",
-  "Ek",
-  "Nyberg",
-  "Soder",
-  "Wik",
-  "Berg",
-  "Malm",
-  "Grette",
-  "Halvar",
-  "Boman",
-  "Torn",
-  "Ljung",
-];
-
-const CRASH_EVENT = [
-  "vurpa",
-  "snedlandning",
-  "tvarkast",
-  "nodbroms",
-  "felparkering",
-  "dyngfall",
-  "sista stopp",
-  "karrhaveri",
-];
-
-const CRASH_OBJECT = [
-  "vrak",
-  "kraschkarran",
-  "forlorade lasset",
-  "trasiga vagnen",
-  "korkade lasset",
-  "stumphjulet",
-];
-
-const SETTLEMENT_PLACE = [
-  "kyrkan",
-  "taltlaget",
-  "stugan",
-  "lilla garden",
-  "utposten",
-  "eldplatsen",
-  "vagnlaget",
-  "provisoriet",
-];
-
-const SETTLEMENT_PERSONAL = [
-  "Familjen {family}",
-  "{family}s lilla lager",
-  "{family}s rastplats",
-  "{family}s kok",
-  "{family}s taltplats",
-  "{family}s lilla bruk",
-];
-
-const SETTLEMENT_INSTITUTION = [
-  "{adj} {place}",
-  "{adj} kapellet",
-  "{adj} samlingshyddan",
-];
-
-const SETTLEMENT_ADJ = [
-  "Grettiska",
-  "Norra",
-  "Sodra",
-  "Vastra",
-  "Ostra",
-  "Gamla",
-  "Nya",
-  "Lilla",
-];
-
 export function normalizePoiMarker(marker) {
   return POI_MARKERS.includes(marker) ? marker : "settlement";
 }
@@ -186,72 +110,12 @@ export function describePoi(poi = {}) {
   }
 }
 
-export function generatePoiName(rng, marker) {
-  const normalized = normalizePoiMarker(marker);
-  if (normalized === "signpost") {
-    return "";
-  }
-
-  if (normalized === "crash-site") {
-    return generateCrashSiteName(rng);
-  }
-
-  return generateSettlementName(rng);
-}
-
 export function getPoiTitle(poi = {}) {
   const name = String(poi.name ?? "").trim();
   if (name) {
     return name;
   }
   return describePoi(poi).subtitle;
-}
-
-function generateCrashSiteName(rng) {
-  const family = rng.pick(FAMILY_NAMES);
-  const event = rng.pick(CRASH_EVENT);
-  const object = rng.pick(CRASH_OBJECT);
-  const mode = rng.int(0, 5);
-
-  switch (mode) {
-    case 0:
-      return `${family}s ${event}`;
-    case 1:
-      return `Familjen ${family}s ${object}`;
-    case 2:
-      return `${family}s ${object}`;
-    case 3:
-      return `Okant ${object}`;
-    case 4:
-      return `${family}s ${event} vid diket`;
-    default:
-      return `Den dar ${object}`;
-  }
-}
-
-function generateSettlementName(rng) {
-  const family = rng.pick(FAMILY_NAMES);
-  const place = rng.pick(SETTLEMENT_PLACE);
-  const adj = rng.pick(SETTLEMENT_ADJ);
-  const mode = rng.int(0, 4);
-
-  if (mode <= 1) {
-    return fillTemplate(rng.pick(SETTLEMENT_PERSONAL), { family, place, adj });
-  }
-  if (mode === 2) {
-    return fillTemplate(rng.pick(SETTLEMENT_INSTITUTION), { family, place, adj });
-  }
-  if (mode === 3) {
-    return `${adj} ${place}`;
-  }
-  return `Familjen ${family}`;
-}
-
-function fillTemplate(template, values) {
-  return template
-    .replaceAll("{family}", values.family)
-    .replaceAll("{place}", values.place)
-    .replaceAll("{adj}", values.adj);
 }
 
 function clamp01(value) {
