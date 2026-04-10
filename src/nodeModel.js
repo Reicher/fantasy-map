@@ -1,4 +1,4 @@
-export const NODE_MARKERS = ["settlement", "signpost", "abandoned"];
+const NODE_MARKERS = ["settlement", "signpost", "abandoned"];
 
 export function normalizeNodeMarker(marker) {
   return NODE_MARKERS.includes(marker) ? marker : "settlement";

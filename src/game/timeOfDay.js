@@ -1,5 +1,5 @@
 export const DEFAULT_TIME_OF_DAY_HOURS = 12;
-export const MOVING_HOURS_PER_REAL_SECOND = 0.4;
+const MOVING_HOURS_PER_REAL_SECOND = 0.4;
 const HOURS_PER_DAY = 24;
 
 export function normalizeTimeOfDayHours(hours) {

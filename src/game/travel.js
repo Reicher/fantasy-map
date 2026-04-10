@@ -3,7 +3,7 @@ import { dedupePoints } from "../utils.js";
 import { regionAtCell, regionAtPosition } from "./playQueries.js";
 import { DEFAULT_TIME_OF_DAY_HOURS } from "./timeOfDay.js";
 
-export const TRAVEL_SPEED = 3.75;
+const TRAVEL_SPEED = 3.75;
 const TRAVEL_BIOME_BANDS = {
   near: 0,
   mid: 5,
@@ -179,11 +179,7 @@ function createTravel(
   };
 }
 
-export function buildTravelBiomeSegments(world, points) {
-  return buildBiomeSegmentsFromPoints(world, dedupePoints(points));
-}
-
-export function buildOffsetTravelBiomeSegments(
+function buildOffsetTravelBiomeSegments(
   world,
   points,
   offsetDistance = TRAVEL_BIOME_BANDS.mid,

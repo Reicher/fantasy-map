@@ -1,7 +1,7 @@
 import { BIOME_KEYS } from "../config.js";
 import { clamp, coordsOf, distance } from "../utils.js";
 
-export const BIOME_HABITABILITY = {
+const BIOME_HABITABILITY = {
   [BIOME_KEYS.PLAINS]: 1,
   [BIOME_KEYS.FOREST]: 0.84,
   [BIOME_KEYS.RAINFOREST]: 0.64,

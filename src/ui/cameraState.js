@@ -1,4 +1,4 @@
-export const EDITOR_ZOOM_LEVELS = [1, 2, 3];
+const EDITOR_ZOOM_LEVELS = [1, 2, 3];
 
 export function createEditorCamera(world) {
   return {
@@ -89,7 +89,7 @@ export function isDefaultEditorCamera(world, camera) {
   );
 }
 
-export function getNearestEditorZoomIndex(zoom) {
+function getNearestEditorZoomIndex(zoom) {
   let nearestIndex = 0;
   let nearestDistance = Number.POSITIVE_INFINITY;
 

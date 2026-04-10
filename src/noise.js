@@ -6,7 +6,7 @@ function hashedValue(ix, iy, seed) {
   return h / 4294967295;
 }
 
-export function valueNoise2D(x, y, seed) {
+function valueNoise2D(x, y, seed) {
   const x0 = Math.floor(x);
   const y0 = Math.floor(y);
   const x1 = x0 + 1;

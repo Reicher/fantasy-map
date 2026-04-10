@@ -22,7 +22,7 @@ export const DEFAULT_PARAMS = {
   roadLoopiness: 50,
 };
 
-export const PARAM_LABELS = {
+const PARAM_LABELS = {
   mapSize: (value) => `${value}%`,
   mountainousness: (value) => `${value}%`,
   settlementDensity: (value) => `${value}%`,

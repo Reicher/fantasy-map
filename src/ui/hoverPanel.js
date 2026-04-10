@@ -9,7 +9,7 @@ export function showHoverHit(hit, tooltip, clientX, clientY) {
   showHoverContent(tooltip, renderHoverHtml(hit), clientX, clientY);
 }
 
-export function showHoverContent(tooltip, html, clientX, clientY) {
+function showHoverContent(tooltip, html, clientX, clientY) {
   if (!tooltip) {
     return;
   }

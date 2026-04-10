@@ -50,7 +50,7 @@ export const DEPTH_SHADE_BY_LAYER = {
 };
 
 // Hard cap palette for world-rendered colors (<= 45 entries).
-export const GAME_PALETTE_RGB = [
+const GAME_PALETTE_RGB = [
     [18, 14, 8],
     [28, 22, 14],
     [45, 42, 35],

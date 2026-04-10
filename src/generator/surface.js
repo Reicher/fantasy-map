@@ -104,7 +104,7 @@ function summarizeCells(cells, world) {
   };
 }
 
-export function traceExactLoops(cells, width) {
+function traceExactLoops(cells, width) {
   if (!cells.length) {
     return [];
   }

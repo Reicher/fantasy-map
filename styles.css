@@ -732,8 +732,7 @@ canvas[data-dragging="true"] {
   text-overflow: ellipsis;
 }
 
-.play-hud-button,
-.play-hud-icon-button {
+.play-hud-button {
   min-height: 40px;
   padding: 8px 13px;
   background: rgba(250, 245, 232, 0.16);
@@ -741,14 +740,6 @@ canvas[data-dragging="true"] {
   color: rgba(248, 240, 225, 0.96);
   box-shadow: none;
   font-size: 0.86rem;
-}
-
-.play-hud-icon-button {
-  width: 40px;
-  min-width: 40px;
-  padding: 0;
-  font-size: 1.02rem;
-  line-height: 1;
 }
 
 .play-hud-button--mode {
@@ -827,16 +818,9 @@ canvas[data-dragging="true"] {
     gap: 6px;
   }
 
-  .play-hud-button,
-  .play-hud-icon-button {
+  .play-hud-button {
     min-height: 34px;
     font-size: 0.78rem;
-  }
-
-  .play-hud-icon-button {
-    width: 34px;
-    min-width: 34px;
-    font-size: 0.88rem;
   }
 
   .play-location-line {

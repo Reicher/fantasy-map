@@ -50,7 +50,6 @@ const refs = {
   playBottomHud: document.querySelector("#play-bottom-hud"),
   playLocationLine: document.querySelector("#play-location-line"),
   playSwitchModeButton: document.querySelector("#play-switch-mode"),
-  playSettingsButton: document.querySelector("#play-settings"),
   playArrivalCue: document.querySelector("#play-arrival-cue"),
   playArrivalCueText: document.querySelector("#play-arrival-cue-text"),
   playToggleBiomeLabelsButton: document.querySelector(
@@ -138,9 +137,6 @@ const initialParams = persistedParams ?? {
 renderControlsFromSchema(refs.form, { initialTab: "karta" });
 hydrateForm(initialParams);
 bindRangeLabels();
-syncLabelButtons();
-syncModeUi();
-bootApp();
 
 refs.form.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -210,12 +206,6 @@ if (refs.playSwitchModeButton) {
     playSession.setPlayViewMode(
       state.playState.viewMode === "journey" ? "map" : "journey",
     );
-  });
-}
-
-if (refs.playSettingsButton) {
-  refs.playSettingsButton.addEventListener("click", () => {
-    // Placeholder for future settings.
   });
 }
 
@@ -382,6 +372,7 @@ syncLabelButtons();
 syncPlayZoomButtons();
 syncModeUi();
 syncViewUi();
+bootApp();
 
 function bootApp() {
   const start = () => {

@@ -53,6 +53,7 @@ const SETTLEMENT_APPROACH_PEAK_PENALTY = 6.0;
 const RIVER_COST_THRESHOLD = 0.06;
 const RIVER_BASE_PENALTY = 3.2;
 const RIVER_STRENGTH_SCALE = 4.2;
+const MAX_ROAD_USAGE = 65535;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -190,59 +191,38 @@ export function generateRoads(world) {
     for (const edge of mstEdges) {
       const fromSettlement = componentSettlements[edge.i];
       const toSettlement = componentSettlements[edge.j];
-
-      // Re-run pathfinding with the road-reuse discount now active.
-      const rawPath = findPath({
-        from: fromSettlement.cell,
-        to: toSettlement.cell,
+      const placedRoad = materializeRoad({
+        roads,
+        roadUsage,
+        settlementByCell,
+        fromSettlement,
+        toSettlement,
         width,
         height,
         size,
         baseCost,
         riverStrength,
-        roadUsage,
         settlementProximityPenalty,
-      });
-
-      if (!rawPath || rawPath.length < 2) {
-        continue;
-      }
-
-      // Trim the path at the last intermediate settlement node.  When road-reuse
-      // pulls the route through an already-connected settlement (e.g. H→A→B when
-      // H→A is already laid), only store the novel tail (A→B) to avoid
-      // drawing the same cells twice.
-      const { path: trimmed, anchorSettlement } = trimPathAtFirstAnchor(
-        rawPath,
-        settlementByCell,
-      );
-      if (trimmed.length < 2) {
-        continue;
-      }
-      const actualFromSettlement = anchorSettlement ?? fromSettlement;
-
-      roads.push({
-        id: roads.length,
-        type: "road",
-        settlementId: toSettlement.id,
-        fromSettlementId: actualFromSettlement.id,
-        cells: trimmed,
-        length: trimmed.length,
         cost: edge.cost,
       });
-
-      // Mark only the stored cells — not the full rawPath — so that
-      // roadUsage never contains cells absent from any road record.  A later
-      // trim must only anchor on cells that network.js will actually register
-      // as nodes (road endpoints), otherwise it produces dangling stubs.
-      for (const cell of trimmed) {
-        roadUsage[cell] = Math.min(roadUsage[cell] + 1, 65535);
+      if (!placedRoad) {
+        continue;
       }
 
       // Stamp a proximity penalty around each connected settlement so future roads
       // approach from a different angle rather than forking close to the node.
-      stampSettlementProximity(actualFromSettlement, settlementProximityPenalty, width, height);
-      stampSettlementProximity(toSettlement, settlementProximityPenalty, width, height);
+      stampSettlementProximity(
+        placedRoad.fromSettlement,
+        settlementProximityPenalty,
+        width,
+        height,
+      );
+      stampSettlementProximity(
+        placedRoad.toSettlement,
+        settlementProximityPenalty,
+        width,
+        height,
+      );
     }
   }
 
@@ -648,7 +628,7 @@ function addLoopEdges({
   // is this many times longer than the direct travel cost.
   // At low loopiness the threshold is high (very few extras).
   // At high loopiness the threshold is lower (more extras added).
-  const detourThreshold = lerp(3.5, 1.45, loopiness01);
+  const detourThreshold = 3.5 + (1.45 - 3.5) * loopiness01;
   const maxExtraEdges = Math.max(
     1,
     Math.round(settlements.length * loopiness01 * 0.55),
@@ -659,29 +639,18 @@ function addLoopEdges({
   for (const settlement of settlements) {
     settlementAdj.set(settlement.id, []);
   }
-  for (const road of roads) {
-    if (road.type !== "road") {
-      continue;
-    }
-    const { settlementId, fromSettlementId, cost } = road;
-    if (settlementId == null || fromSettlementId == null) {
-      continue;
-    }
-    settlementAdj.get(fromSettlementId)?.push({ neighborId: settlementId, cost });
-    settlementAdj.get(settlementId)?.push({ neighborId: fromSettlementId, cost });
-  }
 
   // Track which settlement pairs already have a direct road so we don't duplicate.
   const directlyConnected = new Set();
+
   for (const road of roads) {
-    if (
-      road.type !== "road" ||
-      road.settlementId == null ||
-      road.fromSettlementId == null
-    ) {
+    if (!isMaterializedRoad(road)) {
       continue;
     }
-    directlyConnected.add(pairKey(road.settlementId, road.fromSettlementId));
+    const { settlementId, fromSettlementId, cost } = road;
+    settlementAdj.get(fromSettlementId)?.push({ neighborId: settlementId, cost });
+    settlementAdj.get(settlementId)?.push({ neighborId: fromSettlementId, cost });
+    directlyConnected.add(pairKey(settlementId, fromSettlementId));
   }
 
   // All-pairs shortest network path via Dijkstra on the settlement graph.
@@ -736,44 +705,22 @@ function addLoopEdges({
     if (added >= maxExtraEdges) {
       break;
     }
-
-    const rawPath = findPath({
-      from: settlementA.cell,
-      to: settlementB.cell,
+    const placedRoad = materializeRoad({
+      roads,
+      roadUsage,
+      settlementByCell,
+      fromSettlement: settlementA,
+      toSettlement: settlementB,
       width,
       height,
       size,
       baseCost,
       riverStrength,
-      roadUsage,
       settlementProximityPenalty,
-    });
-
-    if (!rawPath || rawPath.length < 2) {
-      continue;
-    }
-
-    const { path: trimmed, anchorSettlement } = trimPathAtFirstAnchor(
-      rawPath,
-      settlementByCell,
-    );
-    if (trimmed.length < 2) {
-      continue;
-    }
-    const actualFromSettlement = anchorSettlement ?? settlementA;
-
-    roads.push({
-      id: roads.length,
-      type: "road",
-      settlementId: settlementB.id,
-      fromSettlementId: actualFromSettlement.id,
-      cells: trimmed,
-      length: trimmed.length,
       cost: directCost,
     });
-
-    for (const cell of trimmed) {
-      roadUsage[cell] = Math.min(roadUsage[cell] + 1, 65535);
+    if (!placedRoad) {
+      continue;
     }
 
     directlyConnected.add(key);
@@ -968,15 +915,18 @@ function findBestSeaRoute({
 }
 
 function getPortSettlements(component, settlements, harborBySettlementId) {
-  const coastal = component.settlementIds
+  const candidates = component.settlementIds
     .map((id) => settlements[id])
-    .filter((settlement) => settlement?.coastal && harborBySettlementId.has(settlement.id));
+    .filter((settlement) => settlement != null);
+  const coastal = candidates.filter(
+    (settlement) => settlement.coastal && harborBySettlementId.has(settlement.id),
+  );
   if (coastal.length > 0) {
     return coastal;
   }
-  return component.settlementIds
-    .map((id) => settlements[id])
-    .filter((settlement) => settlement != null && harborBySettlementId.has(settlement.id));
+  return candidates.filter((settlement) =>
+    harborBySettlementId.has(settlement.id),
+  );
 }
 
 function buildHarborMap(settlements, width, height, isLand, biome) {
@@ -1099,24 +1049,6 @@ function buildSeaLane(startCell, endCell, width, height, isLand, biome) {
 // ---------------------------------------------------------------------------
 
 /**
- * `path` is [toSettlement, ..., fromSettlement] (as returned by reconstructPath).
- *
- * Scan forward from the toSettlement end to find the first intermediate *settlement*
- * cell.  Return the head of the path up to and including that settlement — this
- * is the genuinely new segment; everything beyond is already covered by a
- * previously laid road that terminated at (or passed through) that settlement.
- *
- * We do NOT trim at bare road cells (non-settlement roadUsage > 0) because
- * network.js can only create a junction node at a cell that is a road
- * *endpoint*.  Trimming at a mid-road cell would leave the new road with a
- * dangling endpoint that has no network node, producing unconnected stubs.
- * Road-cell merging happens naturally through the ON_ROAD_COST_FACTOR: later
- * roads share cells with earlier ones, and network.js splits the earlier
- * road at those shared endpoints via its breakpoint-detection logic.
- *
- * If no intermediate settlement is found the full path is returned unchanged.
- */
-/**
  * Stamp a quadratic proximity penalty around `settlement` into `field`.  The settlement
  * cell itself is left at zero so roads can always reach their destination;
  * surrounding cells within SETTLEMENT_APPROACH_RADIUS get a penalty that peaks at
@@ -1152,24 +1084,9 @@ function stampSettlementProximity(settlement, field, width, height) {
   }
 }
 
-/**
- * `path` is [toSettlement, ..., fromSettlement] (as returned by reconstructPath).
- *
- * Scan forward from the toSettlement end to find the first intermediate *settlement*
- * cell.  Return the head [toSettlement, ..., intermediateSettlement] as the new road
- * segment; everything beyond is already reachable from that intermediate settlement
- * via a previously laid road.
- *
- * We intentionally do NOT trim at bare road cells.  A bare-road-cell endpoint
- * only becomes a valid network node if some road registers it as a terminal
- * endpoint.  If we trim at a road cell that is merely in the middle of an
- * earlier road, the trimmed settlement (fromSettlement) loses its only road record and
- * becomes a disconnected node with no travel-graph neighbours.
- *
- * Double-road overlaps from the on-road cost discount are handled instead by
- * keeping ON_ROAD_COST_FACTOR moderate enough that the pathfinder does not
- * take large detours along existing roads.
- */
+// `path` comes from reconstructPath() as [toSettlement, ..., fromSettlement].
+// If it passes through an intermediate settlement, keep only the leading
+// segment up to that settlement and skip the already-connected tail.
 function trimPathAtFirstAnchor(path, settlementByCell) {
   for (let i = 1; i <= path.length - 2; i += 1) {
     const settlement = settlementByCell.get(path[i]);
@@ -1206,8 +1123,81 @@ function pairKey(idA, idB) {
   return idA < idB ? `${idA}_${idB}` : `${idB}_${idA}`;
 }
 
-function lerp(a, b, t) {
-  return a + (b - a) * clamp(t, 0, 1);
+function isMaterializedRoad(road) {
+  return (
+    road?.type === "road" &&
+    road.settlementId != null &&
+    road.fromSettlementId != null
+  );
+}
+
+function pushRoadRecord(
+  roads,
+  { settlementId, fromSettlementId, cells, cost, type = "road" },
+) {
+  roads.push({
+    id: roads.length,
+    type,
+    settlementId,
+    fromSettlementId,
+    cells,
+    length: cells.length,
+    cost,
+  });
+}
+
+function incrementRoadUsage(roadUsage, cells) {
+  for (const cell of cells) {
+    roadUsage[cell] = Math.min(roadUsage[cell] + 1, MAX_ROAD_USAGE);
+  }
+}
+
+function materializeRoad({
+  roads,
+  roadUsage,
+  settlementByCell,
+  fromSettlement,
+  toSettlement,
+  width,
+  height,
+  size,
+  baseCost,
+  riverStrength,
+  settlementProximityPenalty,
+  cost,
+}) {
+  const rawPath = findPath({
+    from: fromSettlement.cell,
+    to: toSettlement.cell,
+    width,
+    height,
+    size,
+    baseCost,
+    riverStrength,
+    roadUsage,
+    settlementProximityPenalty,
+  });
+  if (!rawPath || rawPath.length < 2) {
+    return null;
+  }
+
+  const { path: trimmed, anchorSettlement } = trimPathAtFirstAnchor(
+    rawPath,
+    settlementByCell,
+  );
+  if (trimmed.length < 2) {
+    return null;
+  }
+
+  const actualFromSettlement = anchorSettlement ?? fromSettlement;
+  pushRoadRecord(roads, {
+    settlementId: toSettlement.id,
+    fromSettlementId: actualFromSettlement.id,
+    cells: trimmed,
+    cost,
+  });
+  incrementRoadUsage(roadUsage, trimmed);
+  return { fromSettlement: actualFromSettlement, toSettlement };
 }
 
 // ---------------------------------------------------------------------------
