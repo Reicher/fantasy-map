@@ -155,7 +155,7 @@ const FOREGROUND_TREE_CONFIG = {
   minSinkFrac: 0.24,
   maxSinkFrac: 0.42,
 };
-const POI_DECORATION_EXCLUSION_RADIUS_BY_LAYER = Object.freeze({
+const NODE_DECORATION_EXCLUSION_RADIUS_BY_LAYER = Object.freeze({
   ground: 158,
   groundDetails: 172,
   foreground: 228,
@@ -235,7 +235,7 @@ export function buildJourneyStrip(travel, viewW, viewH, options = {}) {
   // Total strip pixel width
   const totalStripPx = Math.ceil(extBeforePx + routePx + extAfterPx);
 
-  // POI marker positions on the strip (in strip-local pixel coords)
+  // Node marker positions on the strip (in strip-local pixel coords)
   // Start marker sits at extBeforePx (beginning of the route on the strip).
   // Dest  marker sits at extBeforePx + routePx (end of the route).
   const startMarkerStripX = extBeforePx;
@@ -637,7 +637,10 @@ function buildTreeDecorations(strip) {
 
 function buildGroundTrees(groundSegments, strip = null) {
   if (!groundSegments?.length) return [];
-  const poiExclusionZones = createPoiDecorationExclusionZones(strip, "ground");
+  const nodeExclusionZones = createNodeDecorationExclusionZones(
+    strip,
+    "ground",
+  );
   const trees = [];
 
   for (const segment of groundSegments) {
@@ -683,7 +686,7 @@ function buildGroundTrees(groundSegments, strip = null) {
         segStart,
         Math.min(segEnd, segStart + usableWidth * t + jitter),
       );
-      if (isInsidePoiDecorationExclusionZone(stripX, poiExclusionZones))
+      if (isInsideNodeDecorationExclusionZone(stripX, nodeExclusionZones))
         continue;
       const treeVisual = pickTreeVisualForBiome(
         segment.biomeKey,
@@ -714,7 +717,7 @@ function buildGroundTrees(groundSegments, strip = null) {
 
 function buildGroundDetails(groundSegments, strip = null) {
   if (!groundSegments?.length) return [];
-  const poiExclusionZones = createPoiDecorationExclusionZones(
+  const nodeExclusionZones = createNodeDecorationExclusionZones(
     strip,
     "groundDetails",
   );
@@ -749,7 +752,7 @@ function buildGroundDetails(groundSegments, strip = null) {
         segStart,
         Math.min(segEnd, segStart + usableWidth * t + jitter),
       );
-      if (isInsidePoiDecorationExclusionZone(stripX, poiExclusionZones))
+      if (isInsideNodeDecorationExclusionZone(stripX, nodeExclusionZones))
         continue;
       details.push({
         stripX,
@@ -767,7 +770,7 @@ function buildGroundDetails(groundSegments, strip = null) {
 
 function buildForegroundTrees(groundSegments, strip = null) {
   if (!groundSegments?.length) return [];
-  const poiExclusionZones = createPoiDecorationExclusionZones(
+  const nodeExclusionZones = createNodeDecorationExclusionZones(
     strip,
     "foreground",
   );
@@ -823,7 +826,7 @@ function buildForegroundTrees(groundSegments, strip = null) {
         segStart,
         Math.min(segEnd, segStart + usableWidth * t + jitter),
       );
-      if (isInsidePoiDecorationExclusionZone(stripX, poiExclusionZones))
+      if (isInsideNodeDecorationExclusionZone(stripX, nodeExclusionZones))
         continue;
       const treeVisual = pickTreeVisualForBiome(
         segment.biomeKey,
@@ -855,7 +858,10 @@ function buildForegroundTrees(groundSegments, strip = null) {
 function buildLayerTreeDecorations(layerSegments, layerName, strip = null) {
   const config = TREE_LAYER_CONFIG[layerName];
   if (!config || !layerSegments?.length) return [];
-  const poiExclusionZones = createPoiDecorationExclusionZones(strip, layerName);
+  const nodeExclusionZones = createNodeDecorationExclusionZones(
+    strip,
+    layerName,
+  );
 
   const trees = [];
   for (const segment of layerSegments) {
@@ -891,7 +897,7 @@ function buildLayerTreeDecorations(layerSegments, layerName, strip = null) {
         segStart,
         Math.min(segEnd, segStart + usableWidth * t + jitter),
       );
-      if (isInsidePoiDecorationExclusionZone(cursor, poiExclusionZones))
+      if (isInsideNodeDecorationExclusionZone(cursor, nodeExclusionZones))
         continue;
       const treeVisual = pickTreeVisualForBiome(
         segment.biomeKey,
@@ -1044,9 +1050,9 @@ function getGroundDetailMotifs(biomeKey, isSnow) {
   return DETAIL_THEME_BY_BIOME[biomeKey] ?? ["tuft", "stone", "pebble", "tuft"];
 }
 
-function createPoiDecorationExclusionZones(strip, layerName) {
+function createNodeDecorationExclusionZones(strip, layerName) {
   if (!strip) return [];
-  const baseRadius = POI_DECORATION_EXCLUSION_RADIUS_BY_LAYER[layerName] ?? 0;
+  const baseRadius = NODE_DECORATION_EXCLUSION_RADIUS_BY_LAYER[layerName] ?? 0;
   if (baseRadius <= 0) return [];
   const speed = PARALLAX_SPEED[layerName] ?? 1;
   const startX = Number(strip.startMarkerStripX);
@@ -1067,7 +1073,7 @@ function createPoiDecorationExclusionZones(strip, layerName) {
   return zones;
 }
 
-function isInsidePoiDecorationExclusionZone(stripX, zones) {
+function isInsideNodeDecorationExclusionZone(stripX, zones) {
   if (!zones?.length || !Number.isFinite(stripX)) return false;
   for (const zone of zones) {
     if (!zone) continue;

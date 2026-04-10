@@ -100,9 +100,7 @@ export function createPlaySession({ refs, state, syncModeUi }) {
         const renderOptions = {
           showSnow: state.renderOptions.showSnow,
           showBiomeLabels: state.playMapOptions.showBiomeLabels,
-          showNodeLabels:
-            state.playMapOptions.showNodeLabels ??
-            state.playMapOptions.showPoiLabels,
+          showNodeLabels: state.playMapOptions.showNodeLabels,
           visibleNodeIds,
           discoveredCells: state.playState.discoveredCells,
           cameraState: createPlayCamera(),
@@ -116,10 +114,8 @@ export function createPlaySession({ refs, state, syncModeUi }) {
             validNodeIds,
             visibleNodeIds,
             onlyValid: true,
-            hoveredNodeId:
-              state.playState.hoveredNodeId ?? state.playState.hoveredCityId,
-            pressedNodeId:
-              state.playState.pressedNodeId ?? state.playState.pressedCityId,
+            hoveredNodeId: state.playState.hoveredNodeId,
+            pressedNodeId: state.playState.pressedNodeId,
           },
           travelDebug:
             state.playMapOptions.debugTravelSampling && state.playState.travel
@@ -232,8 +228,7 @@ export function createPlaySession({ refs, state, syncModeUi }) {
 
   function getVisibleNodeIds(world, playState, validNodeIds) {
     const visibleIds = new Set(validNodeIds);
-    // support both new (currentNodeId) and legacy (currentCityId) field names
-    const currentId = playState?.currentNodeId ?? playState?.currentCityId;
+    const currentId = playState?.currentNodeId;
     if (currentId != null) {
       visibleIds.add(currentId);
     }
@@ -243,11 +238,7 @@ export function createPlaySession({ refs, state, syncModeUi }) {
       return Array.from(visibleIds);
     }
 
-    const nodes =
-      world.features?.pointsOfInterest ??
-      world.pointsOfInterest ??
-      world.cities ??
-      [];
+    const nodes = world.features?.nodes ?? [];
     for (const node of nodes) {
       if (!node || !Number.isFinite(node.x) || !Number.isFinite(node.y)) {
         continue;

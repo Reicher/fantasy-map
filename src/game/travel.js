@@ -12,12 +12,12 @@ const TRAVEL_BIOME_BANDS = {
 
 export function createPlayState(world) {
   const currentNodeId =
-    world.playerStart?.cityId ?? world.cities[0]?.id ?? null;
-  const currentCity =
-    currentNodeId == null ? null : world.cities[currentNodeId];
+    world.playerStart?.nodeId ?? world.features?.nodes?.[0]?.id ?? null;
+  const currentNode =
+    currentNodeId == null ? null : world.features?.nodes?.[currentNodeId];
   const lastRegionId =
-    currentCity && currentCity.cell != null
-      ? (regionAtCell(world, currentCity.cell)?.id ?? null)
+    currentNode && currentNode.cell != null
+      ? (regionAtCell(world, currentNode.cell)?.id ?? null)
       : null;
   const discoveredCells = new Uint8Array(
     world.terrain.width * world.terrain.height,
@@ -25,7 +25,7 @@ export function createPlayState(world) {
   revealAroundPosition(
     world,
     discoveredCells,
-    currentCity ? { x: currentCity.x, y: currentCity.y } : null,
+    currentNode ? { x: currentNode.x, y: currentNode.y } : null,
   );
 
   return {
@@ -33,7 +33,7 @@ export function createPlayState(world) {
     viewMode: "map",
     timeOfDayHours: DEFAULT_TIME_OF_DAY_HOURS,
     currentNodeId,
-    position: currentCity ? { x: currentCity.x, y: currentCity.y } : null,
+    position: currentNode ? { x: currentNode.x, y: currentNode.y } : null,
     lastRegionId,
     hoveredNodeId: null,
     pressedNodeId: null,
@@ -109,11 +109,9 @@ export function advanceTravel(playState, world, deltaMs) {
   const revealed = revealAroundPosition(world, discoveredCells, sample.point);
 
   if (nextProgress >= playState.travel.totalLength - 0.0001) {
-    const city = world.cities[playState.travel.targetNodeId];
-    const targetPoi =
-      city ?? world.features?.pointsOfInterest?.[playState.travel.targetNodeId];
-    const finalPosition = targetPoi
-      ? { x: targetPoi.x, y: targetPoi.y }
+    const targetNode = world.features?.nodes?.[playState.travel.targetNodeId];
+    const finalPosition = targetNode
+      ? { x: targetNode.x, y: targetNode.y }
       : sample.point;
     const finalReveal = revealAroundPosition(
       world,
@@ -125,8 +123,8 @@ export function advanceTravel(playState, world, deltaMs) {
       currentNodeId: playState.travel.targetNodeId,
       position: finalPosition,
       lastRegionId:
-        targetPoi && targetPoi.cell != null
-          ? (regionAtCell(world, targetPoi.cell)?.id ?? lastRegionId)
+        targetNode && targetNode.cell != null
+          ? (regionAtCell(world, targetNode.cell)?.id ?? lastRegionId)
           : lastRegionId,
       travel: null,
       discoveredCells,

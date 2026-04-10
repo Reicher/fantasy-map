@@ -115,20 +115,20 @@ function compileLabelGeometry(world) {
     ),
   }));
 
-  const nodes = world.features.pointsOfInterest.map((poi) => ({
-    id: poi.id,
-    kind: poi.kind ?? "city",
-    marker: poi.marker ?? "dot",
-    name: poi.name,
-    x: poi.x + 0.5,
-    y: poi.y + 0.5,
+  const nodes = world.features.nodes.map((node) => ({
+    id: node.id,
+    kind: node.kind ?? "settlement",
+    marker: node.marker ?? "settlement",
+    name: node.name,
+    x: node.x + 0.5,
+    y: node.y + 0.5,
   }));
 
   return {
     biomeRegions,
     mountainRegions,
     lakes,
-    pointsOfInterest: nodes,
+    nodes: nodes,
   };
 }
 

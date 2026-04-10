@@ -4,7 +4,7 @@ export function buildWorldStats(world) {
 
   return {
     "Landandel": `${Math.round((landTiles / totalTiles) * 100)}%`,
-    "POI": String(world.features.pointsOfInterest.length),
+    "Noder": String(world.features.nodes.length),
     "Vägar": String(world.features.roads.length),
     "Floder": String(world.features.rivers.length),
     "Sjöar": String(world.features.lakes.length),

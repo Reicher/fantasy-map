@@ -2,19 +2,17 @@ import { coordsOf, dedupePoints } from "../utils.js";
 
 export function buildTravelGraph(network, width) {
   const graph = new Map();
-  const stopNodes = network.nodes.filter(
-    (node) => node.cityId != null || node.poiId != null,
-  );
+  const stopNodes = network.nodes.filter((node) => node.nodeId != null);
 
   for (const stopNode of stopNodes) {
-    const graphKey = stopNode.cityId ?? stopNode.poiId;
-    graph.set(graphKey, collectCityNeighbors(stopNode.id, network, width));
+    const graphKey = stopNode.nodeId;
+    graph.set(graphKey, collectNodeNeighbors(stopNode.id, network, width));
   }
 
   return graph;
 }
 
-function collectCityNeighbors(startNodeId, network, width) {
+function collectNodeNeighbors(startNodeId, network, width) {
   const startNode = network.nodes[startNodeId];
   const frontier = [
     {
@@ -25,7 +23,7 @@ function collectCityNeighbors(startNodeId, network, width) {
     },
   ];
   const bestCostByNodeId = new Map([[startNodeId, 0]]);
-  const bestByCityId = new Map();
+  const bestByNodeId = new Map();
 
   while (frontier.length > 0) {
     frontier.sort((a, b) => a.cost - b.cost);
@@ -44,12 +42,12 @@ function collectCityNeighbors(startNodeId, network, width) {
       const nextCost = current.cost + link.length;
       const nextHasSeaRoute = current.hasSeaRoute || link.type === "sea-route";
 
-      const nextStopId = nextNode.cityId ?? nextNode.poiId ?? null;
+      const nextStopId = nextNode.nodeId ?? null;
       if (nextStopId != null && nextNode.id !== startNodeId) {
-        const previous = bestByCityId.get(nextStopId);
+        const previous = bestByNodeId.get(nextStopId);
         if (!previous || nextCost < previous.cost) {
-          bestByCityId.set(nextStopId, {
-            cityId: nextStopId,
+          bestByNodeId.set(nextStopId, {
+            nodeId: nextStopId,
             points: nextPoints,
             cost: nextCost,
             routeType: nextHasSeaRoute ? "sea-route" : "road",
@@ -83,9 +81,9 @@ function collectCityNeighbors(startNodeId, network, width) {
   }
 
   const neighbors = new Map();
-  for (const [cityId, value] of bestByCityId.entries()) {
-    neighbors.set(cityId, {
-      cityId,
+  for (const [nodeId, value] of bestByNodeId.entries()) {
+    neighbors.set(nodeId, {
+      nodeId,
       points: value.points,
       routeType: value.routeType ?? "road",
     });

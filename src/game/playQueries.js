@@ -46,8 +46,7 @@ export function findNodeAtWorldPoint(
   }
 
   let best = null;
-  const nodes =
-    world.features?.pointsOfInterest ?? world.pointsOfInterest ?? world.cities;
+  const nodes = world.features?.nodes ?? [];
   if (!nodes) {
     return null;
   }

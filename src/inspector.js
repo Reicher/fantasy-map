@@ -7,12 +7,7 @@ export function inspectWorldAt(world, worldX, worldY, renderContext = null) {
   const x = clamp(Math.floor(worldX), 0, world.terrain.width - 1);
   const y = clamp(Math.floor(worldY), 0, world.terrain.height - 1);
   const index = y * world.terrain.width + x;
-  const {
-    pointsOfInterest: nodes,
-    lakes,
-    biomeRegions,
-    indices,
-  } = world.features;
+  const { nodes, lakes, biomeRegions, indices } = world.features;
 
   let nearestNode = null;
   for (const node of nodes) {

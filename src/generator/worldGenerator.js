@@ -1,6 +1,6 @@
 import { createNameGenerator } from "../naming.js?v=20260402d";
 import { createRng } from "../random.js";
-import { generateCities } from "./cities.js?v=20260407a";
+import { generateSettlements } from "./settlements.js?v=20260407a";
 import { generateClimate } from "./climate.js?v=20260407a";
 import { compileGeometry } from "./compileGeometry.js?v=20260409c";
 import {
@@ -11,7 +11,7 @@ import { generateHydrology } from "./hydrology.js?v=20260407a";
 import { buildWorldNetwork } from "./network.js?v=20260401i";
 import { applyFeatureNames } from "./nameFeatures.js";
 import { buildRegions } from "./regions.js?v=20260402c";
-import { generateRoads } from "./roads.js?v=20260409b";
+import { generateRoads } from "./roads.js?v=20260409c";
 import { buildSurfaceGeometry } from "./surface.js?v=20260403b";
 import { generateTerrain } from "./terrain.js?v=20260401i";
 import { buildTravelGraph } from "./travelGraph.js?v=20260409b";
@@ -23,7 +23,7 @@ export function normalizeParams(input) {
     seed: String(input.seed ?? "saltwind-01").trim() || "saltwind-01",
     mapSize: clamp(asNumber(input.mapSize, 58), 10, 100),
     mountainousness: clamp(asNumber(input.mountainousness, 54), 0, 100),
-    cityDensity: clamp(asNumber(input.cityDensity, 20), 0, 100),
+    settlementDensity: clamp(asNumber(input.settlementDensity, 20), 0, 100),
     riverAmount: clamp(asNumber(input.riverAmount, 56), 0, 100),
     lakeAmount: clamp(asNumber(input.lakeAmount, legacyWater), 0, 100),
     lakeSize: clamp(asNumber(input.lakeSize, legacyWater), 0, 100),
@@ -34,19 +34,17 @@ export function normalizeParams(input) {
     fogVisionRadius: clamp(asNumber(input.fogVisionRadius, 18), 6, 40),
     temperatureBias: clamp(asNumber(input.temperatureBias, 50), 0, 100),
     moistureBias: clamp(asNumber(input.moistureBias, 50), 0, 100),
-    coastalBias: clamp(asNumber(input.coastalBias, 50), 0, 100),
-    roadShortcutAggression: clamp(
-      asNumber(input.roadShortcutAggression, 50),
+    // inlandPreference: 0 = fully water-oriented, 100 = fully inland.
+    // Legacy: if only coastalBias is provided, invert it.
+    inlandPreference: clamp(
+      asNumber(
+        input.inlandPreference ?? 100 - asNumber(input.coastalBias, 50),
+        50,
+      ),
       0,
       100,
     ),
-    roadReuseBias: clamp(asNumber(input.roadReuseBias, 50), 0, 100),
-    roadCityAvoidance: clamp(asNumber(input.roadCityAvoidance, 50), 0, 100),
-    roadMaxConnectionsPerCity: clamp(
-      asNumber(input.roadMaxConnectionsPerCity, 5),
-      2,
-      8,
-    ),
+    roadLoopiness: clamp(asNumber(input.roadLoopiness, 50), 0, 100),
   };
 }
 
@@ -68,8 +66,8 @@ export function generateWorld(inputParams) {
   };
 
   world.surface = buildSurfaceGeometry(world);
-  world.cities = generateCities(world, names);
-  world.playerStart = selectPlayerStart(world.cities, params.seed);
+  world.settlements = generateSettlements(world, names);
+  world.playerStart = selectPlayerStart(world.settlements, params.seed);
   world.roads = generateRoads(world);
   world.crashSiteCells = preselectCrashSiteCells(world);
   world.network = buildWorldNetwork(world);
@@ -82,22 +80,22 @@ export function generateWorld(inputParams) {
   return world;
 }
 
-function selectPlayerStart(cities, seed) {
-  if (!cities.length) {
+function selectPlayerStart(settlements, seed) {
+  if (!settlements.length) {
     return null;
   }
 
-  const coastalCities = cities.filter((city) => city.coastal);
-  const candidates = coastalCities.length > 0 ? coastalCities : cities;
+  const coastalSettlements = settlements.filter((settlement) => settlement.coastal);
+  const candidates = coastalSettlements.length > 0 ? coastalSettlements : settlements;
   const rng = createRng(`${seed}::player-start`);
-  const city = rng.weighted(candidates, (candidate) =>
+  const settlement = rng.weighted(candidates, (candidate) =>
     Math.max(1, candidate.score),
   );
 
   return {
-    cityId: city.id,
-    x: city.x,
-    y: city.y,
+    nodeId: settlement.id,
+    x: settlement.x,
+    y: settlement.y,
   };
 }
 

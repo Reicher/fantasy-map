@@ -11,7 +11,7 @@ export const BIOME_HABITABILITY = {
   [BIOME_KEYS.MOUNTAIN]: 0.05,
 };
 
-export function buildCityCandidates({
+export function buildSettlementCandidates({
   width,
   size,
   isLand,
@@ -25,9 +25,11 @@ export function buildCityCandidates({
   riverStrength,
   lakeIdByCell,
   rng,
-  coastalBias = 50,
+  inlandPreference = 50,
 }) {
-  const coastalBias01 = clamp(coastalBias / 100, 0, 1);
+  // coastalBias01 = 1.0 → fully water-oriented (inlandPreference=0)
+  // coastalBias01 = 0.0 → fully inland-oriented (inlandPreference=100)
+  const coastalBias01 = 1 - clamp(inlandPreference / 100, 0, 1);
   const coastalWeight = 0.16 + coastalBias01 * 0.56;
   const candidates = [];
   let habitableArea = 0;
@@ -110,12 +112,12 @@ export function buildCityCandidates({
   return { candidates, habitableArea };
 }
 
-export function selectCities({ width, candidates, desiredCount, minSpacing }) {
-  const cities = [];
+export function selectSettlements({ width, candidates, desiredCount, minSpacing }) {
+  const settlements = [];
 
-  fillCities({
+  fillSettlements({
     width,
-    cities,
+    settlements,
     desiredCount,
     pool: candidates.filter(
       (candidate) => !candidate.oddball || candidate.score > 0.42,
@@ -124,10 +126,10 @@ export function selectCities({ width, candidates, desiredCount, minSpacing }) {
     preferSpread: false,
   });
 
-  if (cities.length < desiredCount) {
-    fillCities({
+  if (settlements.length < desiredCount) {
+    fillSettlements({
       width,
-      cities,
+      settlements,
       desiredCount,
       pool: candidates,
       spacing: Math.max(8, minSpacing - 1.25),
@@ -135,21 +137,21 @@ export function selectCities({ width, candidates, desiredCount, minSpacing }) {
     });
   }
 
-  return cities;
+  return settlements;
 }
 
-export function ensureInlandCities({
+export function ensureInlandSettlements({
   width,
   rng,
   candidates,
-  cities,
+  settlements,
   desiredCount,
   minSpacing,
   density,
 }) {
   const targetInlandCount = density >= 0.82 ? 2 : 1;
-  let currentInlandCount = cities.filter(
-    (city) => !city.coastal && !city.river,
+  let currentInlandCount = settlements.filter(
+    (settlement) => !settlement.coastal && !settlement.river,
   ).length;
 
   const inlandCandidates = candidates.filter(
@@ -157,21 +159,21 @@ export function ensureInlandCities({
       !candidate.coastal && !candidate.river && candidate.score > 0.18,
   );
 
-  // If no inland city exists yet, try adding one with a 60% chance (looser thresholds)
+  // If no inland settlement exists yet, try adding one with a 60% chance (looser thresholds)
   if (currentInlandCount === 0 && rng.chance(0.6)) {
     const oddball = inlandCandidates.find((c) =>
-      canPlaceCandidate(width, cities, c, Math.max(7.5, minSpacing - 1.8)),
+      canPlaceCandidate(width, settlements, c, Math.max(7.5, minSpacing - 1.8)),
     );
     if (oddball) {
-      if (cities.length >= desiredCount) {
-        const replaceIndex = cities.findIndex(
-          (city) => city.coastal || city.river,
+      if (settlements.length >= desiredCount) {
+        const replaceIndex = settlements.findIndex(
+          (settlement) => settlement.coastal || settlement.river,
         );
         if (replaceIndex >= 0) {
-          cities.splice(replaceIndex, 1);
+          settlements.splice(replaceIndex, 1);
         }
       }
-      cities.push(toCityRecord(width, cities.length, oddball));
+      settlements.push(toSettlementRecord(width, settlements.length, oddball));
       currentInlandCount += 1;
     }
   }
@@ -185,16 +187,16 @@ export function ensureInlandCities({
     if (
       !canPlaceCandidate(
         width,
-        cities,
+        settlements,
         candidate,
         Math.max(8, minSpacing - 2.2),
       )
     ) {
       continue;
     }
-    if (cities.length >= desiredCount) {
-      const replaceIndex = findReplaceableCityIndex(
-        cities,
+    if (settlements.length >= desiredCount) {
+      const replaceIndex = findReplaceableSettlementIndex(
+        settlements,
         candidate,
         width,
         minSpacing,
@@ -202,34 +204,34 @@ export function ensureInlandCities({
       if (replaceIndex < 0) {
         continue;
       }
-      cities.splice(replaceIndex, 1);
+      settlements.splice(replaceIndex, 1);
     }
-    cities.push(toCityRecord(width, cities.length, candidate));
+    settlements.push(toSettlementRecord(width, settlements.length, candidate));
     currentInlandCount += 1;
   }
 
   // Last-resort fallback with relaxed spacing
   if (currentInlandCount < targetInlandCount && rng.chance(0.25)) {
     const fallback = strictCandidates.find((c) =>
-      canPlaceCandidate(width, cities, c, Math.max(7, minSpacing - 2.8)),
+      canPlaceCandidate(width, settlements, c, Math.max(7, minSpacing - 2.8)),
     );
     if (fallback) {
-      if (cities.length >= desiredCount) {
-        const replaceIndex = cities.findIndex(
-          (city) => city.coastal && !city.river,
+      if (settlements.length >= desiredCount) {
+        const replaceIndex = settlements.findIndex(
+          (settlement) => settlement.coastal && !settlement.river,
         );
         if (replaceIndex >= 0) {
-          cities.splice(replaceIndex, 1);
+          settlements.splice(replaceIndex, 1);
         }
       }
-      cities.push(toCityRecord(width, cities.length, fallback));
+      settlements.push(toSettlementRecord(width, settlements.length, fallback));
     }
   }
 }
 
-function fillCities({
+function fillSettlements({
   width,
-  cities,
+  settlements,
   desiredCount,
   pool,
   spacing,
@@ -237,18 +239,18 @@ function fillCities({
 }) {
   const available = [...pool];
 
-  while (available.length > 0 && cities.length < desiredCount) {
+  while (available.length > 0 && settlements.length < desiredCount) {
     let bestIndex = -1;
     let bestScore = Number.NEGATIVE_INFINITY;
 
     for (let index = 0; index < available.length; index += 1) {
       const candidate = available[index];
-      if (!canPlaceCandidate(width, cities, candidate, spacing)) {
+      if (!canPlaceCandidate(width, settlements, candidate, spacing)) {
         continue;
       }
 
       const spreadBonus =
-        cities.length === 0 ? 0 : spreadValue(width, cities, candidate);
+        settlements.length === 0 ? 0 : spreadValue(width, settlements, candidate);
       const inlandSpreadBonus =
         !candidate.coastal && !candidate.river
           ? 0.02
@@ -271,19 +273,19 @@ function fillCities({
     }
 
     const candidate = available.splice(bestIndex, 1)[0];
-    if (cities.length >= desiredCount) {
+    if (settlements.length >= desiredCount) {
       break;
     }
 
-    cities.push(toCityRecord(width, cities.length, candidate));
+    settlements.push(toSettlementRecord(width, settlements.length, candidate));
   }
 }
 
-function toCityRecord(width, id, candidate) {
+function toSettlementRecord(width, id, candidate) {
   const [x, y] = coordsOf(candidate.index, width);
   return {
     id,
-    type: "city",
+    type: "settlement",
     cell: candidate.index,
     x,
     y,
@@ -293,16 +295,16 @@ function toCityRecord(width, id, candidate) {
   };
 }
 
-function canPlaceCandidate(width, cities, candidate, spacing) {
+function canPlaceCandidate(width, settlements, candidate, spacing) {
   const [cx, cy] = coordsOf(candidate.index, width);
-  return cities.every((city) => distance(cx, cy, city.x, city.y) >= spacing);
+  return settlements.every((settlement) => distance(cx, cy, settlement.x, settlement.y) >= spacing);
 }
 
-function spreadValue(width, cities, candidate) {
+function spreadValue(width, settlements, candidate) {
   const [cx, cy] = coordsOf(candidate.index, width);
   let nearest = Number.POSITIVE_INFINITY;
-  for (const city of cities) {
-    nearest = Math.min(nearest, distance(cx, cy, city.x, city.y));
+  for (const settlement of settlements) {
+    nearest = Math.min(nearest, distance(cx, cy, settlement.x, settlement.y));
   }
   if (!Number.isFinite(nearest)) {
     return 0;
@@ -310,24 +312,24 @@ function spreadValue(width, cities, candidate) {
   return clamp(nearest / 26, 0, 1);
 }
 
-function findReplaceableCityIndex(cities, candidate, width, minSpacing) {
+function findReplaceableSettlementIndex(settlements, candidate, width, minSpacing) {
   const [cx, cy] = coordsOf(candidate.index, width);
   let bestIndex = -1;
   let bestScore = Number.POSITIVE_INFINITY;
 
-  for (let index = 0; index < cities.length; index += 1) {
-    const city = cities[index];
-    if (!city.coastal && !city.river) {
+  for (let index = 0; index < settlements.length; index += 1) {
+    const settlement = settlements[index];
+    if (!settlement.coastal && !settlement.river) {
       continue;
     }
 
-    const distanceToCandidate = distance(cx, cy, city.x, city.y);
+    const distanceToCandidate = distance(cx, cy, settlement.x, settlement.y);
     if (distanceToCandidate < Math.max(7, minSpacing - 2.6)) {
       continue;
     }
 
     const replacePenalty =
-      (city.coastal ? 1 : 0) + (city.river ? 0.4 : 0) - city.score;
+      (settlement.coastal ? 1 : 0) + (settlement.river ? 0.4 : 0) - settlement.score;
     if (replacePenalty < bestScore) {
       bestScore = replacePenalty;
       bestIndex = index;

@@ -7,7 +7,7 @@ export const LABEL_COLORS = {
     stroke: rgba([237, 233, 224], ALPHA.rich),
     fill: rgba([71, 92, 109], ALPHA.rich),
   },
-  poi: {
+  node: {
     stroke: rgba([243, 234, 214], ALPHA.surface),
     fill: rgba([58, 45, 29], ALPHA.surface),
   },

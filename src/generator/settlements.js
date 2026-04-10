@@ -1,21 +1,21 @@
 import { createRng } from "../random.js";
 import { clamp, sliderFactor } from "../utils.js";
 import {
-  buildCityCandidates,
-  ensureInlandCities,
-  selectCities,
-} from "./cityModel.js?v=20260409a";
+  buildSettlementCandidates,
+  ensureInlandSettlements,
+  selectSettlements,
+} from "./settlementModel.js?v=20260409b";
 
-export function generateCities(world, names) {
+export function generateSettlements(world, names) {
   const { params, terrain, climate, hydrology } = world;
   const { width, size, isLand, elevation, coastMask, mountainField } = terrain;
   const { biome, moisture } = climate;
   const { coastDistance, waterDistance, riverStrength, lakeIdByCell } =
     hydrology;
 
-  const density = sliderFactor(params.cityDensity, 1.06);
-  const rng = createRng(`${params.seed}::cities`);
-  const { candidates, habitableArea } = buildCityCandidates({
+  const density = sliderFactor(params.settlementDensity, 1.06);
+  const rng = createRng(`${params.seed}::settlements`);
+  const { candidates, habitableArea } = buildSettlementCandidates({
     width,
     size,
     isLand,
@@ -29,7 +29,7 @@ export function generateCities(world, names) {
     riverStrength,
     lakeIdByCell,
     rng,
-    coastalBias: params.coastalBias,
+    inlandPreference: params.inlandPreference,
   });
   const densityMultiplier = 0.18 + density * 3.8;
   const minCountByArea = clamp(Math.round(habitableArea / 1900), 2, 8);
@@ -40,27 +40,27 @@ export function generateCities(world, names) {
     maxCountByArea,
   );
   const minSpacing = clamp(18 - density * 8.4, 8.5, 18);
-  const cities = selectCities({ width, candidates, desiredCount, minSpacing });
-  ensureInlandCities({
+  const settlements = selectSettlements({ width, candidates, desiredCount, minSpacing });
+  ensureInlandSettlements({
     width,
     rng,
     candidates,
-    cities,
+    settlements,
     desiredCount,
     minSpacing,
     density,
   });
 
-  cities.forEach((city, index) => {
-    city.id = index;
+  settlements.forEach((settlement, index) => {
+    settlement.id = index;
   });
 
-  for (const city of cities) {
-    city.name = names.cityName(city.id, {
-      coastal: city.coastal,
-      river: city.river,
+  for (const settlement of settlements) {
+    settlement.name = names.settlementName(settlement.id, {
+      coastal: settlement.coastal,
+      river: settlement.river,
     });
   }
 
-  return cities;
+  return settlements;
 }

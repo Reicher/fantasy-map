@@ -7,7 +7,7 @@ export const DEFAULT_PARAMS = {
   seed: "saltwind-01",
   mapSize: 58,
   mountainousness: 54,
-  cityDensity: 20,
+  settlementDensity: 20,
   riverAmount: 56,
   lakeAmount: 56,
   lakeSize: 52,
@@ -18,13 +18,14 @@ export const DEFAULT_PARAMS = {
   fogVisionRadius: 18,
   temperatureBias: 50,
   moistureBias: 50,
-  coastalBias: 50,
+  inlandPreference: 50,
+  roadLoopiness: 50,
 };
 
 export const PARAM_LABELS = {
   mapSize: (value) => `${value}%`,
   mountainousness: (value) => `${value}%`,
-  cityDensity: (value) => `${value}%`,
+  settlementDensity: (value) => `${value}%`,
   riverAmount: (value) => `${value}%`,
   lakeAmount: (value) => `${value}%`,
   lakeSize: (value) => `${value}%`,
@@ -55,16 +56,26 @@ export const PARAM_LABELS = {
           : value < 80
             ? "Fuktigt"
             : "Regnigt",
-  coastalBias: (value) =>
+  inlandPreference: (value) =>
     value < 20
-      ? "Inlandskt"
+      ? "Kustbefolkat"
       : value < 40
-        ? "Blandat inland"
+        ? "Kustbetonat"
         : value < 60
           ? "Blandat"
           : value < 80
-            ? "Kustbetonat"
-            : "Kustbefolkat",
+            ? "Blandat inland"
+            : "Inlandskt",
+  roadLoopiness: (value) =>
+    value < 15
+      ? "Inga slingor"
+      : value < 35
+        ? "Sparsamma slingor"
+        : value < 65
+          ? "Normala slingor"
+          : value < 85
+            ? "Många slingor"
+            : "Täta slingor",
 };
 
 export const PARAM_SCHEMA = {
@@ -135,13 +146,13 @@ export const PARAM_SCHEMA = {
     formatLabel: PARAM_LABELS.lakeSize,
     ui: { label: "Sjöstorlek", tab: "vatten", order: 30 },
   },
-  cityDensity: {
+  settlementDensity: {
     type: "number",
     min: 0,
     max: 100,
     step: 1,
-    formatLabel: PARAM_LABELS.cityDensity,
-    ui: { label: "POI-täthet", tab: "poi", order: 10 },
+    formatLabel: PARAM_LABELS.settlementDensity,
+    ui: { label: "Nodtäthet", tab: "noder", order: 10 },
   },
   renderScale: {
     type: "number",
@@ -175,13 +186,21 @@ export const PARAM_SCHEMA = {
     formatLabel: PARAM_LABELS.moistureBias,
     ui: { label: "Fuktighet", tab: "avancerat", order: 40 },
   },
-  coastalBias: {
+  inlandPreference: {
     type: "number",
     min: 0,
     max: 100,
     step: 1,
-    formatLabel: PARAM_LABELS.coastalBias,
-    ui: { label: "Kustbias", tab: "avancerat", order: 50 },
+    formatLabel: PARAM_LABELS.inlandPreference,
+    ui: { label: "Inlandspreferens", tab: "avancerat", order: 50 },
+  },
+  roadLoopiness: {
+    type: "number",
+    min: 0,
+    max: 100,
+    step: 1,
+    formatLabel: PARAM_LABELS.roadLoopiness,
+    ui: { label: "Vägslingor", tab: "noder", order: 20 },
   },
 };
 

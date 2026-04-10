@@ -25,8 +25,8 @@ export function createEditorSession({ refs, state, syncViewUi }) {
       return [
         renderOptions.showSnow ? 1 : 0,
         renderOptions.showBiomeLabels ? 1 : 0,
-        (renderOptions.showNodeLabels ?? renderOptions.showPoiLabels) ? 1 : 0,
-        playerStart?.poiId ?? playerStart?.cityId ?? "-",
+        renderOptions.showNodeLabels ? 1 : 0,
+        playerStart?.nodeId ?? "-",
         playerStart?.x?.toFixed?.(2) ?? "-",
         playerStart?.y?.toFixed?.(2) ?? "-",
       ].join(":");
@@ -191,10 +191,7 @@ export function createEditorSession({ refs, state, syncViewUi }) {
     const canvasY = ((event.clientY - rect.top) / rect.height) * RENDER_HEIGHT;
     const worldPoint = state.currentViewport.canvasToWorld(canvasX, canvasY);
     const nodeIds = new Set(
-      (
-        state.currentWorld.features?.pointsOfInterest ??
-        state.currentWorld.cities
-      )
+      (state.currentWorld.features?.nodes ?? [])
         .filter((node) => node && node.id != null)
         .map((node) => node.id),
     );
@@ -206,25 +203,21 @@ export function createEditorSession({ refs, state, syncViewUi }) {
     );
   }
 
-  function setEditorPlayerStart(poiId) {
-    if (!state.currentWorld || poiId == null) {
+  function setEditorPlayerStart(nodeId) {
+    if (!state.currentWorld || nodeId == null) {
       return false;
     }
 
-    const pois =
-      state.currentWorld.features?.pointsOfInterest ??
-      state.currentWorld.pointsOfInterest ??
-      state.currentWorld.cities;
-    const poi = pois[poiId];
-    if (!poi) {
+    const nodes = state.currentWorld.features?.nodes ?? [];
+    const node = nodes[nodeId];
+    if (!node) {
       return false;
     }
 
     state.currentWorld.playerStart = {
-      poiId,
-      cityId: poiId,
-      x: poi.x,
-      y: poi.y,
+      nodeId,
+      x: node.x,
+      y: node.y,
     };
     state.playState = createPlayState(state.currentWorld);
     return true;
@@ -235,18 +228,13 @@ export function createEditorSession({ refs, state, syncViewUi }) {
       return state.currentWorld.playerStart;
     }
 
-    const currentNodeId =
-      state.playState?.currentNodeId ?? state.playState?.currentCityId;
+    const currentNodeId = state.playState?.currentNodeId;
     if (currentNodeId != null) {
-      const nodes =
-        state.currentWorld?.features?.pointsOfInterest ??
-        state.currentWorld?.pointsOfInterest ??
-        state.currentWorld?.cities;
+      const nodes = state.currentWorld?.features?.nodes ?? [];
       const node = nodes?.[currentNodeId];
       if (node) {
         return {
-          poiId: node.id,
-          cityId: node.id,
+          nodeId: node.id,
           x: node.x,
           y: node.y,
         };

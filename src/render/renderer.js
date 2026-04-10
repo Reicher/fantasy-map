@@ -55,7 +55,7 @@ export function renderPlayWorldStatic(canvas, world, options = {}) {
     showLabels: false,
     showFrame: false,
     showPlayerMarker: false,
-    showCities: false,
+    showNodes: false,
     showOceanWaves: true,
     showLakeWaves: true,
     showBiomeBorders: true,
@@ -68,7 +68,7 @@ export function renderPlayWorldStatic(canvas, world, options = {}) {
 export function renderPlayWorldDynamic(canvas, world, options = {}) {
   return renderDynamicOverlays(canvas, world, options, {
     showPlayerMarker: true,
-    showCities: true,
+    showNodes: true,
     showLabels: true,
     showFogOfWar: true,
   });
@@ -79,7 +79,7 @@ function renderScene(canvas, world, options = {}, scene = {}) {
   const viewport =
     options.viewport ?? createViewport(world, options.cameraState);
   const { terrain, hydrology, climate, regions, geometry } = world;
-  const nodes = world.features?.pointsOfInterest ?? world.cities;
+  const nodes = world.features?.nodes ?? [];
   const renderWidth = options.renderWidth ?? RENDER_WIDTH;
   const renderHeight = options.renderHeight ?? RENDER_HEIGHT;
   const scaleX = canvas.width / renderWidth;
@@ -90,7 +90,7 @@ function renderScene(canvas, world, options = {}, scene = {}) {
     showLabels = true,
     showFrame = true,
     showPlayerMarker = true,
-    showCities = true,
+    showNodes = true,
     showOceanWaves = true,
     showLakeWaves = true,
     showBiomeBorders = true,
@@ -179,12 +179,12 @@ function renderScene(canvas, world, options = {}, scene = {}) {
     }
   }
   drawRoads(ctx, geometry, viewport);
-  if (showCities) {
+  if (showNodes) {
     drawNodes(
       ctx,
       nodes,
       viewport,
-      options.nodeOverlay ?? options.cityOverlay ?? {},
+      options.nodeOverlay ?? {},
     );
   }
   if (showFogOfWar && options.fogOfWar?.enabled) {
@@ -212,14 +212,14 @@ function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
   const ctx = canvas.getContext("2d");
   const viewport =
     options.viewport ?? createViewport(world, options.cameraState);
-  const nodes = world.features?.pointsOfInterest ?? world.cities;
+  const nodes = world.features?.nodes ?? [];
   const renderWidth = options.renderWidth ?? RENDER_WIDTH;
   const renderHeight = options.renderHeight ?? RENDER_HEIGHT;
   const scaleX = canvas.width / renderWidth;
   const scaleY = canvas.height / renderHeight;
   const {
     showPlayerMarker = true,
-    showCities = true,
+    showNodes = true,
     showLabels = false,
     showFogOfWar = false,
   } = scene;
@@ -250,12 +250,12 @@ function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
     viewport.innerHeight,
   );
   ctx.clip();
-  if (showCities) {
+  if (showNodes) {
     drawNodes(
       ctx,
       nodes,
       viewport,
-      options.nodeOverlay ?? options.cityOverlay ?? {},
+      options.nodeOverlay ?? {},
     );
   }
   if (showLabels) {

@@ -11,26 +11,26 @@ import {
 import { drawNodeMarkerGlyph } from "../../render/nodeGlyph.js?v=20260409a";
 
 const SNOW_GROUND_RGB = WORLD_RGB.snow;
-const JOURNEY_GUIDEPOST_IMAGE = createJourneySignpostImage();
-const JOURNEY_GUIDEPOST_MIN_HEIGHT_PX = 104;
-const JOURNEY_GUIDEPOST_VERTICAL_OFFSET_PX = 18;
-const JOURNEY_POI_MIN_HEIGHT_BY_MARKER = {
+const JOURNEY_SIGNPOST_IMAGE = createJourneySignpostImage();
+const JOURNEY_SIGNPOST_MIN_HEIGHT_PX = 104;
+const JOURNEY_SIGNPOST_VERTICAL_OFFSET_PX = 18;
+const JOURNEY_NODE_MIN_HEIGHT_BY_MARKER = {
   settlement: 118,
   abandoned: 108,
 };
-const JOURNEY_POI_WIDTH_SCALE_BY_MARKER = {
+const JOURNEY_NODE_WIDTH_SCALE_BY_MARKER = {
   settlement: 1,
   abandoned: 0.88,
 };
-const JOURNEY_POI_SPRITESHEET_BY_MARKER = {
+const JOURNEY_NODE_SPRITESHEET_BY_MARKER = {
   settlement: createJourneySpritesheet(
-    new URL("../../assets/journey/settlement-pois.png", import.meta.url).href,
+    new URL("../../assets/journey/settlement-nodes.png", import.meta.url).href,
   ),
   abandoned: createJourneySpritesheet(
-    new URL("../../assets/journey/crash-site-pois.png", import.meta.url).href,
+    new URL("../../assets/journey/crash-site-nodes.png", import.meta.url).href,
   ),
 };
-const JOURNEY_POI_VARIANT_COUNT_BY_MARKER = {
+const JOURNEY_NODE_VARIANT_COUNT_BY_MARKER = {
   settlement: 3,
   abandoned: 4,
 };
@@ -67,7 +67,7 @@ const JOURNEY_NEAR_LIGHTEN_FRAC = {
   near1: 0.08,
   near2: 0.16,
 };
-const journeyPoiVariantsByMarker = new Map();
+const journeyNodeVariantsByMarker = new Map();
 const journeyTreeVariantsByFamily = new Map();
 
 /** Returns the depth-tinted biome colour as an [r, g, b] array.
@@ -256,27 +256,27 @@ function sampleSilhouetteY(spec, x) {
 }
 
 // ---------------------------------------------------------------------------
-// POI marker – matches the map renderer dot style
+// Node marker – matches the map renderer dot style
 // ---------------------------------------------------------------------------
 
 export function drawNodeMarkerOnCanvas(ctx, x, y, options = {}) {
   const marker = options.marker;
-  if (marker === "guidepost") {
+  if (marker === "signpost") {
     const minVisualHeightPx = Math.max(
-      JOURNEY_GUIDEPOST_MIN_HEIGHT_PX,
-      Math.round(options.minVisualHeightPx ?? JOURNEY_GUIDEPOST_MIN_HEIGHT_PX),
+      JOURNEY_SIGNPOST_MIN_HEIGHT_PX,
+      Math.round(options.minVisualHeightPx ?? JOURNEY_SIGNPOST_MIN_HEIGHT_PX),
     );
     const baseGroundY = Number.isFinite(options.groundY) ? options.groundY : y;
     const verticalOffset = Math.max(
       0,
-      Number(options.verticalOffsetPx ?? JOURNEY_GUIDEPOST_VERTICAL_OFFSET_PX),
+      Number(options.verticalOffsetPx ?? JOURNEY_SIGNPOST_VERTICAL_OFFSET_PX),
     );
     const groundY = baseGroundY - verticalOffset;
     if (
-      JOURNEY_GUIDEPOST_IMAGE &&
-      JOURNEY_GUIDEPOST_IMAGE.complete &&
-      JOURNEY_GUIDEPOST_IMAGE.naturalWidth > 0 &&
-      JOURNEY_GUIDEPOST_IMAGE.naturalHeight > 0
+      JOURNEY_SIGNPOST_IMAGE &&
+      JOURNEY_SIGNPOST_IMAGE.complete &&
+      JOURNEY_SIGNPOST_IMAGE.naturalWidth > 0 &&
+      JOURNEY_SIGNPOST_IMAGE.naturalHeight > 0
     ) {
       drawJourneySignpostImage(ctx, x, groundY, minVisualHeightPx, {
         highlighted: options.highlighted ?? true,
@@ -295,7 +295,7 @@ export function drawNodeMarkerOnCanvas(ctx, x, y, options = {}) {
   }
 
   if (
-    drawJourneyPoiImage(ctx, x, y, marker, {
+    drawJourneyNodeImage(ctx, x, y, marker, {
       highlighted: options.highlighted ?? true,
       groundY: options.groundY,
       minVisualHeightPx: options.minVisualHeightPx,
@@ -423,12 +423,12 @@ function drawJourneySignpostImage(
   minVisualHeightPx,
   { highlighted = true } = {},
 ) {
-  const sourceWidth = JOURNEY_GUIDEPOST_IMAGE.naturalWidth;
-  const sourceHeight = JOURNEY_GUIDEPOST_IMAGE.naturalHeight;
+  const sourceWidth = JOURNEY_SIGNPOST_IMAGE.naturalWidth;
+  const sourceHeight = JOURNEY_SIGNPOST_IMAGE.naturalHeight;
   if (sourceWidth <= 0 || sourceHeight <= 0) return;
 
   const targetHeight = Math.max(
-    JOURNEY_GUIDEPOST_MIN_HEIGHT_PX,
+    JOURNEY_SIGNPOST_MIN_HEIGHT_PX,
     minVisualHeightPx,
   );
   const targetWidth = targetHeight * (sourceWidth / sourceHeight);
@@ -445,7 +445,7 @@ function drawJourneySignpostImage(
     ctx.shadowOffsetY = 1;
   }
   ctx.drawImage(
-    JOURNEY_GUIDEPOST_IMAGE,
+    JOURNEY_SIGNPOST_IMAGE,
     drawLeft,
     drawTop,
     Math.round(targetWidth),
@@ -454,7 +454,7 @@ function drawJourneySignpostImage(
   ctx.restore();
 }
 
-function drawJourneyPoiImage(
+function drawJourneyNodeImage(
   ctx,
   x,
   y,
@@ -471,10 +471,10 @@ function drawJourneyPoiImage(
     marker === "abandoned" || marker === "settlement" ? marker : null;
   if (!normalizedMarker) return false;
 
-  const variants = getJourneyPoiVariants(normalizedMarker);
+  const variants = getJourneyNodeVariants(normalizedMarker);
   if (!variants?.length) return false;
 
-  const variantIndex = resolveJourneyPoiVariantIndex(
+  const variantIndex = resolveJourneyNodeVariantIndex(
     normalizedMarker,
     variantSeed,
     variants.length,
@@ -483,14 +483,14 @@ function drawJourneyPoiImage(
   if (!sprite || sprite.width <= 0 || sprite.height <= 0) return false;
 
   const minHeight =
-    JOURNEY_POI_MIN_HEIGHT_BY_MARKER[normalizedMarker] ??
-    JOURNEY_POI_MIN_HEIGHT_BY_MARKER.settlement;
+    JOURNEY_NODE_MIN_HEIGHT_BY_MARKER[normalizedMarker] ??
+    JOURNEY_NODE_MIN_HEIGHT_BY_MARKER.settlement;
   const targetHeight = Math.max(
     minHeight,
     Math.round(minVisualHeightPx ?? minHeight),
   );
   const widthScale = clamp(
-    JOURNEY_POI_WIDTH_SCALE_BY_MARKER[normalizedMarker] ?? 1,
+    JOURNEY_NODE_WIDTH_SCALE_BY_MARKER[normalizedMarker] ?? 1,
     0.72,
     1.2,
     1,
@@ -542,12 +542,12 @@ function createJourneySpritesheet(src) {
   return image;
 }
 
-function getJourneyPoiVariants(marker) {
-  if (journeyPoiVariantsByMarker.has(marker)) {
-    return journeyPoiVariantsByMarker.get(marker);
+function getJourneyNodeVariants(marker) {
+  if (journeyNodeVariantsByMarker.has(marker)) {
+    return journeyNodeVariantsByMarker.get(marker);
   }
-  const sheet = JOURNEY_POI_SPRITESHEET_BY_MARKER[marker];
-  const variantCount = JOURNEY_POI_VARIANT_COUNT_BY_MARKER[marker];
+  const sheet = JOURNEY_NODE_SPRITESHEET_BY_MARKER[marker];
+  const variantCount = JOURNEY_NODE_VARIANT_COUNT_BY_MARKER[marker];
   if (
     !sheet ||
     !sheet.complete ||
@@ -556,8 +556,8 @@ function getJourneyPoiVariants(marker) {
   ) {
     return null;
   }
-  const variants = sliceJourneyPoiVariants(sheet, variantCount, marker);
-  journeyPoiVariantsByMarker.set(marker, variants);
+  const variants = sliceJourneyNodeVariants(sheet, variantCount, marker);
+  journeyNodeVariantsByMarker.set(marker, variants);
   return variants;
 }
 
@@ -635,7 +635,7 @@ function sliceJourneyVariants(sheetImage, variantCount, chromaTolerance = 24) {
   return variants;
 }
 
-function sliceJourneyPoiVariants(sheetImage, variantCount, marker) {
+function sliceJourneyNodeVariants(sheetImage, variantCount, marker) {
   if (typeof document === "undefined") return null;
   const sourceW = sheetImage.naturalWidth;
   const sourceH = sheetImage.naturalHeight;
@@ -851,7 +851,7 @@ function resolveTreeFamily(treeFamily) {
   return "pine";
 }
 
-function resolveJourneyPoiVariantIndex(marker, variantSeed, variantCount) {
+function resolveJourneyNodeVariantIndex(marker, variantSeed, variantCount) {
   const markerKey = typeof marker === "string" ? marker : "settlement";
   const seedKey =
     variantSeed == null || variantSeed === ""

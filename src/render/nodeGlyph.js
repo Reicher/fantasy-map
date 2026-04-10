@@ -44,8 +44,8 @@ function drawNodeIcon(ctx, marker, x, y, scale, state) {
     case "abandoned":
       drawAbandonedIcon(ctx, x, y, iconScale);
       break;
-    case "guidepost":
-      drawGuidepostIcon(ctx, x, y, iconScale);
+    case "signpost":
+      drawSignpostIcon(ctx, x, y, iconScale);
       break;
     case "settlement":
     default:
@@ -93,7 +93,7 @@ function drawAbandonedIcon(ctx, x, y, scale) {
   ctx.stroke();
 }
 
-function drawGuidepostIcon(ctx, x, y, scale) {
+function drawSignpostIcon(ctx, x, y, scale) {
   // Signpost intentionally keeps its central pole.
   ctx.beginPath();
   ctx.moveTo(x, y + 3.95 * scale);

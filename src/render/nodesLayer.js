@@ -1,16 +1,14 @@
 import { drawNodeMarkerGlyph } from "./nodeGlyph.js?v=20260409a";
 
 export function drawNodes(ctx, nodes, viewport, options = {}) {
-  const validIds = new Set(options.validNodeIds ?? options.validPoiIds ?? []);
+  const validIds = new Set(options.validNodeIds ?? []);
   const visibleIds = new Set(
     options.visibleNodeIds ??
-      options.visiblePoiIds ??
       options.validNodeIds ??
-      options.validPoiIds ??
       [],
   );
-  const hoveredId = options.hoveredNodeId ?? options.hoveredPoiId ?? null;
-  const pressedId = options.pressedNodeId ?? options.pressedPoiId ?? null;
+  const hoveredId = options.hoveredNodeId ?? null;
+  const pressedId = options.pressedNodeId ?? null;
   const onlyValid = options.onlyValid === true;
   const symbolScale = getNodeZoomScale(viewport);
 

@@ -6,17 +6,13 @@ export function describePlayHud(world, playState) {
     return {
       locationLine: "",
       regionName: "",
-      poiTitle: null,
+      nodeTitle: null,
     };
   }
 
   if (playState.travel) {
-    const pois =
-      world.features?.pointsOfInterest ??
-      world.pointsOfInterest ??
-      world.cities;
-    const toPoi =
-      pois[playState.travel.targetNodeId ?? playState.travel.targetCityId];
+    const nodes = world.features?.nodes ?? [];
+    const toNode = nodes[playState.travel.targetNodeId];
     const regionName =
       playState.travel.routeType === "sea-route"
         ? "På havet"
@@ -25,23 +21,22 @@ export function describePlayHud(world, playState) {
     return {
       locationLine: regionName,
       regionName,
-      poiTitle: toPoi ? getNodeTitle(toPoi) : null,
+      nodeTitle: toNode ? getNodeTitle(toNode) : null,
     };
   }
 
-  const pois =
-    world.features?.pointsOfInterest ?? world.pointsOfInterest ?? world.cities;
-  const currentPoi = pois[playState.currentNodeId ?? playState.currentCityId];
-  const region = currentPoi
-    ? regionAtCell(world, currentPoi.cell)
+  const nodes = world.features?.nodes ?? [];
+  const currentNode = nodes[playState.currentNodeId];
+  const region = currentNode
+    ? regionAtCell(world, currentNode.cell)
     : regionAtPosition(world, playState.position);
   const regionName = formatHudRegionLine(region);
-  const poiTitle = currentPoi ? getNodeTitle(currentPoi) : null;
+  const nodeTitle = currentNode ? getNodeTitle(currentNode) : null;
 
   return {
-    locationLine: poiTitle ? `${poiTitle} - ${regionName}` : regionName,
+    locationLine: nodeTitle ? `${nodeTitle} - ${regionName}` : regionName,
     regionName,
-    poiTitle,
+    nodeTitle,
   };
 }
 

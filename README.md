@@ -3,7 +3,7 @@
 En dependency-fri webbapp för att generera, utforska och spela på en deterministisk fantasikarta. Projektet består i dag av två tydliga lägen:
 
 - `Editor`: generera kartor, justera parametrar och exportera kartbild
-- `Spelläge`: utforska kartan med fog of war, resa mellan points of interest och växla mellan kartvy och färdvy
+- `Spelläge`: utforska kartan med fog of war, resa mellan noder och växla mellan kartvy och färdvy
 
 Projektet är byggt i ren HTML, CSS och JavaScript med ES-moduler och använder ingen extern frontend-stack eller npm-beroenden.
 
@@ -40,7 +40,7 @@ Vid generering skapas en komplett värld med bland annat:
 - höjddata och bergsområden
 - klimat, biomer och biomregioner
 - floder och sjöar
-- städer och andra points of interest
+- bosättningar, vägvisare och övergivna noder
 - vägnät och sjövägar
 - etiketter för regioner, sjöar, berg och städer
 
@@ -65,7 +65,7 @@ Editorn används för att bygga världen och justera parametrar som till exempel
 I editorn finns också:
 
 - hover-inspektion av karta
-- toggles för kartnamn, stadsnamn, snö och svartvitt
+- toggles för kartnamn, nodnamn, snö och svartvitt
 - export till PNG
 - statistikpanel
 
@@ -77,9 +77,9 @@ I spelkartan finns bland annat:
 
 - fog of war
 - spelarmarkör
-- points of interest
+- noder
 - resbara mål
-- legend för kartnamn, stadsnamn och hoverinfo
+- legend för kartnamn, nodnamn och hoverinfo
 
 När spelaren klickar på en direkt ansluten plats startar resa och vyn byter automatiskt till färdvy.
 
@@ -98,7 +98,7 @@ Färdvyn är en sidovy som visar resan som en stiliserad scen med:
 - främre marklager som rullar åt vänster
 - små biomanpassade markdetaljer
 - spelarkaraktär sedd från sidan
-- point-of-interest-markör vid destinationen
+- nodmarkör vid destinationen
 
 Färdvyn är medvetet enklare och mer grafisk än kartan. Den är byggd så att marken rör sig medan spelaren i huvudsak står kvar i scenen.
 
@@ -209,7 +209,7 @@ Exempel på griddata:
 
 Objektlistor ovanpå detta:
 
-- `cities[]`
+- `settlements[]`
 - `hydrology.rivers[]`
 - `hydrology.lakes[]`
 - `regions.biomeRegions[]`
@@ -217,7 +217,7 @@ Objektlistor ovanpå detta:
 
 Spelläget lägger dessutom på egen state:
 
-- aktuell stad
+- aktuell nod
 - aktuell position
 - pågående resa
 - upptäckta celler för fog of war
@@ -233,7 +233,7 @@ Editorn renderar hela kartan direkt till canvas med full dekor och full hover-in
 Spelläget använder en delad modell:
 
 - en cachead statisk bakgrundskarta
-- dynamiska overlays för spelarmarkör, labels, points of interest och fog of war
+- dynamiska overlays för spelarmarkör, labels, noder och fog of war
 
 Detta gör kartläget lättare än att rita om hela världen från grunden vid varje frame.
 
@@ -244,7 +244,7 @@ Foggen bygger på två principer:
 - upptäckt mark sparas permanent i spelstate
 - oupptäckta områden täcks av ett separat fog-overlay
 
-Points of interest och kartnamn i spelkartan filtreras mot upptäckt mark och resbarhet, så att kartan inte läcker mer information än tänkt.
+Noder och kartnamn i spelkartan filtreras mot upptäckt mark och resbarhet, så att kartan inte läcker mer information än tänkt.
 
 ## Några viktiga designval
 

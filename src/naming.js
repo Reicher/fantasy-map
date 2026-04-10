@@ -106,7 +106,7 @@ const WORLD_ENDINGS = {
   spine: ["rygg", "kedja", "åsland"],
 };
 
-const CITY_SUFFIXES = {
+const SETTLEMENT_SUFFIXES = {
   coastal: ["hamn", "vik", "näs", "skans", "sund"],
   river: ["bro", "åby", "vad", "näs", "torp"],
   inland: ["by", "torp", "stad", "köping"],
@@ -134,7 +134,7 @@ const MOUNTAIN_PATTERNS = [
   (root) => `${root}höjder`,
 ];
 
-const CITY_SUFFIX_ROOTS = new Set([
+const SETTLEMENT_SUFFIX_ROOTS = new Set([
   "hamn",
   "vik",
   "näs",
@@ -149,7 +149,7 @@ const CITY_SUFFIX_ROOTS = new Set([
   "köping",
 ]);
 
-const POI_NAME_MARKERS = new Set(["settlement", "abandoned", "guidepost"]);
+const NODE_NAME_MARKERS = new Set(["settlement", "abandoned", "signpost"]);
 
 const FAMILY_NAMES = [
   "Andersson",
@@ -323,14 +323,14 @@ export function createNameGenerator(seed) {
       return uniqueName(titleCase(`${root} ${ending}`));
     },
 
-    cityName(index, context = {}) {
-      const rng = createRng(`${seed}::city:${index}`);
-      const root = createCityRoot(profile, rng);
+    settlementName(index, context = {}) {
+      const rng = createRng(`${seed}::settlement:${index}`);
+      const root = createSettlementRoot(profile, rng);
       const suffixes = context.coastal
-        ? CITY_SUFFIXES.coastal
+        ? SETTLEMENT_SUFFIXES.coastal
         : context.river
-          ? CITY_SUFFIXES.river
-          : CITY_SUFFIXES.inland;
+          ? SETTLEMENT_SUFFIXES.river
+          : SETTLEMENT_SUFFIXES.inland;
 
       return uniqueName(titleCase(joinNameParts(root, rng.pick(suffixes))));
     },
@@ -353,20 +353,20 @@ export function createNameGenerator(seed) {
       return uniqueName(titleCase(rng.pick(MOUNTAIN_PATTERNS)(root)));
     },
 
-    pointOfInterestName(marker, key = 0) {
-      const normalizedMarker = normalizePoiNameMarker(marker);
+    nodeName(marker, key = 0) {
+      const normalizedMarker = normalizeNodeNameMarker(marker);
 
-      if (normalizedMarker === "guidepost") {
+      if (normalizedMarker === "signpost") {
         return "";
       }
 
-      const rng = createRng(`${seed}::poi:${normalizedMarker}:${key}`);
+      const rng = createRng(`${seed}::node:${normalizedMarker}:${key}`);
 
       if (normalizedMarker === "abandoned") {
         return uniqueName(generateCrashSiteName(rng));
       }
 
-      return uniqueName(generateSettlementPoiName(rng));
+      return uniqueName(generateSettlementNodeName(rng));
     },
 
     biomeRegionName(index, biome) {
@@ -418,10 +418,10 @@ function createRoot(profile, rng, syllableCount, maxLength = 10) {
   return word[0].toUpperCase() + word.slice(1);
 }
 
-function createCityRoot(profile, rng) {
+function createSettlementRoot(profile, rng) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const root = createRoot(profile, rng, 1 + rng.int(0, 1), 6);
-    if (root.length >= 3 && !CITY_SUFFIX_ROOTS.has(root.toLowerCase())) {
+    if (root.length >= 3 && !SETTLEMENT_SUFFIX_ROOTS.has(root.toLowerCase())) {
       return root;
     }
   }
@@ -472,8 +472,8 @@ function joinNameParts(root, suffix) {
   return `${root}${suffix}`;
 }
 
-function normalizePoiNameMarker(marker) {
-  return POI_NAME_MARKERS.has(marker) ? marker : "settlement";
+function normalizeNodeNameMarker(marker) {
+  return NODE_NAME_MARKERS.has(marker) ? marker : "settlement";
 }
 
 function generateCrashSiteName(rng) {
@@ -506,7 +506,7 @@ function generateCrashSiteName(rng) {
   }
 }
 
-function generateSettlementPoiName(rng) {
+function generateSettlementNodeName(rng) {
   const family = rng.pick(FAMILY_NAMES);
   const group = rng.pick(GROUP_NAMES);
   const place = rng.pick(SETTLEMENT_PLACE);

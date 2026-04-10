@@ -4,11 +4,11 @@ import {
   PARAM_SCHEMA,
 } from "../config.js?v=20260409b";
 
-const TAB_ORDER = ["karta", "vatten", "poi", "vagar", "avancerat"];
+const TAB_ORDER = ["karta", "vatten", "noder", "vagar", "avancerat"];
 const TAB_LABELS = {
   karta: "Karta",
   vatten: "Vatten",
-  poi: "POI",
+  noder: "Noder",
   vagar: "Vägar",
   avancerat: "Avancerat",
 };

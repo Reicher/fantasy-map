@@ -9,7 +9,7 @@
  *   – Each frame: scrollX = startMarkerStripX + progress * pxPerWorld.
  *     Every layer is drawn at its parallax-adjusted offset so that the player
  *     stays fixed on screen while the strip scrolls beneath them.
- *   – Both POI markers are part of the strip and scroll with it.
+ *   – Both Node markers are part of the strip and scroll with it.
  *   – No per-frame terrain generation; no special-case arrival logic.
  */
 
@@ -43,13 +43,13 @@ const PLAYER_FEET_Y_FRAC = 0.83;
 // Walk animation frame toggle interval
 const WALK_FRAME_MS = 220;
 
-const POI_MARKER_SCALE = 1.35;
+const NODE_MARKER_SCALE = 1.35;
 const SETTLEMENT_VISUAL_HEIGHT_PX = 472;
 const ABANDONED_VISUAL_HEIGHT_PX = 216;
 const SETTLEMENT_UPWARD_OFFSET_PX = 30;
 const ABANDONED_UPWARD_OFFSET_PX = 13;
-const GUIDEPOST_VISUAL_HEIGHT_PX = 104;
-const GUIDEPOST_UPWARD_OFFSET_PX = 18;
+const SIGNPOST_VISUAL_HEIGHT_PX = 104;
+const SIGNPOST_UPWARD_OFFSET_PX = 18;
 const IDLE_PREVIEW_POINT_COUNT = 14;
 const IDLE_PREVIEW_SPAN_MIN = 14;
 const IDLE_PREVIEW_SPAN_MAX = 34;
@@ -255,7 +255,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     const playerX = Math.round(viewW * PLAYER_X_FRAC);
     const playerFeetY = Math.round(viewH * PLAYER_FEET_Y_FRAC);
 
-    // POI markers are anchored to screen center (viewW/2).
+    // Node markers are anchored to screen center (viewW/2).
     // At progress=0 the start marker is centered; at progress=total the dest marker is centered.
     // The formula is: scrollX = startMarkerStripX + progress*pxPerWorld + playerX - viewW/2
     // which gives: markerCanvasX = markerStripX - scrollX + playerX = viewW/2  at the right progress.
@@ -365,8 +365,8 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     drawGroundDetails(ctx, strip, scrollX, playerX, viewW);
     drawGroundTrees(ctx, strip, scrollX, playerX, viewW);
 
-    // 8. POI markers – behind the player but above all background layers
-    const markerSnapshot = drawPoiMarkers(
+    // 8. Node markers – behind the player but above all background layers
+    const markerSnapshot = drawNodeMarkers(
       ctx,
       strip,
       scrollX,
@@ -392,7 +392,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       isTraveling ? state.walkFrame : 0,
     );
 
-    // 10. Foreground sprite layer (fastest – in front of player and POI markers)
+    // 10. Foreground sprite layer (fastest – in front of player and Node markers)
     // No polygon fill here; only sprite props (trees/cacti/etc.) should swish past.
     drawForegroundCanopyTrees(ctx, strip, scrollX, playerX, viewW, viewH);
     drawNightVeil(ctx, viewW, viewH, skyState);
@@ -790,7 +790,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     }
   }
 
-  function drawPoiMarkers(
+  function drawNodeMarkers(
     ctx,
     strip,
     scrollX,
@@ -807,61 +807,57 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     const speed = PARALLAX_SPEED.ground;
     const layerStripLeft = scrollX * speed - playerX;
     const markerY = groundTopY + Math.round((viewH - groundTopY) * 0.15);
-    const pois =
-      world?.features?.pointsOfInterest ??
-      world?.pointsOfInterest ??
-      world?.cities ??
+    const nodes =
+      world?.features?.nodes ??
       [];
 
     const startCanvasX = strip.startMarkerStripX - layerStripLeft;
     const destCanvasX = strip.destMarkerStripX - layerStripLeft;
-    const startNodeId =
-      activeTravel?.startNodeId ?? activeTravel?.startCityId ?? null;
-    const destNodeId =
-      activeTravel?.targetNodeId ?? activeTravel?.targetCityId ?? null;
-    const startPoi =
+    const startNodeId = activeTravel?.startNodeId ?? null;
+    const destNodeId = activeTravel?.targetNodeId ?? null;
+    const startNode =
       startNodeId == null
         ? null
-        : (pois[startNodeId] ?? world?.cities?.[startNodeId] ?? null);
-    const destPoi =
+        : (nodes[startNodeId] ?? null);
+    const destNode =
       destNodeId == null
         ? null
-        : (pois[destNodeId] ?? world?.cities?.[destNodeId] ?? null);
-    const startMarker = startPoi?.marker ?? "settlement";
-    const destMarker = destPoi?.marker ?? "settlement";
-    const startGuidepost = startMarker === "guidepost";
-    const destGuidepost = destMarker === "guidepost";
+        : (nodes[destNodeId] ?? null);
+    const startMarker = startNode?.marker ?? "settlement";
+    const destMarker = destNode?.marker ?? "settlement";
+    const startSignpost = startMarker === "signpost";
+    const destSignpost = destMarker === "signpost";
 
     drawNodeMarkerOnCanvas(ctx, startCanvasX, markerY, {
       marker: startMarker,
-      scale: POI_MARKER_SCALE,
+      scale: NODE_MARKER_SCALE,
       highlighted: false,
       groundY: playerFeetY,
-      variantSeed: startPoi?.id ?? startNodeId ?? "start",
-      minVisualHeightPx: startGuidepost
-        ? GUIDEPOST_VISUAL_HEIGHT_PX
+      variantSeed: startNode?.id ?? startNodeId ?? "start",
+      minVisualHeightPx: startSignpost
+        ? SIGNPOST_VISUAL_HEIGHT_PX
         : startMarker === "abandoned"
           ? ABANDONED_VISUAL_HEIGHT_PX
           : SETTLEMENT_VISUAL_HEIGHT_PX,
-      verticalOffsetPx: startGuidepost
-        ? GUIDEPOST_UPWARD_OFFSET_PX
+      verticalOffsetPx: startSignpost
+        ? SIGNPOST_UPWARD_OFFSET_PX
         : startMarker === "abandoned"
           ? ABANDONED_UPWARD_OFFSET_PX
           : SETTLEMENT_UPWARD_OFFSET_PX,
     });
     drawNodeMarkerOnCanvas(ctx, destCanvasX, markerY, {
       marker: destMarker,
-      scale: POI_MARKER_SCALE,
+      scale: NODE_MARKER_SCALE,
       highlighted: true,
       groundY: playerFeetY,
-      variantSeed: destPoi?.id ?? destNodeId ?? "dest",
-      minVisualHeightPx: destGuidepost
-        ? GUIDEPOST_VISUAL_HEIGHT_PX
+      variantSeed: destNode?.id ?? destNodeId ?? "dest",
+      minVisualHeightPx: destSignpost
+        ? SIGNPOST_VISUAL_HEIGHT_PX
         : destMarker === "abandoned"
           ? ABANDONED_VISUAL_HEIGHT_PX
           : SETTLEMENT_VISUAL_HEIGHT_PX,
-      verticalOffsetPx: destGuidepost
-        ? GUIDEPOST_UPWARD_OFFSET_PX
+      verticalOffsetPx: destSignpost
+        ? SIGNPOST_UPWARD_OFFSET_PX
         : destMarker === "abandoned"
           ? ABANDONED_UPWARD_OFFSET_PX
           : SETTLEMENT_UPWARD_OFFSET_PX,
@@ -976,7 +972,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       }
     }
 
-    // Horizontal reference lines at POI marker strip positions
+    // Horizontal reference lines at Node marker strip positions
     ctx.setLineDash([6, 5]);
     ctx.lineWidth = 1;
     ctx.strokeStyle = "rgba(255,255,255,0.40)";
@@ -1031,8 +1027,8 @@ function printStripSummary(strip, label, enabled = false) {
 function travelKey(travel) {
   if (!travel) return null;
   return [
-    travel.startPoiId ?? travel.startCityId ?? "-",
-    travel.targetPoiId ?? travel.targetCityId ?? "-",
+    travel.startNodeId ?? "-",
+    travel.targetNodeId ?? "-",
     travel.routeType ?? "-",
     (travel.totalLength ?? 0).toFixed(2),
     travel.biomeSegments?.length ?? 0,
@@ -1095,7 +1091,7 @@ function createIdlePreviewTravel(world, playState) {
     ? buildTravelBiomeBandSegments(world, points)
     : createEmptyBiomeBands();
 
-  const nodeId = playState?.currentNodeId ?? playState?.currentCityId ?? null;
+  const nodeId = playState?.currentNodeId ?? null;
   return {
     startNodeId: nodeId,
     targetNodeId: nodeId,

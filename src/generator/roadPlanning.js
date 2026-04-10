@@ -1,52 +1,52 @@
 export function buildRoadPlanningState({
-  cities = [],
+  settlements = [],
   roads = [],
   width,
-  seedCityIds = new Set(),
-  blockedSourceCityIds = new Set(),
+  seedSettlementIds = new Set(),
+  blockedSourceSettlementIds = new Set(),
 }) {
-  const { activeCityIds, activeRoadIndices } = buildActiveConnectivity(
-    cities,
+  const { activeSettlementIds, activeRoadIndices } = buildActiveConnectivity(
+    settlements,
     roads,
-    seedCityIds,
+    seedSettlementIds,
   );
-  const pendingCityIds = new Set();
-  for (const city of cities) {
-    if (!activeCityIds.has(city.id)) {
-      pendingCityIds.add(city.id);
+  const pendingSettlementIds = new Set();
+  for (const settlement of settlements) {
+    if (!activeSettlementIds.has(settlement.id)) {
+      pendingSettlementIds.add(settlement.id);
     }
   }
 
   const sourceSeedCostByCell = buildSourceSeedCosts({
-    cities,
+    settlements,
     roads,
-    activeCityIds,
+    activeSettlementIds,
     activeRoadIndices,
     width,
-    blockedSourceCityIds,
+    blockedSourceSettlementIds,
   });
   const sourceCells = new Set(sourceSeedCostByCell.keys());
 
   // Safety fallback for malformed state.
-  if (sourceCells.size === 0 && cities.length > 0 && cities[0].cell != null) {
-    sourceCells.add(cities[0].cell);
-    sourceSeedCostByCell.set(cities[0].cell, 0);
+  if (sourceCells.size === 0 && settlements.length > 0 && settlements[0].cell != null) {
+    sourceCells.add(settlements[0].cell);
+    sourceSeedCostByCell.set(settlements[0].cell, 0);
   }
 
   return {
-    activeCityIds,
-    pendingCityIds,
+    activeSettlementIds,
+    pendingSettlementIds,
     sourceCells,
     sourceSeedCostByCell,
     width,
   };
 }
 
-function buildActiveConnectivity(cities, roads, seedCityIds) {
-  const activeCityIds = new Set();
-  for (const seedCityId of seedCityIds) {
-    if (cities[seedCityId] != null) {
-      activeCityIds.add(seedCityId);
+function buildActiveConnectivity(settlements, roads, seedSettlementIds) {
+  const activeSettlementIds = new Set();
+  for (const seedSettlementId of seedSettlementIds) {
+    if (settlements[seedSettlementId] != null) {
+      activeSettlementIds.add(seedSettlementId);
     }
   }
 
@@ -66,7 +66,7 @@ function buildActiveConnectivity(cities, roads, seedCityIds) {
       }
 
       if (
-        !roadTouchesActiveCities(road, activeCityIds) &&
+        !roadTouchesActiveSettlements(road, activeSettlementIds) &&
         !roadTouchesActiveCells(road, activeRoadCells)
       ) {
         continue;
@@ -77,9 +77,9 @@ function buildActiveConnectivity(cities, roads, seedCityIds) {
       for (const cell of road.cells ?? []) {
         activeRoadCells.add(cell);
       }
-      for (const cityId of collectRoadCityIds(road)) {
-        if (!activeCityIds.has(cityId) && cities[cityId] != null) {
-          activeCityIds.add(cityId);
+      for (const settlementId of collectRoadSettlementIds(road)) {
+        if (!activeSettlementIds.has(settlementId) && settlements[settlementId] != null) {
+          activeSettlementIds.add(settlementId);
           changed = true;
         }
       }
@@ -87,32 +87,32 @@ function buildActiveConnectivity(cities, roads, seedCityIds) {
   }
 
   return {
-    activeCityIds,
+    activeSettlementIds,
     activeRoadIndices,
   };
 }
 
 function buildSourceSeedCosts({
-  cities,
+  settlements,
   roads,
-  activeCityIds,
+  activeSettlementIds,
   activeRoadIndices,
   width,
-  blockedSourceCityIds,
+  blockedSourceSettlementIds,
 }) {
   const sourceSeedCostByCell = new Map();
   const roadAdjacency = new Map();
 
-  // Active city cells are always valid seeds.
-  for (const cityId of activeCityIds) {
-    if (blockedSourceCityIds.has(cityId)) {
+  // Active settlement cells are always valid seeds.
+  for (const settlementId of activeSettlementIds) {
+    if (blockedSourceSettlementIds.has(settlementId)) {
       continue;
     }
-    const city = cities[cityId];
-    if (!city || city.cell == null) {
+    const settlement = settlements[settlementId];
+    if (!settlement || settlement.cell == null) {
       continue;
     }
-    setMinSourceCost(sourceSeedCostByCell, city.cell, 0);
+    setMinSourceCost(sourceSeedCostByCell, settlement.cell, 0);
   }
 
   for (const roadIndex of activeRoadIndices) {
@@ -244,9 +244,9 @@ function addRoadAdjacency(adjacency, fromCell, toCell) {
   neighbors.add(toCell);
 }
 
-function roadTouchesActiveCities(road, activeCityIds) {
-  for (const cityId of collectRoadCityIds(road)) {
-    if (activeCityIds.has(cityId)) {
+function roadTouchesActiveSettlements(road, activeSettlementIds) {
+  for (const settlementId of collectRoadSettlementIds(road)) {
+    if (activeSettlementIds.has(settlementId)) {
       return true;
     }
   }
@@ -262,17 +262,17 @@ function roadTouchesActiveCells(road, activeRoadCells) {
   return false;
 }
 
-function collectRoadCityIds(road) {
+function collectRoadSettlementIds(road) {
   const ids = new Set();
-  pushCityId(ids, road?.cityId);
-  pushCityId(ids, road?.fromCityId);
-  pushCityId(ids, road?.viaCityId);
+  pushSettlementId(ids, road?.settlementId);
+  pushSettlementId(ids, road?.fromSettlementId);
+  pushSettlementId(ids, road?.viaSettlementId);
   return ids;
 }
 
-function pushCityId(cityIds, value) {
+function pushSettlementId(settlementIds, value) {
   if (Number.isInteger(value) && value >= 0) {
-    cityIds.add(value);
+    settlementIds.add(value);
   }
 }
 

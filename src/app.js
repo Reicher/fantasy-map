@@ -56,14 +56,14 @@ const refs = {
   playToggleBiomeLabelsButton: document.querySelector(
     "#play-toggle-biome-labels",
   ),
-  playToggleCityLabelsButton: document.querySelector(
-    "#play-toggle-city-labels",
+  playToggleNodeLabelsButton: document.querySelector(
+    "#play-toggle-node-labels",
   ),
   playToggleHoverButton: document.querySelector("#play-toggle-hover"),
   tooltip: document.querySelector("#tooltip"),
   statsContainer: document.querySelector("#stats"),
   toggleBiomeLabelsButton: document.querySelector("#toggle-biome-labels"),
-  toggleCityLabelsButton: document.querySelector("#toggle-city-labels"),
+  toggleNodeLabelsButton: document.querySelector("#toggle-node-labels"),
   toggleSnowButton: document.querySelector("#toggle-snow"),
   zoom1Button: document.querySelector("#zoom-1"),
   zoom2Button: document.querySelector("#zoom-2"),
@@ -170,7 +170,7 @@ refs.toggleBiomeLabelsButton.addEventListener("click", () => {
   editorSession.rerenderCurrentWorld();
 });
 
-refs.toggleCityLabelsButton.addEventListener("click", () => {
+refs.toggleNodeLabelsButton.addEventListener("click", () => {
   state.renderOptions.showNodeLabels = !state.renderOptions.showNodeLabels;
   syncLabelButtons();
   editorSession.rerenderCurrentWorld();
@@ -188,7 +188,7 @@ refs.playToggleBiomeLabelsButton.addEventListener("click", () => {
   playSession.renderPlayWorld();
 });
 
-refs.playToggleCityLabelsButton.addEventListener("click", () => {
+refs.playToggleNodeLabelsButton.addEventListener("click", () => {
   state.playMapOptions.showNodeLabels = !state.playMapOptions.showNodeLabels;
   playSession.renderPlayWorld();
 });

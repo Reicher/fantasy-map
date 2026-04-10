@@ -2,37 +2,37 @@ import { createRng } from "../random.js";
 import { clamp, coordsOf, distance } from "../utils.js";
 import { describeNode } from "../nodeModel.js";
 
-const DEFAULT_POI_WEIGHT = 50;
+const DEFAULT_NODE_WEIGHT = 50;
 
 export function buildFeatureCatalog(world, names) {
-  const poiName =
-    typeof names?.pointOfInterestName === "function"
-      ? (kind, key) => names.pointOfInterestName(kind, key)
+  const nodeName =
+    typeof names?.nodeName === "function"
+      ? (kind, key) => names.nodeName(kind, key)
       : (_kind, key) => key;
-  const roadDegreeByCityId = buildRoadDegreeByCityId(
+  const roadDegreeBySettlementId = buildRoadDegreeBySettlementId(
     world.network,
-    world.cities.length,
+    world.settlements.length,
   );
-  const settlementPois = buildSettlementPois(
+  const settlementNodes = buildSettlementNodes(
     world,
-    poiName,
-    roadDegreeByCityId,
+    nodeName,
+    roadDegreeBySettlementId,
   );
-  const signpostPois = buildDedicatedSignpostPois(world, settlementPois);
-  const crashSitePois = buildDedicatedCrashSitePois(
+  const signpostNodes = buildDedicatedSignpostNodes(world, settlementNodes);
+  const crashSiteNodes = buildDedicatedCrashSiteNodes(
     world,
-    poiName,
-    settlementPois,
-    signpostPois,
+    nodeName,
+    settlementNodes,
+    signpostNodes,
   );
-  const pointsOfInterest = [
-    ...settlementPois,
-    ...signpostPois,
-    ...crashSitePois,
+  const nodes = [
+    ...settlementNodes,
+    ...signpostNodes,
+    ...crashSiteNodes,
   ];
 
   return {
-    pointsOfInterest,
+    nodes,
     lakes: world.hydrology.lakes.map((lake) => ({ ...lake })),
     rivers: world.hydrology.rivers.map((river) => ({ ...river })),
     biomeRegions: world.regions.biomeRegions.map((region) => ({ ...region })),
@@ -48,16 +48,16 @@ export function buildFeatureCatalog(world, names) {
   };
 }
 
-function buildSettlementPois(world, poiName, roadDegreeByCityId) {
+function buildSettlementNodes(world, nodeName, roadDegreeBySettlementId) {
   const descriptor = describeNode({ marker: "settlement", roadDegree: 0 });
 
-  return world.cities.map((city) => {
-    const roadDegree = roadDegreeByCityId[city.id] ?? 0;
-    const name = String(city.name ?? "").trim()
-      ? city.name
-      : poiName("settlement", `settlement-${city.id}`);
+  return world.settlements.map((settlement) => {
+    const roadDegree = roadDegreeBySettlementId[settlement.id] ?? 0;
+    const name = String(settlement.name ?? "").trim()
+      ? settlement.name
+      : nodeName("settlement", `settlement-${settlement.id}`);
     const enriched = {
-      ...city,
+      ...settlement,
       name,
       marker: descriptor.marker,
       kind: descriptor.kind,
@@ -65,12 +65,12 @@ function buildSettlementPois(world, poiName, roadDegreeByCityId) {
       subtitle: descriptor.subtitle,
       detail: descriptor.detail,
     };
-    world.cities[city.id] = enriched;
+    world.settlements[settlement.id] = enriched;
     return enriched;
   });
 }
 
-function buildDedicatedSignpostPois(world, settlementPois) {
+function buildDedicatedSignpostNodes(world, settlementNodes) {
   const network = world.network;
   if (
     !network?.nodes?.length ||
@@ -81,8 +81,8 @@ function buildDedicatedSignpostPois(world, settlementPois) {
   }
 
   const signpostWeight = getWeight01(
-    world.params?.poiSignpostWeight,
-    DEFAULT_POI_WEIGHT,
+    world.params?.nodeSignpostWeight,
+    DEFAULT_NODE_WEIGHT,
   );
   if (signpostWeight <= 0.01) {
     return [];
@@ -106,9 +106,9 @@ function buildDedicatedSignpostPois(world, settlementPois) {
     if (shape === "y") {
       continue;
     }
-    const nearestSettlementDistance = getNearestPoiDistance(
+    const nearestSettlementDistance = getNearestNodeDistance(
       node,
-      settlementPois,
+      settlementNodes,
     );
     if (nearestSettlementDistance < minSettlementClearance) {
       continue;
@@ -151,7 +151,7 @@ function buildDedicatedSignpostPois(world, settlementPois) {
   candidates.sort((a, b) => b.score - a.score);
 
   const target = clamp(
-    Math.round(settlementPois.length * lerp(0.08, 0.7, signpostWeight)),
+    Math.round(settlementNodes.length * lerp(0.08, 0.7, signpostWeight)),
     signpostWeight >= 0.12 ? 1 : 0,
     candidates.length,
   );
@@ -161,8 +161,8 @@ function buildDedicatedSignpostPois(world, settlementPois) {
 
   const selected = chooseSpreadCandidates(candidates, {
     target,
-    seedKey: `${world.params.seed}::poi-signpost-select`,
-    anchorPoints: settlementPois,
+    seedKey: `${world.params.seed}::node-signpost-select`,
+    anchorPoints: settlementNodes,
     desiredSpacing: lerp(13.5, 8.2, signpostWeight),
     scoreCandidate(candidate, context) {
       const anchorClearZone = lerp(8.5, 7.0, signpostWeight);
@@ -181,17 +181,17 @@ function buildDedicatedSignpostPois(world, settlementPois) {
     },
   });
 
-  const baseId = settlementPois.length;
+  const baseId = settlementNodes.length;
   return selected.map((entry, index) => {
-    const poiId = baseId + index;
+    const nodeId = baseId + index;
     // Tag the network node so buildTravelGraph treats this junction as a stop.
-    entry.node.poiId = poiId;
+    entry.node.nodeId = nodeId;
     const descriptor = describeNode({
-      marker: "guidepost",
+      marker: "signpost",
       roadDegree: entry.degree,
     });
     return {
-      id: poiId,
+      id: nodeId,
       cell: entry.node.cell,
       x: entry.node.x,
       y: entry.node.y,
@@ -222,8 +222,8 @@ export function preselectCrashSiteCells(world) {
   }
 
   const crashWeight = getWeight01(
-    world.params?.poiCrashSiteWeight,
-    DEFAULT_POI_WEIGHT,
+    world.params?.nodeCrashSiteWeight,
+    DEFAULT_NODE_WEIGHT,
   );
   if (crashWeight <= 0.01) {
     return [];
@@ -248,7 +248,7 @@ export function preselectCrashSiteCells(world) {
   const maxByRoadLength = clamp(Math.round(totalRoadCells / 120), 1, 42);
   const target = clamp(
     Math.round(
-      Math.max(1, world.cities?.length ?? 1) * lerp(0.05, 0.62, crashWeight),
+      Math.max(1, world.settlements?.length ?? 1) * lerp(0.05, 0.62, crashWeight),
     ),
     crashWeight >= 0.15 ? 1 : 0,
     Math.min(candidates.length, maxByRoadLength),
@@ -259,7 +259,7 @@ export function preselectCrashSiteCells(world) {
 
   const selected = chooseSpreadCandidates(candidates, {
     target,
-    seedKey: `${world.params.seed}::poi-crash-select`,
+    seedKey: `${world.params.seed}::node-crash-select`,
     anchorPoints: [],
     desiredSpacing: lerp(11.6, 7.6, crashWeight),
     initialStats: { endpointCount: 0 },
@@ -288,15 +288,15 @@ export function preselectCrashSiteCells(world) {
   return selected.map((entry) => entry.cell);
 }
 
-function buildDedicatedCrashSitePois(
+function buildDedicatedCrashSiteNodes(
   world,
-  poiName,
-  settlementPois,
-  signpostPois,
+  nodeName,
+  settlementNodes,
+  signpostNodes,
 ) {
   const crashWeight = getWeight01(
-    world.params?.poiCrashSiteWeight,
-    DEFAULT_POI_WEIGHT,
+    world.params?.nodeCrashSiteWeight,
+    DEFAULT_NODE_WEIGHT,
   );
   if (crashWeight <= 0.01) {
     return [];
@@ -310,17 +310,17 @@ function buildDedicatedCrashSitePois(
   }
 
   const descriptor = describeNode({ marker: "abandoned", roadDegree: 2 });
-  const baseId = settlementPois.length + signpostPois.length;
+  const baseId = settlementNodes.length + signpostNodes.length;
   return crashNodes.map((node, index) => {
-    const poiId = baseId + index;
+    const nodeId = baseId + index;
     // Tag the node so buildTravelGraph treats it as a stop.
-    node.poiId = poiId;
+    node.nodeId = nodeId;
     return {
-      id: poiId,
+      id: nodeId,
       cell: node.cell,
       x: node.x,
       y: node.y,
-      name: poiName("abandoned", `abandoned-${node.cell}-${index}`),
+      name: nodeName("abandoned", `abandoned-${node.cell}-${index}`),
       marker: descriptor.marker,
       kind: descriptor.kind,
       roadDegree: 2,
@@ -336,7 +336,7 @@ function buildDedicatedCrashSitePois(
 function chooseSpreadCandidates(candidates, options = {}) {
   const {
     target = 0,
-    seedKey = "poi-spread",
+    seedKey = "node-spread",
     anchorPoints = [],
     desiredSpacing = 10,
     initialStats = {},
@@ -418,22 +418,22 @@ function chooseSpreadCandidates(candidates, options = {}) {
   return selected;
 }
 
-function buildRoadDegreeByCityId(network, cityCount) {
-  const degreeByCityId = new Array(cityCount).fill(0);
+function buildRoadDegreeBySettlementId(network, settlementCount) {
+  const degreeBySettlementId = new Array(settlementCount).fill(0);
   if (!network?.nodes?.length || !network?.adjacencyByNodeId) {
-    return degreeByCityId;
+    return degreeBySettlementId;
   }
 
   for (const node of network.nodes) {
-    if (node?.type !== "city" || node.cityId == null || node.cityId < 0) {
+    if (node?.type !== "settlement" || node.settlementId == null || node.settlementId < 0) {
       continue;
     }
-    degreeByCityId[node.cityId] = (
+    degreeBySettlementId[node.settlementId] = (
       network.adjacencyByNodeId.get(node.id) ?? []
     ).length;
   }
 
-  return degreeByCityId;
+  return degreeBySettlementId;
 }
 
 function buildRoadCellAdjacency(roads) {
@@ -516,10 +516,10 @@ function getAngleSeparationDeg(origin, pointA, pointB) {
   return (Math.acos(dot) * 180) / Math.PI;
 }
 
-function getNearestPoiDistance(node, pois) {
+function getNearestNodeDistance(node, nodes) {
   let best = Number.POSITIVE_INFINITY;
-  for (const poi of pois) {
-    const d = distance(node.x, node.y, poi.x, poi.y);
+  for (const node of nodes) {
+    const d = distance(node.x, node.y, node.x, node.y);
     if (d < best) {
       best = d;
     }
@@ -543,12 +543,12 @@ function getNearestPointDistance(x, y, points) {
 
 function collectCrashCorridorCandidates(
   world,
-  settlementPois,
-  signpostPois,
+  settlementNodes,
+  signpostNodes,
   roadCellAdjacency,
 ) {
   const routes = buildAnchorNeighborRoutes(
-    [...settlementPois, ...signpostPois],
+    [...settlementNodes, ...signpostNodes],
     roadCellAdjacency,
   );
   if (!routes.length) {
@@ -584,12 +584,12 @@ function collectCrashCorridorCandidates(
       const nearestSettlementDistance = getNearestPointDistance(
         x,
         y,
-        settlementPois,
+        settlementNodes,
       );
       const nearestSignpostDistance = getNearestPointDistance(
         x,
         y,
-        signpostPois,
+        signpostNodes,
       );
       const elevation = world.terrain.elevation[cell] ?? 0;
       const mountainField = world.terrain.mountainField[cell] ?? 0;
@@ -632,14 +632,14 @@ function collectCrashCorridorCandidates(
 function collectGenericCrashCandidates(
   world,
   roads,
-  settlementPois,
-  signpostPois,
+  settlementNodes,
+  signpostNodes,
   roadCellAdjacency,
 ) {
   const { width } = world.terrain;
   const seenCells = new Set();
   const candidates = [];
-  const rng = createRng(`${world.params.seed}::poi-crash-candidates`);
+  const rng = createRng(`${world.params.seed}::node-crash-candidates`);
 
   for (const road of roads) {
     const cells = road.cells ?? [];
@@ -669,12 +669,12 @@ function collectGenericCrashCandidates(
       const nearestSettlementDistance = getNearestPointDistance(
         x,
         y,
-        settlementPois,
+        settlementNodes,
       );
       const nearestSignpostDistance = getNearestPointDistance(
         x,
         y,
-        signpostPois,
+        signpostNodes,
       );
       const elevation = world.terrain.elevation[cell] ?? 0;
       const mountainField = world.terrain.mountainField[cell] ?? 0;
@@ -751,8 +751,8 @@ function mergeCrashCandidates(candidates) {
   return [...byCell.values()];
 }
 
-function buildAnchorNeighborRoutes(anchorPois, roadCellAdjacency) {
-  const validAnchors = anchorPois.filter((poi) => Number.isInteger(poi?.cell));
+function buildAnchorNeighborRoutes(anchorNodes, roadCellAdjacency) {
+  const validAnchors = anchorNodes.filter((node) => Number.isInteger(node?.cell));
   if (!validAnchors.length || !roadCellAdjacency.size) {
     return [];
   }
@@ -883,7 +883,7 @@ function getEdgeLength(links, linkId) {
   return Math.max(1, Number(link?.length ?? 1));
 }
 
-function getWeight01(value, fallback = DEFAULT_POI_WEIGHT) {
+function getWeight01(value, fallback = DEFAULT_NODE_WEIGHT) {
   const numeric = Number(value);
   const safe = Number.isFinite(numeric) ? numeric : fallback;
   return clamp(safe / 100, 0, 1);

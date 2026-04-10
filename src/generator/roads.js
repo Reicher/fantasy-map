@@ -1,6 +1,5 @@
 import { BIOME_KEYS } from "../config.js";
 import { buildRoadNetwork } from "./network.js?v=20260401i";
-import { buildRoadPlanningState } from "./roadPlanning.js?v=20260409a";
 import {
   clamp,
   coordsOf,
@@ -8,6 +7,12 @@ import {
   forEachNeighbor,
   indexOf,
 } from "../utils.js";
+
+// ---------------------------------------------------------------------------
+// Terrain travel cost per biome.
+// Easy terrain (plains) is cheap; difficult terrain (mountains, jungle) is
+// expensive. Ocean and lakes are impassable for land roads.
+// ---------------------------------------------------------------------------
 
 const BIOME_TRAVEL_COST = {
   [BIOME_KEYS.OCEAN]: Number.POSITIVE_INFINITY,
@@ -21,63 +26,73 @@ const BIOME_TRAVEL_COST = {
   [BIOME_KEYS.MOUNTAIN]: 4.8,
 };
 
-const DEFAULT_ROAD_SHORTCUT_AGGRESSION = 50;
-const DEFAULT_ROAD_REUSE_BIAS = 50;
-const DEFAULT_ROAD_CITY_AVOIDANCE = 50;
-const DEFAULT_ROAD_MAX_CONNECTIONS_PER_CITY = 5;
+// When both adjacent cells already carry a road, applying this multiplier
+// makes later roads prefer to follow existing paths — producing natural T/+
+// intersections instead of parallel corridors.
+// Values close to 1.0 mean little discount; the pathfinder will only merge
+// onto existing roads when the terrain genuinely makes them the shortest route.
+// Values close to 0 mean nearly-free travel on roads; the pathfinder will go
+// far out of its way to ride an existing road, producing parallel doubles.
+const ON_ROAD_COST_FACTOR = 0.54;
+const TOUCHING_ROAD_COST_FACTOR = 0.74;
 
-function resolveRoadSettings(params = {}) {
-  const shortcut01 =
-    clamp(
-      Number(params.roadShortcutAggression ?? DEFAULT_ROAD_SHORTCUT_AGGRESSION),
-      0,
-      100,
-    ) / 100;
-  const reuse01 =
-    clamp(Number(params.roadReuseBias ?? DEFAULT_ROAD_REUSE_BIAS), 0, 100) /
-    100;
-  const cityAvoidance01 =
-    clamp(
-      Number(params.roadCityAvoidance ?? DEFAULT_ROAD_CITY_AVOIDANCE),
-      0,
-      100,
-    ) / 100;
+// Penalty applied when a destination cell is NOT on a road but directly
+// neighbours one.  This discourages new roads from running alongside an
+// existing road, pushing them to either merge onto it (ON_ROAD_COST_FACTOR
+// takes over) or detour far enough that the eventual junction forms a clean
+// T/+ shape rather than a narrow fork.
+const PARALLEL_ROAD_PENALTY = 2.8;
 
-  return {
-    maxConnectionsPerCity: clamp(
-      Math.round(
-        Number(
-          params.roadMaxConnectionsPerCity ??
-            DEFAULT_ROAD_MAX_CONNECTIONS_PER_CITY,
-        ),
-      ),
-      2,
-      8,
-    ),
-    targetCityScoreWeight: lerp(0.22, 0.88, shortcut01),
-    onRoadReuseMultiplier: lerp(0.3, 0.12, reuse01),
-    touchingRoadReuseMultiplier: lerp(0.62, 0.34, reuse01),
-    cityProximityRadius: Math.round(lerp(2, 9, cityAvoidance01)),
-    cityProximityPenalty: lerp(0.4, 10.8, cityAvoidance01),
-  };
-}
+// Penalty applied to cells within SETTLEMENT_APPROACH_RADIUS of a settlement that
+// already has at least one road connection.  Prevents new roads from
+// sneaking up alongside an existing connection and forming a narrow Y fork.
+// The settlement cell itself carries no penalty (roads must be able to reach it).
+const SETTLEMENT_APPROACH_RADIUS = 5;
+const SETTLEMENT_APPROACH_PEAK_PENALTY = 6.0;
 
+const RIVER_COST_THRESHOLD = 0.06;
+const RIVER_BASE_PENALTY = 3.2;
+const RIVER_STRENGTH_SCALE = 4.2;
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate the full road network for a world.
+ *
+ * Algorithm overview:
+ *   1. Build a per-cell terrain travel-cost field from biome, elevation, and
+ *      mountain data.
+ *   2. Identify contiguous landmasses via flood-fill.
+ *   3. Per landmass: run Dijkstra once per settlement to get all-pairs travel
+ *      costs, compute a Minimum Spanning Tree (Kruskal's), then materialise
+ *      each MST edge as a road. Roads are laid cheapest-first so that later
+ *      roads naturally merge with earlier ones (creating T/+ intersections).
+ *   4. Add a small set of shortcut edges controlled by roadLoopiness to
+ *      break up horseshoe-shaped networks.
+ *   5. Connect isolated landmasses with the minimum number of sea routes.
+ *
+ * Signposts and abandoned nodes are NOT placed here. They are derived
+ * post-hoc by features.js from the completed network topology.
+ */
 export function generateRoads(world) {
-  const { params, terrain, climate, hydrology, cities } = world;
+  const { params, terrain, climate, hydrology, settlements } = world;
   const { width, height, size, isLand, elevation, mountainField } = terrain;
   const { biome } = climate;
   const { lakeIdByCell, riverStrength } = hydrology;
-  const roadSettings = resolveRoadSettings(params);
+  const loopiness01 = clamp(Number(params.roadLoopiness ?? 50), 0, 100) / 100;
 
-  if (cities.length < 2) {
+  if (settlements.length < 2) {
     return {
       roads: [],
       roadUsage: new Uint16Array(size),
-      componentCount: cities.length > 0 ? 1 : 0,
+      componentCount: settlements.length > 0 ? 1 : 0,
     };
   }
 
-  const baseCost = buildRoadBaseCost(
+  // Per-cell terrain traversal cost. Impassable cells (ocean, lake) get +Inf.
+  const baseCost = buildBaseCost(
     size,
     isLand,
     lakeIdByCell,
@@ -85,108 +100,202 @@ export function generateRoads(world) {
     elevation,
     mountainField,
   );
-  const cityProximityPenalty = buildCityProximityPenaltyField({
-    width,
-    height,
-    size,
-    cities,
-    roadSettings,
-  });
-  const cityByCell = buildCityByCell(cities);
-  const roadUsage = new Uint16Array(size);
-  const cityConnectionCounts = new Uint16Array(cities.length);
+
+  // Label each land cell with its connected landmass ID.
+  const landComponentByCell = buildLandComponents(width, height, size, isLand);
+
+  // Group settlements by landmass so we only route within each island.
+  const settlementsByComponent = new Map();
+  for (const settlement of settlements) {
+    const comp = landComponentByCell[settlement.cell];
+    if (!settlementsByComponent.has(comp)) {
+      settlementsByComponent.set(comp, []);
+    }
+    settlementsByComponent.get(comp).push(settlement);
+  }
+
   const roads = [];
-  const seedCityIds = new Set();
+  const roadUsage = new Uint16Array(size);
+  const settlementProximityPenalty = new Float32Array(size);
   let componentCount = 0;
 
-  while (true) {
-    if (seedCityIds.size === 0) {
-      const hub = pickRoadHub(cities, new Set(cities.map((city) => city.id)));
-      seedCityIds.add(hub.id);
-      componentCount += 1;
+  // Fast lookup: land cell → settlement (used to trim paths at intermediate settlements).
+  const settlementByCell = new Map(settlements.map((settlement) => [settlement.cell, settlement]));
+
+  // Pairwise A* travel costs collected during the MST phase and reused by
+  // the loop-augmentation phase to avoid recomputing them.
+  const pairwiseCosts = new Map();
+
+  // =========================================================================
+  // Phase 1 — Sparse connected base network (MST)
+  //
+  // For each landmass with >= 2 settlements:
+  //   a. Run Dijkstra from each settlement (no reuse bonus yet).
+  //   b. Build pairwise cost matrix.
+  //   c. Compute MST with Kruskal's algorithm.
+  //   d. Materialise MST edges as roads, cheapest first, with road-reuse
+  //      discount active. This causes later roads to overlap earlier ones,
+  //      naturally forming T and + intersections.
+  // =========================================================================
+  for (const [, componentSettlements] of settlementsByComponent) {
+    componentCount += 1;
+    if (componentSettlements.length < 2) {
+      continue;
     }
 
-    const planning = buildRoadPlanningState({
-      cities,
+    // Run Dijkstra from each settlement on this landmass.
+    // No road-reuse bonus here — we want the unbiased terrain cost for MST
+    // edge weights.
+    const distBySettlement = new Map();
+    for (const settlement of componentSettlements) {
+      distBySettlement.set(
+        settlement.id,
+        runDijkstra({
+          width,
+          height,
+          size,
+          baseCost,
+          riverStrength,
+          source: settlement.cell,
+        }),
+      );
+    }
+
+    // Build symmetric pairwise cost matrix.
+    const n = componentSettlements.length;
+    const edgeCost = new Float64Array(n * n);
+    for (let i = 0; i < n; i += 1) {
+      const row = distBySettlement.get(componentSettlements[i].id);
+      for (let j = i + 1; j < n; j += 1) {
+        const raw = row[componentSettlements[j].cell];
+        const cost = Number.isFinite(raw) ? raw : Number.POSITIVE_INFINITY;
+        edgeCost[i * n + j] = cost;
+        edgeCost[j * n + i] = cost;
+        // Store for loop-augmentation phase below.
+        pairwiseCosts.set(
+          pairKey(componentSettlements[i].id, componentSettlements[j].id),
+          cost,
+        );
+      }
+    }
+
+    // Kruskal's MST — ensures every settlement on this landmass is reachable
+    // while keeping the network as sparse as possible.
+    const mstEdges = buildMST(n, edgeCost);
+
+    // Cheapest edges first: easy roads are laid before difficult ones.
+    // Difficult roads then naturally piggyback on existing easy segments.
+    mstEdges.sort((a, b) => a.cost - b.cost);
+
+    for (const edge of mstEdges) {
+      const fromSettlement = componentSettlements[edge.i];
+      const toSettlement = componentSettlements[edge.j];
+
+      // Re-run pathfinding with the road-reuse discount now active.
+      const rawPath = findPath({
+        from: fromSettlement.cell,
+        to: toSettlement.cell,
+        width,
+        height,
+        size,
+        baseCost,
+        riverStrength,
+        roadUsage,
+        settlementProximityPenalty,
+      });
+
+      if (!rawPath || rawPath.length < 2) {
+        continue;
+      }
+
+      // Trim the path at the last intermediate settlement node.  When road-reuse
+      // pulls the route through an already-connected settlement (e.g. H→A→B when
+      // H→A is already laid), only store the novel tail (A→B) to avoid
+      // drawing the same cells twice.
+      const { path: trimmed, anchorSettlement } = trimPathAtFirstAnchor(
+        rawPath,
+        settlementByCell,
+      );
+      if (trimmed.length < 2) {
+        continue;
+      }
+      const actualFromSettlement = anchorSettlement ?? fromSettlement;
+
+      roads.push({
+        id: roads.length,
+        type: "road",
+        settlementId: toSettlement.id,
+        fromSettlementId: actualFromSettlement.id,
+        cells: trimmed,
+        length: trimmed.length,
+        cost: edge.cost,
+      });
+
+      // Mark only the stored cells — not the full rawPath — so that
+      // roadUsage never contains cells absent from any road record.  A later
+      // trim must only anchor on cells that network.js will actually register
+      // as nodes (road endpoints), otherwise it produces dangling stubs.
+      for (const cell of trimmed) {
+        roadUsage[cell] = Math.min(roadUsage[cell] + 1, 65535);
+      }
+
+      // Stamp a proximity penalty around each connected settlement so future roads
+      // approach from a different angle rather than forking close to the node.
+      stampSettlementProximity(actualFromSettlement, settlementProximityPenalty, width, height);
+      stampSettlementProximity(toSettlement, settlementProximityPenalty, width, height);
+    }
+  }
+
+  // =========================================================================
+  // Phase 2 — Loop augmentation
+  //
+  // Add shortcut edges only where they provide a meaningful improvement.
+  // A pair (A, B) is a candidate when the current network path is
+  // significantly longer than the direct A* travel cost. Only the best
+  // candidates are added, up to a budget controlled by roadLoopiness.
+  // =========================================================================
+  if (loopiness01 > 0 && settlements.length >= 3) {
+    addLoopEdges({
+      settlements,
       roads,
-      width,
-      seedCityIds,
-      blockedSourceCityIds: collectBlockedSourceCityIds(
-        cityConnectionCounts,
-        roadSettings.maxConnectionsPerCity,
-      ),
-    });
-    if (planning.pendingCityIds.size === 0) {
-      break;
-    }
-
-    const search = runRoadSearch({
+      roadUsage,
+      settlementProximityPenalty,
+      loopiness01,
       width,
       height,
       size,
-      isLand,
-      lakeIdByCell,
-      riverStrength,
-      roadUsage,
       baseCost,
-      sources: planning.sourceCells,
-      cityProximityPenalty,
-      roadSettings,
+      riverStrength,
+      landComponentByCell,
+      pairwiseCosts,
+      settlementByCell,
     });
-    const target = pickNextRoadTarget(
-      cities,
-      planning.pendingCityIds,
-      search.distance,
-      roadSettings,
-    );
-
-    if (!target) {
-      const hub = pickRoadHub(cities, planning.pendingCityIds);
-      seedCityIds.add(hub.id);
-      componentCount += 1;
-      continue;
-    }
-
-    const path = reconstructPath(target.city.cell, search.previous);
-    if (path.length < 2) {
-      seedCityIds.add(target.city.id);
-      continue;
-    }
-
-    const fromCityId = findConnectedCityOnPath(
-      path,
-      cityByCell,
-      planning.activeCityIds,
-    );
-    roads.push({
-      id: roads.length,
-      type: "road",
-      cityId: target.city.id,
-      fromCityId,
-      cells: path,
-      length: path.length,
-      cost: target.cost,
-    });
-    markRoadUsage(path, roadUsage);
-    markRoadConnectionCounts(cityConnectionCounts, target.city.id, fromCityId);
   }
 
+  // =========================================================================
+  // Phase 3 — Sea routes
+  //
+  // Connect isolated landmasses with the minimum number of sea links.
+  // Each link joins the nearest meaningful coastal settlements of two
+  // separate network components.
+  // =========================================================================
   const seaRoutes = buildSeaRoutes({
-    cities,
+    settlements,
     roads,
     terrain,
     climate,
+    landComponentByCell,
   });
   roads.push(...seaRoutes);
 
-  return {
-    roads,
-    roadUsage,
-    componentCount,
-  };
+  return { roads, roadUsage, componentCount };
 }
 
-function buildRoadBaseCost(
+// ---------------------------------------------------------------------------
+// Terrain cost field
+// ---------------------------------------------------------------------------
+
+function buildBaseCost(
   size,
   isLand,
   lakeIdByCell,
@@ -213,193 +322,614 @@ function buildRoadBaseCost(
   return baseCost;
 }
 
-function pickRoadHub(cities, allowedCityIds) {
-  let best = null;
-  const center = cities.reduce(
-    (acc, city) => {
-      acc.x += city.x;
-      acc.y += city.y;
-      return acc;
-    },
-    { x: 0, y: 0 },
+// ---------------------------------------------------------------------------
+// Landmass flood-fill
+// ---------------------------------------------------------------------------
+
+function buildLandComponents(width, height, size, isLand) {
+  const components = new Int32Array(size);
+  components.fill(-1);
+  let nextId = 0;
+
+  for (let start = 0; start < size; start += 1) {
+    if (!isLand[start] || components[start] >= 0) {
+      continue;
+    }
+
+    const queue = [start];
+    components[start] = nextId;
+
+    while (queue.length > 0) {
+      const current = queue.pop();
+      const [x, y] = coordsOf(current, width);
+      forEachNeighbor(width, height, x, y, true, (nx, ny) => {
+        const neighbor = indexOf(nx, ny, width);
+        if (!isLand[neighbor] || components[neighbor] >= 0) {
+          return;
+        }
+        components[neighbor] = nextId;
+        queue.push(neighbor);
+      });
+    }
+
+    nextId += 1;
+  }
+
+  return components;
+}
+
+// ---------------------------------------------------------------------------
+// Dijkstra on the grid — returns Float32Array of distances from source.
+// No road-reuse discount is applied; this gives the unbiased terrain cost
+// used as MST edge weights.
+// ---------------------------------------------------------------------------
+
+function runDijkstra({ width, height, size, baseCost, riverStrength, source }) {
+  const dist = new Float32Array(size);
+  dist.fill(Number.POSITIVE_INFINITY);
+  const heap = new MinHeap();
+
+  if (Number.isFinite(baseCost[source])) {
+    dist[source] = 0;
+    heap.push(source, 0);
+  }
+
+  while (heap.size > 0) {
+    const { index: current, priority } = heap.pop();
+    if (priority > dist[current] + 1e-4) {
+      continue;
+    }
+
+    const [x, y] = coordsOf(current, width);
+    forEachNeighbor(width, height, x, y, true, (nx, ny, ox, oy) => {
+      const neighbor = indexOf(nx, ny, width);
+      const diagonal = Math.abs(ox) + Math.abs(oy) === 2;
+      const cost = computeStepCost(
+        current,
+        neighbor,
+        diagonal,
+        baseCost,
+        riverStrength,
+        null,
+      );
+      if (!Number.isFinite(cost)) {
+        return;
+      }
+      const newCost = priority + cost;
+      if (newCost < dist[neighbor]) {
+        dist[neighbor] = newCost;
+        heap.push(neighbor, newCost);
+      }
+    });
+  }
+
+  return dist;
+}
+
+// ---------------------------------------------------------------------------
+// Kruskal's Minimum Spanning Tree
+// ---------------------------------------------------------------------------
+
+function buildMST(n, edgeCost) {
+  // Enumerate all finite-weight edges (upper triangle only).
+  const edges = [];
+  for (let i = 0; i < n; i += 1) {
+    for (let j = i + 1; j < n; j += 1) {
+      const cost = edgeCost[i * n + j];
+      if (Number.isFinite(cost)) {
+        edges.push({ i, j, cost });
+      }
+    }
+  }
+  edges.sort((a, b) => a.cost - b.cost);
+
+  // Union-Find with path halving.
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const rank = new Uint8Array(n);
+
+  function find(x) {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  }
+
+  function union(x, y) {
+    const px = find(x);
+    const py = find(y);
+    if (px === py) {
+      return false;
+    }
+    if (rank[px] < rank[py]) {
+      parent[px] = py;
+    } else if (rank[px] > rank[py]) {
+      parent[py] = px;
+    } else {
+      parent[py] = px;
+      rank[px] += 1;
+    }
+    return true;
+  }
+
+  const mstEdges = [];
+  for (const edge of edges) {
+    if (union(edge.i, edge.j)) {
+      mstEdges.push(edge);
+      if (mstEdges.length === n - 1) {
+        break;
+      }
+    }
+  }
+
+  return mstEdges;
+}
+
+// ---------------------------------------------------------------------------
+// Path-finding from one cell to another with optional road-reuse discount.
+// Returns the cell path (from → to) or null if unreachable.
+// ---------------------------------------------------------------------------
+
+function findPath({
+  from,
+  to,
+  width,
+  height,
+  size,
+  baseCost,
+  riverStrength,
+  roadUsage,
+  settlementProximityPenalty = null,
+}) {
+  if (!Number.isFinite(baseCost[from]) || !Number.isFinite(baseCost[to])) {
+    return null;
+  }
+
+  const dist = new Float32Array(size);
+  dist.fill(Number.POSITIVE_INFINITY);
+  const prev = new Int32Array(size);
+  prev.fill(-1);
+  const heap = new MinHeap();
+
+  dist[from] = 0;
+  heap.push(from, 0);
+
+  while (heap.size > 0) {
+    const { index: current, priority } = heap.pop();
+    if (priority > dist[current] + 1e-4) {
+      continue;
+    }
+    if (current === to) {
+      break;
+    }
+
+    const [x, y] = coordsOf(current, width);
+    forEachNeighbor(width, height, x, y, true, (nx, ny, ox, oy) => {
+      const neighbor = indexOf(nx, ny, width);
+      const diagonal = Math.abs(ox) + Math.abs(oy) === 2;
+      const cost = computeStepCost(
+        current,
+        neighbor,
+        diagonal,
+        baseCost,
+        riverStrength,
+        roadUsage,
+        width,
+        height,
+        settlementProximityPenalty,
+      );
+      if (!Number.isFinite(cost)) {
+        return;
+      }
+      const newCost = priority + cost;
+      if (newCost < dist[neighbor]) {
+        dist[neighbor] = newCost;
+        prev[neighbor] = current;
+        heap.push(neighbor, newCost);
+      }
+    });
+  }
+
+  if (!Number.isFinite(dist[to])) {
+    return null;
+  }
+
+  return reconstructPath(to, prev);
+}
+
+// ---------------------------------------------------------------------------
+// Per-step traversal cost (used by both Dijkstra and findPath)
+// ---------------------------------------------------------------------------
+
+// Returns true when any of `cell`'s 8 neighbours carries a road.
+// Used to detect when a path would run parallel/adjacent to an existing road.
+function hasRoadNeighbour(cell, roadUsage, width, height) {
+  const x = cell % width;
+  const y = Math.floor(cell / width);
+  for (let oy = -1; oy <= 1; oy += 1) {
+    for (let ox = -1; ox <= 1; ox += 1) {
+      if (ox === 0 && oy === 0) {
+        continue;
+      }
+      const nx = x + ox;
+      const ny = y + oy;
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+        continue;
+      }
+      if (roadUsage[ny * width + nx] > 0) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function computeStepCost(
+  from,
+  to,
+  diagonal,
+  baseCost,
+  riverStrength,
+  roadUsage,
+  width = 0,
+  height = 0,
+  settlementProximityPenalty = null,
+) {
+  if (!Number.isFinite(baseCost[from]) || !Number.isFinite(baseCost[to])) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const stepLength = diagonal ? 1.4142 : 1.0;
+  let cost = (baseCost[from] + baseCost[to]) * 0.5 * stepLength;
+
+  // River crossings are expensive — roads prefer to follow river banks.
+  const river = Math.max(riverStrength[from], riverStrength[to]);
+  if (river > RIVER_COST_THRESHOLD) {
+    cost += RIVER_BASE_PENALTY + clamp(river, 0, 4) * RIVER_STRENGTH_SCALE;
+  }
+
+  // Road-reuse discount encourages later roads to merge with existing ones,
+  // creating natural intersections rather than parallel corridors.
+  if (roadUsage !== null) {
+    if (roadUsage[to] > 0) {
+      // Destination is on an existing road — full merge discount.
+      if (roadUsage[from] > 0) {
+        cost *= ON_ROAD_COST_FACTOR;
+      } else {
+        cost *= TOUCHING_ROAD_COST_FACTOR;
+      }
+    } else {
+      // Destination is off-road.  Apply merge discount if origin is on a road.
+      if (roadUsage[from] > 0) {
+        cost *= TOUCHING_ROAD_COST_FACTOR;
+      }
+
+      // Parallel-road penalty: if the destination cell directly neighbours an
+      // existing road it would run alongside it — a fork.  Make this
+      // noticeably more expensive so the path either merges onto the road or
+      // swings wide enough for a clean T/+ intersection.
+      if (width > 0 && hasRoadNeighbour(to, roadUsage, width, height)) {
+        cost += PARALLEL_ROAD_PENALTY;
+      }
+    }
+  }
+
+  // Settlement proximity penalty: discourage approaching an already-connected settlement
+  // node from a shallow angle.  The settlement cell itself has penalty 0 so roads
+  // can always reach their destination; only the surrounding cells are
+  // penalised, pushing new roads to arrive at a perpendicular angle.
+  if (settlementProximityPenalty !== null) {
+    cost += settlementProximityPenalty[to];
+  }
+
+  return cost;
+}
+
+// ---------------------------------------------------------------------------
+// Loop augmentation — add shortcut edges to break horseshoe networks
+// ---------------------------------------------------------------------------
+
+function addLoopEdges({
+  settlements,
+  roads,
+  roadUsage,
+  settlementProximityPenalty,
+  loopiness01,
+  width,
+  height,
+  size,
+  baseCost,
+  riverStrength,
+  landComponentByCell,
+  pairwiseCosts,
+  settlementByCell,
+}) {
+  // Detour ratio threshold: only add an edge when the current network path
+  // is this many times longer than the direct travel cost.
+  // At low loopiness the threshold is high (very few extras).
+  // At high loopiness the threshold is lower (more extras added).
+  const detourThreshold = lerp(3.5, 1.45, loopiness01);
+  const maxExtraEdges = Math.max(
+    1,
+    Math.round(settlements.length * loopiness01 * 0.55),
   );
-  center.x /= Math.max(1, cities.length);
-  center.y /= Math.max(1, cities.length);
 
-  for (const city of cities) {
-    if (!allowedCityIds.has(city.id)) {
+  // Build settlement-to-settlement adjacency from the materialised roads.
+  const settlementAdj = new Map();
+  for (const settlement of settlements) {
+    settlementAdj.set(settlement.id, []);
+  }
+  for (const road of roads) {
+    if (road.type !== "road") {
       continue;
     }
-    const centrality = distance(city.x, city.y, center.x, center.y);
-    const value = city.score * 1.2 - centrality * 0.04;
-    if (!best || value > best.value) {
-      best = { city, value };
+    const { settlementId, fromSettlementId, cost } = road;
+    if (settlementId == null || fromSettlementId == null) {
+      continue;
+    }
+    settlementAdj.get(fromSettlementId)?.push({ neighborId: settlementId, cost });
+    settlementAdj.get(settlementId)?.push({ neighborId: fromSettlementId, cost });
+  }
+
+  // Track which settlement pairs already have a direct road so we don't duplicate.
+  const directlyConnected = new Set();
+  for (const road of roads) {
+    if (
+      road.type !== "road" ||
+      road.settlementId == null ||
+      road.fromSettlementId == null
+    ) {
+      continue;
+    }
+    directlyConnected.add(pairKey(road.settlementId, road.fromSettlementId));
+  }
+
+  // All-pairs shortest network path via Dijkstra on the settlement graph.
+  const networkDistBySettlement = new Map();
+  for (const settlement of settlements) {
+    networkDistBySettlement.set(settlement.id, dijkstraOnSettlementGraph(settlement.id, settlementAdj));
+  }
+
+  // Collect shortcut candidates.
+  const candidates = [];
+  for (let i = 0; i < settlements.length; i += 1) {
+    const settlementA = settlements[i];
+    for (let j = i + 1; j < settlements.length; j += 1) {
+      const settlementB = settlements[j];
+
+      // Only consider pairs on the same landmass.
+      if (landComponentByCell[settlementA.cell] !== landComponentByCell[settlementB.cell]) {
+        continue;
+      }
+
+      const key = pairKey(settlementA.id, settlementB.id);
+      if (directlyConnected.has(key)) {
+        continue;
+      }
+
+      const directCost = pairwiseCosts.get(key);
+      if (!Number.isFinite(directCost) || directCost <= 0) {
+        continue;
+      }
+
+      const networkCost =
+        networkDistBySettlement.get(settlementA.id)?.get(settlementB.id) ??
+        Number.POSITIVE_INFINITY;
+      if (!Number.isFinite(networkCost)) {
+        continue;
+      }
+
+      const detourRatio = networkCost / directCost;
+      if (detourRatio < detourThreshold) {
+        continue;
+      }
+
+      candidates.push({ settlementA, settlementB, directCost, detourRatio, key });
     }
   }
 
-  return best.city;
-}
+  // Add best shortcuts first (largest detour reduction).
+  candidates.sort((a, b) => b.detourRatio - a.detourRatio);
 
-function pickNextRoadTarget(cities, remainingCityIds, distances, roadSettings) {
-  let best = null;
+  let added = 0;
+  for (const { settlementA, settlementB, directCost, key } of candidates) {
+    if (added >= maxExtraEdges) {
+      break;
+    }
 
-  for (const cityId of remainingCityIds) {
-    const city = cities[cityId];
-    const cost = distances[city.cell];
-    if (!Number.isFinite(cost)) {
+    const rawPath = findPath({
+      from: settlementA.cell,
+      to: settlementB.cell,
+      width,
+      height,
+      size,
+      baseCost,
+      riverStrength,
+      roadUsage,
+      settlementProximityPenalty,
+    });
+
+    if (!rawPath || rawPath.length < 2) {
       continue;
     }
 
-    const score = cost - city.score * roadSettings.targetCityScoreWeight;
-    if (!best || score < best.score) {
-      best = { city, cost, score };
+    const { path: trimmed, anchorSettlement } = trimPathAtFirstAnchor(
+      rawPath,
+      settlementByCell,
+    );
+    if (trimmed.length < 2) {
+      continue;
+    }
+    const actualFromSettlement = anchorSettlement ?? settlementA;
+
+    roads.push({
+      id: roads.length,
+      type: "road",
+      settlementId: settlementB.id,
+      fromSettlementId: actualFromSettlement.id,
+      cells: trimmed,
+      length: trimmed.length,
+      cost: directCost,
+    });
+
+    for (const cell of trimmed) {
+      roadUsage[cell] = Math.min(roadUsage[cell] + 1, 65535);
+    }
+
+    directlyConnected.add(key);
+    added += 1;
+  }
+}
+
+// Dijkstra on the (small) settlement graph — returns Map<settlementId, cost>.
+function dijkstraOnSettlementGraph(sourceId, adjacency) {
+  const dist = new Map();
+  dist.set(sourceId, 0);
+  const heap = new MinHeap();
+  heap.push(sourceId, 0);
+
+  while (heap.size > 0) {
+    const { index: settlementId, priority } = heap.pop();
+    if (priority > (dist.get(settlementId) ?? Number.POSITIVE_INFINITY) + 1e-6) {
+      continue;
+    }
+    for (const { neighborId, cost } of adjacency.get(settlementId) ?? []) {
+      const newCost = priority + cost;
+      if (newCost < (dist.get(neighborId) ?? Number.POSITIVE_INFINITY)) {
+        dist.set(neighborId, newCost);
+        heap.push(neighborId, newCost);
+      }
     }
   }
 
-  return best;
+  return dist;
 }
 
-function buildSeaRoutes({ cities, roads, terrain, climate }) {
+// ---------------------------------------------------------------------------
+// Sea routes — connect isolated landmasses with minimal sea links
+// ---------------------------------------------------------------------------
+
+function buildSeaRoutes({
+  settlements,
+  roads,
+  terrain,
+  climate,
+  landComponentByCell,
+}) {
   const { width, height, isLand } = terrain;
   const { biome } = climate;
-  const cityByCell = buildCityByCell(cities);
-  const landComponentByCell = buildLandComponents(width, height, isLand);
-  const harborByCityId = buildHarborMap(cities, width, height, isLand, biome);
+  const harborBySettlementId = buildHarborMap(settlements, width, height, isLand, biome);
   const seaRoutes = [];
 
   for (
     let iteration = 0;
-    iteration < Math.max(0, cities.length * 2);
+    iteration < Math.max(0, settlements.length * 2);
     iteration += 1
   ) {
-    const activeNetwork = buildRoadNetwork({
-      cities,
+    const network = buildRoadNetwork({
+      settlements,
       roads: [...roads, ...seaRoutes],
       width,
     });
-    const connectedComponents = activeNetwork.components.filter(
-      (component) => component.cityIds.length > 0,
+
+    const activeComponents = network.components.filter(
+      (comp) => comp.settlementIds.length > 0,
     );
-    if (connectedComponents.length <= 1) {
+    if (activeComponents.length <= 1) {
       break;
     }
 
-    const bestCandidate = findBestSeaRouteByRadiusSteps({
-      components: connectedComponents,
-      cities,
-      harborByCityId,
+    const best = findBestSeaRoute({
+      components: activeComponents,
+      settlements,
+      harborBySettlementId,
       landComponentByCell,
       width,
       height,
       isLand,
       biome,
     });
-    if (!bestCandidate) {
+    if (!best) {
       break;
     }
 
-    const route = materializeSeaRoute({
-      city: bestCandidate.fromCity,
-      candidate: bestCandidate.toCity,
-      waterPath: bestCandidate.waterPath,
-      cityByCell,
+    const cells = dedupePath([
+      best.fromSettlement.cell,
+      ...best.waterPath,
+      best.toSettlement.cell,
+    ]);
+    if (cells.length < 2) {
+      break;
+    }
+
+    seaRoutes.push({
+      id: roads.length + seaRoutes.length,
+      type: "sea-route",
+      settlementId: best.toSettlement.id,
+      fromSettlementId: best.fromSettlement.id,
+      cells,
+      length: cells.length,
+      cost: best.waterPath.length,
     });
-    if (!route) {
-      break;
-    }
-
-    route.id = roads.length + seaRoutes.length;
-    route.type = "sea-route";
-    seaRoutes.push(route);
   }
 
   return seaRoutes;
 }
 
-function findBestSeaRouteByRadiusSteps({
+function findBestSeaRoute({
   components,
-  cities,
-  harborByCityId,
+  settlements,
+  harborBySettlementId,
   landComponentByCell,
   width,
   height,
   isLand,
   biome,
-}) {
-  // Score is waterPath.length, so evaluating all pairs at once always picks
-  // the globally shortest sea route without needing incremental radius steps.
-  return findBestSeaRouteCandidate({
-    components,
-    cities,
-    harborByCityId,
-    landComponentByCell,
-    width,
-    height,
-    isLand,
-    biome,
-    maxCityDistance: 220,
-  });
-}
-
-function findBestSeaRouteCandidate({
-  components,
-  cities,
-  harborByCityId,
-  landComponentByCell,
-  width,
-  height,
-  isLand,
-  biome,
-  maxCityDistance,
 }) {
   let best = null;
 
   for (let aIndex = 0; aIndex < components.length; aIndex += 1) {
-    const componentA = components[aIndex];
-    const portCitiesA = getComponentPortCities(
-      componentA,
-      cities,
-      harborByCityId,
+    const portSettlementsA = getPortSettlements(
+      components[aIndex],
+      settlements,
+      harborBySettlementId,
     );
-    if (portCitiesA.length === 0) {
+    if (portSettlementsA.length === 0) {
       continue;
     }
 
     for (let bIndex = aIndex + 1; bIndex < components.length; bIndex += 1) {
-      const componentB = components[bIndex];
-      const portCitiesB = getComponentPortCities(
-        componentB,
-        cities,
-        harborByCityId,
+      const portSettlementsB = getPortSettlements(
+        components[bIndex],
+        settlements,
+        harborBySettlementId,
       );
-      if (portCitiesB.length === 0) {
+      if (portSettlementsB.length === 0) {
         continue;
       }
 
-      for (const fromCity of portCitiesA) {
-        const sourceHarbor = harborByCityId.get(fromCity.id);
-        const sourceLandComponent = landComponentByCell[fromCity.cell];
+      for (const fromSettlement of portSettlementsA) {
+        const sourceHarbor = harborBySettlementId.get(fromSettlement.id);
         if (sourceHarbor == null) {
           continue;
         }
 
-        for (const toCity of portCitiesB) {
-          const targetHarbor = harborByCityId.get(toCity.id);
-          const targetLandComponent = landComponentByCell[toCity.cell];
+        for (const toSettlement of portSettlementsB) {
+          const targetHarbor = harborBySettlementId.get(toSettlement.id);
+          if (targetHarbor == null) {
+            continue;
+          }
+
+          // Skip pairs that share a land component — they can meet overland.
           if (
-            targetHarbor == null ||
-            sourceLandComponent === targetLandComponent
+            landComponentByCell[fromSettlement.cell] ===
+            landComponentByCell[toSettlement.cell]
           ) {
             continue;
           }
 
-          const cityDistance = distance(
-            fromCity.x,
-            fromCity.y,
-            toCity.x,
-            toCity.y,
-          );
-          if (cityDistance > maxCityDistance) {
+          const settlementDist = distance(fromSettlement.x, fromSettlement.y, toSettlement.x, toSettlement.y);
+          if (settlementDist > 220) {
             continue;
           }
 
@@ -424,12 +954,10 @@ function findBestSeaRouteCandidate({
             continue;
           }
 
-          const detourPenalty = Math.max(0, waterPath.length - cityDistance);
           const score =
-            waterPath.length - (fromCity.score + toCity.score) * 0.04;
-
+            waterPath.length - (fromSettlement.score + toSettlement.score) * 0.04;
           if (!best || score < best.score) {
-            best = { fromCity, toCity, waterPath, score };
+            best = { fromSettlement, toSettlement, waterPath, score };
           }
         }
       }
@@ -439,60 +967,34 @@ function findBestSeaRouteCandidate({
   return best;
 }
 
-function getComponentPortCities(component, cities, harborByCityId) {
-  const coastal = component.cityIds
-    .map((cityId) => cities[cityId])
-    .filter((city) => city.coastal && harborByCityId.has(city.id));
+function getPortSettlements(component, settlements, harborBySettlementId) {
+  const coastal = component.settlementIds
+    .map((id) => settlements[id])
+    .filter((settlement) => settlement?.coastal && harborBySettlementId.has(settlement.id));
   if (coastal.length > 0) {
     return coastal;
   }
-
-  return component.cityIds
-    .map((cityId) => cities[cityId])
-    .filter((city) => harborByCityId.has(city.id));
+  return component.settlementIds
+    .map((id) => settlements[id])
+    .filter((settlement) => settlement != null && harborBySettlementId.has(settlement.id));
 }
 
-function materializeSeaRoute({ city, candidate, waterPath, cityByCell }) {
-  if (!waterPath || waterPath.length < 2) {
-    return null;
-  }
-
-  const cells = dedupePath([city.cell, ...waterPath, candidate.cell]);
-  const viaCityId = findSeaRouteTouchCity(
-    cells,
-    cityByCell,
-    city.id,
-    candidate.id,
-  );
-
-  return {
-    fromCityId: city.id,
-    cityId: candidate.id,
-    viaCityId,
-    cells,
-    length: cells.length,
-    cost: waterPath.length,
-  };
-}
-
-function buildHarborMap(cities, width, height, isLand, biome) {
-  const harborByCityId = new Map();
-
-  for (const city of cities) {
+function buildHarborMap(settlements, width, height, isLand, biome) {
+  const harborBySettlementId = new Map();
+  for (const settlement of settlements) {
     const harbor = findNearestOceanCell(
-      city.cell,
+      settlement.cell,
       width,
       height,
       isLand,
       biome,
-      city.coastal ? 4 : 8,
+      settlement.coastal ? 4 : 8,
     );
     if (harbor != null) {
-      harborByCityId.set(city.id, harbor);
+      harborBySettlementId.set(settlement.id, harbor);
     }
   }
-
-  return harborByCityId;
+  return harborBySettlementId;
 }
 
 function findNearestOceanCell(
@@ -501,7 +1003,7 @@ function findNearestOceanCell(
   height,
   isLand,
   biome,
-  maxRadius = 4,
+  maxRadius,
 ) {
   const [startX, startY] = coordsOf(startCell, width);
   let best = null;
@@ -521,14 +1023,12 @@ function findNearestOceanCell(
         if (isLand[cell] || biome[cell] !== BIOME_KEYS.OCEAN) {
           continue;
         }
-
-        const dist = distance(startX, startY, x, y);
-        if (!best || dist < best.dist) {
-          best = { cell, dist };
+        const d = distance(startX, startY, x, y);
+        if (!best || d < best.dist) {
+          best = { cell, dist: d };
         }
       }
     }
-
     if (best) {
       return best.cell;
     }
@@ -565,7 +1065,6 @@ function buildSeaLane(startCell, endCell, width, height, isLand, biome) {
   previous.fill(-1);
   const queue = [startCell];
   let head = 0;
-
   visited[startCell] = 1;
 
   while (head < queue.length) {
@@ -579,13 +1078,13 @@ function buildSeaLane(startCell, endCell, width, height, isLand, biome) {
     const [x, y] = coordsOf(current, width);
     forEachNeighbor(width, height, x, y, true, (nx, ny) => {
       const neighbor = indexOf(nx, ny, width);
-      if (visited[neighbor]) {
+      if (
+        visited[neighbor] ||
+        isLand[neighbor] ||
+        biome[neighbor] !== BIOME_KEYS.OCEAN
+      ) {
         return;
       }
-      if (isLand[neighbor] || biome[neighbor] !== BIOME_KEYS.OCEAN) {
-        return;
-      }
-
       visited[neighbor] = 1;
       previous[neighbor] = current;
       queue.push(neighbor);
@@ -595,284 +1094,125 @@ function buildSeaLane(startCell, endCell, width, height, isLand, biome) {
   return null;
 }
 
-function buildLandComponents(width, height, isLand) {
-  const components = new Int32Array(isLand.length);
-  components.fill(-1);
-  let nextId = 0;
+// ---------------------------------------------------------------------------
+// Shared utilities
+// ---------------------------------------------------------------------------
 
-  for (let start = 0; start < isLand.length; start += 1) {
-    if (!isLand[start] || components[start] >= 0) {
-      continue;
-    }
+/**
+ * `path` is [toSettlement, ..., fromSettlement] (as returned by reconstructPath).
+ *
+ * Scan forward from the toSettlement end to find the first intermediate *settlement*
+ * cell.  Return the head of the path up to and including that settlement — this
+ * is the genuinely new segment; everything beyond is already covered by a
+ * previously laid road that terminated at (or passed through) that settlement.
+ *
+ * We do NOT trim at bare road cells (non-settlement roadUsage > 0) because
+ * network.js can only create a junction node at a cell that is a road
+ * *endpoint*.  Trimming at a mid-road cell would leave the new road with a
+ * dangling endpoint that has no network node, producing unconnected stubs.
+ * Road-cell merging happens naturally through the ON_ROAD_COST_FACTOR: later
+ * roads share cells with earlier ones, and network.js splits the earlier
+ * road at those shared endpoints via its breakpoint-detection logic.
+ *
+ * If no intermediate settlement is found the full path is returned unchanged.
+ */
+/**
+ * Stamp a quadratic proximity penalty around `settlement` into `field`.  The settlement
+ * cell itself is left at zero so roads can always reach their destination;
+ * surrounding cells within SETTLEMENT_APPROACH_RADIUS get a penalty that peaks at
+ * the nearest ring and fades to zero at the boundary.  Uses max so repeated
+ * stamps from multiple settlements accumulate correctly.
+ */
+function stampSettlementProximity(settlement, field, width, height) {
+  const cx = Math.round(settlement.x);
+  const cy = Math.round(settlement.y);
+  const r = SETTLEMENT_APPROACH_RADIUS;
 
-    const queue = [start];
-    components[start] = nextId;
-    while (queue.length > 0) {
-      const current = queue.pop();
-      const [x, y] = coordsOf(current, width);
-      forEachNeighbor(width, height, x, y, true, (nx, ny) => {
-        const neighbor = indexOf(nx, ny, width);
-        if (!isLand[neighbor] || components[neighbor] >= 0) {
-          return;
-        }
-        components[neighbor] = nextId;
-        queue.push(neighbor);
-      });
-    }
-
-    nextId += 1;
-  }
-
-  return components;
-}
-
-function buildCityByCell(cities) {
-  return new Map(cities.map((city) => [city.cell, city]));
-}
-
-function findConnectedCityOnPath(path, cityByCell, connectedCityIds) {
-  for (let index = path.length - 1; index >= 0; index -= 1) {
-    const city = cityByCell.get(path[index]);
-    if (city && connectedCityIds.has(city.id)) {
-      return city.id;
-    }
-  }
-
-  return null;
-}
-
-function findSeaRouteTouchCity(cells, cityByCell, sourceCityId, targetCityId) {
-  for (let index = 1; index < cells.length - 1; index += 1) {
-    const city = cityByCell.get(cells[index]);
-    if (city && city.id !== sourceCityId && city.id !== targetCityId) {
-      return city.id;
-    }
-  }
-
-  return null;
-}
-
-function markRoadUsage(path, roadUsage) {
-  for (const cell of path) {
-    roadUsage[cell] = Math.min(roadUsage[cell] + 1, 65535);
-  }
-}
-
-function markRoadConnectionCounts(cityConnectionCounts, cityIdA, cityIdB) {
-  if (Number.isInteger(cityIdA) && cityIdA >= 0) {
-    cityConnectionCounts[cityIdA] = Math.min(
-      65535,
-      cityConnectionCounts[cityIdA] + 1,
-    );
-  }
-  if (Number.isInteger(cityIdB) && cityIdB >= 0) {
-    cityConnectionCounts[cityIdB] = Math.min(
-      65535,
-      cityConnectionCounts[cityIdB] + 1,
-    );
-  }
-}
-
-function collectBlockedSourceCityIds(
-  cityConnectionCounts,
-  maxConnectionsPerCity,
-) {
-  const blocked = new Set();
-  for (let cityId = 0; cityId < cityConnectionCounts.length; cityId += 1) {
-    if (cityConnectionCounts[cityId] >= maxConnectionsPerCity) {
-      blocked.add(cityId);
-    }
-  }
-  return blocked;
-}
-
-function buildCityProximityPenaltyField({
-  width,
-  height,
-  size,
-  cities,
-  roadSettings,
-}) {
-  const radius = Math.max(0, roadSettings.cityProximityRadius ?? 0);
-  const maxPenalty = Math.max(0, roadSettings.cityProximityPenalty ?? 0);
-  const penalty = new Float32Array(size);
-
-  if (radius <= 1 || maxPenalty <= 0 || cities.length === 0) {
-    return penalty;
-  }
-
-  for (const city of cities) {
-    if (city?.x == null || city?.y == null) {
-      continue;
-    }
-
-    const cx = Math.round(city.x);
-    const cy = Math.round(city.y);
-    const minY = Math.max(0, cy - radius);
-    const maxY = Math.min(height - 1, cy + radius);
-    const minX = Math.max(0, cx - radius);
-    const maxX = Math.min(width - 1, cx + radius);
-
-    for (let y = minY; y <= maxY; y += 1) {
-      for (let x = minX; x <= maxX; x += 1) {
-        const dist = distance(cx, cy, x, y);
-        if (dist < 0.5 || dist > radius) {
-          continue;
-        }
-
-        const t = 1 - dist / radius;
-        const amount = maxPenalty * Math.pow(t, 1.5);
-        const cell = indexOf(x, y, width);
-        penalty[cell] += amount;
+  for (let dy = -r; dy <= r; dy += 1) {
+    for (let dx = -r; dx <= r; dx += 1) {
+      if (dx === 0 && dy === 0) {
+        continue; // Settlement cell itself: no penalty — roads must reach it.
+      }
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+        continue;
+      }
+      const d = Math.hypot(dx, dy);
+      if (d > r) {
+        continue;
+      }
+      const t = 1 - d / r;
+      const penalty = SETTLEMENT_APPROACH_PEAK_PENALTY * t * t;
+      const cell = ny * width + nx;
+      if (penalty > field[cell]) {
+        field[cell] = penalty;
       }
     }
   }
-
-  return penalty;
 }
 
-function dedupePath(path) {
-  const deduped = [];
-  for (const cell of path) {
-    if (deduped[deduped.length - 1] !== cell) {
-      deduped.push(cell);
+/**
+ * `path` is [toSettlement, ..., fromSettlement] (as returned by reconstructPath).
+ *
+ * Scan forward from the toSettlement end to find the first intermediate *settlement*
+ * cell.  Return the head [toSettlement, ..., intermediateSettlement] as the new road
+ * segment; everything beyond is already reachable from that intermediate settlement
+ * via a previously laid road.
+ *
+ * We intentionally do NOT trim at bare road cells.  A bare-road-cell endpoint
+ * only becomes a valid network node if some road registers it as a terminal
+ * endpoint.  If we trim at a road cell that is merely in the middle of an
+ * earlier road, the trimmed settlement (fromSettlement) loses its only road record and
+ * becomes a disconnected node with no travel-graph neighbours.
+ *
+ * Double-road overlaps from the on-road cost discount are handled instead by
+ * keeping ON_ROAD_COST_FACTOR moderate enough that the pathfinder does not
+ * take large detours along existing roads.
+ */
+function trimPathAtFirstAnchor(path, settlementByCell) {
+  for (let i = 1; i <= path.length - 2; i += 1) {
+    const settlement = settlementByCell.get(path[i]);
+    if (settlement != null) {
+      return { path: path.slice(0, i + 1), anchorSettlement: settlement };
     }
   }
-  return deduped;
+  return { path, anchorSettlement: null };
 }
 
-function reconstructPath(start, previous) {
-  const path = [start];
-  let current = start;
-
-  while (previous[current] >= 0) {
-    current = previous[current];
+function reconstructPath(end, prev) {
+  const path = [end];
+  let current = end;
+  while (prev[current] >= 0) {
+    current = prev[current];
     if (path[path.length - 1] !== current) {
       path.push(current);
     }
   }
-
   return path;
 }
 
-function runRoadSearch({
-  width,
-  height,
-  size,
-  isLand,
-  lakeIdByCell,
-  riverStrength,
-  roadUsage,
-  baseCost,
-  sources,
-  cityProximityPenalty,
-  roadSettings,
-}) {
-  const distanceField = new Float32Array(size);
-  distanceField.fill(Number.POSITIVE_INFINITY);
-  const previous = new Int32Array(size);
-  previous.fill(-1);
-  const heap = new MinHeap();
-
-  for (const source of sources) {
-    if (!Number.isFinite(baseCost[source])) {
-      continue;
+function dedupePath(path) {
+  const result = [];
+  for (const cell of path) {
+    if (result[result.length - 1] !== cell) {
+      result.push(cell);
     }
-    if (distanceField[source] <= 0) {
-      continue;
-    }
-    distanceField[source] = 0;
-    heap.push(source, distanceField[source]);
   }
-
-  while (heap.size > 0) {
-    const { index: current, priority } = heap.pop();
-    if (priority > distanceField[current] + 1e-4) {
-      continue;
-    }
-
-    const [x, y] = coordsOf(current, width);
-    forEachNeighbor(width, height, x, y, true, (nx, ny, ox, oy) => {
-      const neighbor = indexOf(nx, ny, width);
-      const stepCost = computeStepCost(
-        current,
-        neighbor,
-        Math.abs(ox) + Math.abs(oy) === 2,
-        isLand,
-        lakeIdByCell,
-        riverStrength,
-        roadUsage,
-        baseCost,
-        cityProximityPenalty,
-        roadSettings,
-      );
-      if (!Number.isFinite(stepCost)) {
-        return;
-      }
-
-      const nextCost = priority + stepCost;
-      if (nextCost < distanceField[neighbor]) {
-        distanceField[neighbor] = nextCost;
-        previous[neighbor] = current;
-        heap.push(neighbor, distanceField[neighbor]);
-      }
-    });
-  }
-
-  return {
-    distance: distanceField,
-    previous,
-  };
+  return result;
 }
 
-function computeStepCost(
-  current,
-  neighbor,
-  diagonal,
-  isLand,
-  lakeIdByCell,
-  riverStrength,
-  roadUsage,
-  baseCost,
-  cityProximityPenalty,
-  roadSettings,
-) {
-  if (!isLand[neighbor] || lakeIdByCell[neighbor] >= 0) {
-    return Number.POSITIVE_INFINITY;
-  }
-  if (
-    !Number.isFinite(baseCost[current]) ||
-    !Number.isFinite(baseCost[neighbor])
-  ) {
-    return Number.POSITIVE_INFINITY;
-  }
-
-  const stepLength = diagonal ? 1.4142 : 1;
-  let cost = (baseCost[current] + baseCost[neighbor]) * 0.5 * stepLength;
-  const riverPenalty = Math.max(
-    riverStrength[current],
-    riverStrength[neighbor],
-  );
-  if (riverPenalty > 0.06) {
-    cost += 3.6 + clamp(riverPenalty, 0, 4) * 4.8;
-  }
-  cost +=
-    ((cityProximityPenalty[current] ?? 0) +
-      (cityProximityPenalty[neighbor] ?? 0)) *
-    0.5;
-
-  if (roadUsage[current] > 0 && roadUsage[neighbor] > 0) {
-    cost *= roadSettings.onRoadReuseMultiplier;
-  } else if (roadUsage[current] > 0 || roadUsage[neighbor] > 0) {
-    cost *= roadSettings.touchingRoadReuseMultiplier;
-  }
-
-  return cost;
+function pairKey(idA, idB) {
+  return idA < idB ? `${idA}_${idB}` : `${idB}_${idA}`;
 }
 
 function lerp(a, b, t) {
   return a + (b - a) * clamp(t, 0, 1);
 }
+
+// ---------------------------------------------------------------------------
+// Min-heap priority queue
+// ---------------------------------------------------------------------------
 
 class MinHeap {
   constructor() {
@@ -884,8 +1224,7 @@ class MinHeap {
   }
 
   push(index, priority) {
-    const node = { index, priority };
-    this.items.push(node);
+    this.items.push({ index, priority });
     this.bubbleUp(this.items.length - 1);
   }
 
@@ -899,49 +1238,43 @@ class MinHeap {
     return top;
   }
 
-  bubbleUp(index) {
-    let current = index;
-    while (current > 0) {
-      const parent = Math.floor((current - 1) / 2);
-      if (this.items[parent].priority <= this.items[current].priority) {
+  bubbleUp(i) {
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      if (this.items[parent].priority <= this.items[i].priority) {
         break;
       }
-      [this.items[parent], this.items[current]] = [
-        this.items[current],
-        this.items[parent],
-      ];
-      current = parent;
+      [this.items[parent], this.items[i]] = [this.items[i], this.items[parent]];
+      i = parent;
     }
   }
 
-  bubbleDown(index) {
-    let current = index;
+  bubbleDown(i) {
+    const n = this.items.length;
     while (true) {
-      const left = current * 2 + 1;
+      const left = (i << 1) + 1;
       const right = left + 1;
-      let smallest = current;
-
+      let smallest = i;
       if (
-        left < this.items.length &&
+        left < n &&
         this.items[left].priority < this.items[smallest].priority
       ) {
         smallest = left;
       }
       if (
-        right < this.items.length &&
+        right < n &&
         this.items[right].priority < this.items[smallest].priority
       ) {
         smallest = right;
       }
-      if (smallest === current) {
+      if (smallest === i) {
         break;
       }
-
-      [this.items[current], this.items[smallest]] = [
+      [this.items[i], this.items[smallest]] = [
         this.items[smallest],
-        this.items[current],
+        this.items[i],
       ];
-      current = smallest;
+      i = smallest;
     }
   }
 }

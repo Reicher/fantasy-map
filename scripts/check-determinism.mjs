@@ -4,7 +4,7 @@ const params = {
   seed: "determinism-probe",
   mapSize: 61,
   mountainousness: 67,
-  cityDensity: 44,
+  settlementDensity: 44,
   lakeAmount: 63,
   lakeSize: 58,
   coastComplexity: 71
@@ -34,18 +34,18 @@ function summarize(world) {
   return {
     title: world.title,
     style: world.terrain.style.name,
-    cities: world.cities.map((city) => city.name),
+    settlements: world.settlements.map((settlement) => settlement.name),
     roads: world.roads.roads.map((road) => ({
       type: road.type,
-      fromCityId: road.fromCityId,
-      cityId: road.cityId,
+      fromSettlementId: road.fromSettlementId,
+      settlementId: road.settlementId,
       length: road.length,
       lastCell: road.cells[road.cells.length - 1]
     })),
     network: {
       nodes: world.network.nodes.length,
       links: world.network.links.length,
-      components: world.network.components.map((component) => component.cityIds.length)
+      components: world.network.components.map((component) => component.settlementIds.length)
     },
     roadComponents: world.roads.componentCount,
     rivers: world.hydrology.rivers.map((river) => river.name),

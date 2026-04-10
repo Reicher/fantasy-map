@@ -40,9 +40,7 @@ export function createPlayController({
       : findPlayableNodeAtEvent(event);
 
     if (hoveredNodeId != null) {
-      const nodes =
-        state.currentWorld.features?.pointsOfInterest ??
-        state.currentWorld.cities;
+      const nodes = state.currentWorld.features?.nodes ?? [];
       const node = nodes[hoveredNodeId];
       if (node) {
         showHoverHit(

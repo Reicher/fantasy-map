@@ -5,21 +5,20 @@ export function drawLabels(ctx, world, viewport, options = {}) {
   const {
     showBiomeLabels = false,
     showNodeLabels = false,
-    showPoiLabels = false,
     discoveredCells = null,
   } = options;
-  const showLabels = showNodeLabels || showPoiLabels;
+  const showLabels = showNodeLabels;
   const placedBoxes = [];
   const regionLabelSettings = getRegionLabelSettings(viewport);
   const visibleNodeIds = resolveVisibleNodeIdsForLabels(options);
-  const opacity = 0.9;
+  const opasettlement = 0.9;
 
   ctx.save();
-  ctx.globalAlpha = opacity;
+  ctx.globalAlpha = opasettlement;
 
   if (showBiomeLabels) {
     const mapPlacedBoxes = [...placedBoxes];
-    const reservedPoiCount = reservePoiCollisionBoxesForMapNames(
+    const reservedNodeCount = reserveNodeCollisionBoxesForMapNames(
       world,
       viewport,
       mapPlacedBoxes,
@@ -45,7 +44,7 @@ export function drawLabels(ctx, world, viewport, options = {}) {
     );
 
     for (
-      let index = reservedPoiCount;
+      let index = reservedNodeCount;
       index < mapPlacedBoxes.length;
       index += 1
     ) {
@@ -60,20 +59,20 @@ export function drawLabels(ctx, world, viewport, options = {}) {
   ctx.restore();
 }
 
-function reservePoiCollisionBoxesForMapNames(
+function reserveNodeCollisionBoxesForMapNames(
   world,
   viewport,
   placedBoxes,
   visibleNodeIds,
   discoveredCells,
 ) {
-  const pois = world.geometry.labels.pointsOfInterest;
-  if (!pois.length) {
+  const nodes = world.geometry.labels.nodes;
+  if (!nodes.length) {
     return placedBoxes.length;
   }
 
   const allowedIds = visibleNodeIds ? new Set(visibleNodeIds) : null;
-  const markerScale = getPoiCollisionScale(viewport);
+  const markerScale = getNodeCollisionScale(viewport);
   const iconLift = markerScale * 7.2;
   const halfWidth = markerScale * 7.0;
   const halfHeight = markerScale * 6.2;
@@ -85,15 +84,15 @@ function reservePoiCollisionBoxesForMapNames(
     bottom: viewport.margin + viewport.innerHeight + 12,
   };
 
-  for (const poi of pois) {
-    if (allowedIds && !allowedIds.has(poi.id)) {
+  for (const node of nodes) {
+    if (allowedIds && !allowedIds.has(node.id)) {
       continue;
     }
-    if (!isWorldPointDiscovered(world, discoveredCells, poi)) {
+    if (!isWorldPointDiscovered(world, discoveredCells, node)) {
       continue;
     }
 
-    const point = viewport.worldToCanvas(poi.x - 0.5, poi.y - 0.5);
+    const point = viewport.worldToCanvas(node.x - 0.5, node.y - 0.5);
     const centerX = point.x;
     const centerY = point.y - iconLift;
     const box = {
@@ -117,17 +116,14 @@ function reservePoiCollisionBoxesForMapNames(
   return placedBoxes.length;
 }
 
-function getPoiCollisionScale(viewport) {
+function getNodeCollisionScale(viewport) {
   return Math.max(2.1, Math.min(6.2, viewport.zoom * 1.32));
 }
 
 function resolveVisibleNodeIdsForLabels(options = {}) {
   return (
     options.nodeOverlay?.visibleNodeIds ??
-    options.poiOverlay?.visiblePoiIds ??
-    options.cityOverlay?.visiblePoiIds ??
     options.visibleNodeIds ??
-    options.visiblePoiIds ??
     null
   );
 }
@@ -412,27 +408,27 @@ function drawNodeLabels(
   visibleNodeIds = null,
 ) {
   const allowedIds = visibleNodeIds ? new Set(visibleNodeIds) : null;
-  const namedPois = world.geometry.labels.pointsOfInterest;
+  const namedNodes = world.geometry.labels.nodes;
 
   ctx.save();
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.font = '15px Baskerville, "Palatino Linotype", Georgia, serif';
 
-  for (const poi of namedPois) {
-    if (!String(poi.name ?? "").trim()) {
+  for (const node of namedNodes) {
+    if (!String(node.name ?? "").trim()) {
       continue;
     }
-    if (allowedIds && !allowedIds.has(poi.id)) {
+    if (allowedIds && !allowedIds.has(node.id)) {
       continue;
     }
 
-    const point = viewport.worldToCanvas(poi.x - 0.5, poi.y - 0.5);
-    const markerScale = getPoiCollisionScale(viewport);
+    const point = viewport.worldToCanvas(node.x - 0.5, node.y - 0.5);
+    const markerScale = getNodeCollisionScale(viewport);
     const iconCenterY = point.y - markerScale * 7.2;
     const labelX = point.x + Math.max(12, markerScale * 8.4);
     const labelY = iconCenterY;
-    const textWidth = ctx.measureText(poi.name).width;
+    const textWidth = ctx.measureText(node.name).width;
     const halfTextHeight = 9.5;
     const box = {
       left: labelX - 2,
@@ -446,10 +442,10 @@ function drawNodeLabels(
 
     placedBoxes.push(box);
     ctx.lineWidth = 3.5;
-    ctx.strokeStyle = LABEL_COLORS.poi.stroke;
-    ctx.fillStyle = LABEL_COLORS.poi.fill;
-    ctx.strokeText(poi.name, labelX, labelY);
-    ctx.fillText(poi.name, labelX, labelY);
+    ctx.strokeStyle = LABEL_COLORS.node.stroke;
+    ctx.fillStyle = LABEL_COLORS.node.fill;
+    ctx.strokeText(node.name, labelX, labelY);
+    ctx.fillText(node.name, labelX, labelY);
   }
 
   ctx.restore();

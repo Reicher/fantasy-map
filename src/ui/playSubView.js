@@ -105,8 +105,7 @@ export function createPlaySubViewController({
   function maybeTriggerArrivalCue(world, playState, presentation = {}) {
     if (playState.travel) {
       const cueKey = buildTravelCueKey(playState.travel);
-      const targetNodeId =
-        playState.travel.targetNodeId ?? playState.travel.targetCityId ?? null;
+      const targetNodeId = playState.travel.targetNodeId ?? null;
 
       if (activeTravelCueKey !== cueKey) {
         activeTravelCueKey = cueKey;
@@ -146,10 +145,7 @@ export function createPlaySubViewController({
     if (cueKey && shownArrivalCueKeys.has(cueKey)) {
       return;
     }
-    const nodes =
-      world?.features?.pointsOfInterest ??
-      world?.pointsOfInterest ??
-      world?.cities;
+    const nodes = world?.features?.nodes;
     const node = targetNodeId == null ? null : nodes?.[targetNodeId];
     const title = node ? getNodeTitle(node) : "";
     if (!title) {
@@ -199,10 +195,8 @@ export function createPlaySubViewController({
 function syncPlayLegendButtons(playMapOptions, refs) {
   refs.playToggleBiomeLabelsButton.dataset.active =
     playMapOptions.showBiomeLabels ? "true" : "false";
-  refs.playToggleCityLabelsButton.dataset.active =
-    (playMapOptions.showNodeLabels ?? playMapOptions.showPoiLabels)
-      ? "true"
-      : "false";
+  refs.playToggleNodeLabelsButton.dataset.active =
+    playMapOptions.showNodeLabels ? "true" : "false";
   refs.playToggleHoverButton.dataset.active = playMapOptions.showHoverInspector
     ? "true"
     : "false";
@@ -230,8 +224,8 @@ function buildTravelCueKey(travel) {
     return "";
   }
   return [
-    travel.startNodeId ?? travel.startCityId ?? "-",
-    travel.targetNodeId ?? travel.targetCityId ?? "-",
+    travel.startNodeId ?? "-",
+    travel.targetNodeId ?? "-",
     (travel.totalLength ?? 0).toFixed(4),
   ].join(":");
 }

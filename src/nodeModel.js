@@ -1,4 +1,4 @@
-export const NODE_MARKERS = ["settlement", "guidepost", "abandoned"];
+export const NODE_MARKERS = ["settlement", "signpost", "abandoned"];
 
 export function normalizeNodeMarker(marker) {
   return NODE_MARKERS.includes(marker) ? marker : "settlement";
@@ -9,10 +9,10 @@ export function describeNode(node = {}) {
   const roadDegree = Math.max(0, Number(node.roadDegree ?? 0));
 
   switch (marker) {
-    case "guidepost":
+    case "signpost":
       return {
         marker,
-        kind: "guidepost",
+        kind: "signpost",
         subtitle: "Vägvisare",
         detail:
           roadDegree >= 3

@@ -5,7 +5,7 @@ const scenarios = [
     seed: "saltwind-01",
     mapSize: 58,
     mountainousness: 54,
-    cityDensity: 42,
+    settlementDensity: 42,
     lakeAmount: 56,
     lakeSize: 52,
     coastComplexity: 62
@@ -14,7 +14,7 @@ const scenarios = [
     seed: "glass-reef",
     mapSize: 52,
     mountainousness: 72,
-    cityDensity: 28,
+    settlementDensity: 28,
     lakeAmount: 67,
     lakeSize: 61,
     coastComplexity: 79
@@ -23,7 +23,7 @@ const scenarios = [
     seed: "amber-cairn",
     mapSize: 74,
     mountainousness: 36,
-    cityDensity: 68,
+    settlementDensity: 68,
     lakeAmount: 41,
     lakeSize: 36,
     coastComplexity: 48
@@ -34,8 +34,8 @@ for (const params of scenarios) {
   const world = generateWorld(params);
   console.log(`\nseed=${params.seed}`);
   console.log(
-    `style=${world.terrain.style.name} cities=${world.cities.length} roads=${world.roads.roads.length} roadComponents=${world.roads.componentCount} rivers=${world.hydrology.rivers.length} lakes=${world.hydrology.lakes.length} mountains=${world.regions.mountainRegions.length}`
+    `style=${world.terrain.style.name} settlements=${world.settlements.length} roads=${world.roads.roads.length} roadComponents=${world.roads.componentCount} rivers=${world.hydrology.rivers.length} lakes=${world.hydrology.lakes.length} mountains=${world.regions.mountainRegions.length}`
   );
-  console.log(`first cities: ${world.cities.slice(0, 5).map((city) => city.name).join(", ")}`);
+  console.log(`first settlements: ${world.settlements.slice(0, 5).map((settlement) => settlement.name).join(", ")}`);
   console.log(`major rivers: ${world.hydrology.rivers.slice(0, 3).map((river) => river.name).join(", ")}`);
 }

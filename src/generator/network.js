@@ -2,7 +2,7 @@ import { coordsOf } from "../utils.js";
 
 export function buildWorldNetwork(world) {
   return buildRoadNetwork({
-    cities: world.cities,
+    settlements: world.settlements,
     roads: world.roads.roads,
     width: world.terrain.width,
     crashSiteCells: world.crashSiteCells ?? [],
@@ -10,7 +10,7 @@ export function buildWorldNetwork(world) {
 }
 
 export function buildRoadNetwork({
-  cities,
+  settlements,
   roads,
   width,
   crashSiteCells = [],
@@ -18,18 +18,19 @@ export function buildRoadNetwork({
   const nodes = [];
   const nodeIdByCell = new Map();
 
-  for (const city of cities) {
+  for (const settlement of settlements) {
     const node = {
       id: nodes.length,
-      type: "city",
-      cell: city.cell,
-      x: city.x,
-      y: city.y,
-      cityId: city.id,
-      name: city.name,
+      type: "settlement",
+      cell: settlement.cell,
+      x: settlement.x,
+      y: settlement.y,
+      nodeId: settlement.id,
+      settlementId: settlement.id,
+      name: settlement.name,
     };
     nodes.push(node);
-    nodeIdByCell.set(city.cell, node.id);
+    nodeIdByCell.set(settlement.cell, node.id);
   }
 
   // Register abandoned-site cells as nodes BEFORE road endpoints so that
@@ -121,8 +122,8 @@ function buildRoadLinks(roads, nodes, nodeIdByCell) {
         roadId: road.id,
         fromNodeId: start.nodeId,
         toNodeId: end.nodeId,
-        fromCityId: nodes[start.nodeId].cityId ?? null,
-        toCityId: nodes[end.nodeId].cityId ?? null,
+        fromSettlementId: nodes[start.nodeId].settlementId ?? null,
+        toSettlementId: nodes[end.nodeId].settlementId ?? null,
         length: cells.length,
         cost: road.cost,
         cells,
@@ -159,13 +160,13 @@ function buildNetworkComponents(nodes, links) {
     visited[node.id] = 1;
     const nodeIds = [];
     const linkIds = new Set();
-    const cityIds = [];
+    const settlementIds = [];
 
     while (queue.length > 0) {
       const current = queue.pop();
       nodeIds.push(current);
-      if (nodes[current].cityId != null) {
-        cityIds.push(nodes[current].cityId);
+      if (nodes[current].settlementId != null) {
+        settlementIds.push(nodes[current].settlementId);
       }
 
       for (const edge of adjacency.get(current) ?? []) {
@@ -182,7 +183,7 @@ function buildNetworkComponents(nodes, links) {
       id: components.length,
       nodeIds,
       linkIds: [...linkIds],
-      cityIds,
+      settlementIds,
     });
   }
 
