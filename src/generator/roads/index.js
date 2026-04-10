@@ -49,6 +49,11 @@ const PARALLEL_ROAD_PENALTY = 2.8;
 // The settlement cell itself carries no penalty (roads must be able to reach it).
 const SETTLEMENT_APPROACH_RADIUS = 5;
 const SETTLEMENT_APPROACH_PEAK_PENALTY = 6.0;
+const SETTLEMENT_ENDPOINT_EXEMPT_RADIUS = 2.2;
+
+const LOOP_MIN_NEW_CELL_COUNT = 6;
+const LOOP_MIN_NEW_CELL_SHARE = 0.26;
+const LOOP_THIRD_PARTY_SETTLEMENT_CLEARANCE = 2.2;
 
 const RIVER_COST_THRESHOLD = 0.06;
 const RIVER_BASE_PENALTY = 3.2;
@@ -116,6 +121,7 @@ export function generateRoads(world) {
   }
 
   const roads = [];
+  const roadSignatures = new Set();
   const roadUsage = new Uint16Array(size);
   const settlementProximityPenalty = new Float32Array(size);
   let componentCount = 0;
@@ -193,6 +199,7 @@ export function generateRoads(world) {
       const toSettlement = componentSettlements[edge.j];
       const actualFromSettlement = materializeRoad({
         roads,
+        roadSignatures,
         roadUsage,
         settlementByCell,
         fromSettlement,
@@ -233,6 +240,7 @@ export function generateRoads(world) {
     addLoopEdges({
       settlements,
       roads,
+      roadSignatures,
       roadUsage,
       settlementProximityPenalty,
       loopiness01,
@@ -253,6 +261,7 @@ export function generateRoads(world) {
   const seaRoutes = buildSeaRoutes({
     settlements,
     roads,
+    roadSignatures,
     terrain,
     climate,
     landComponentByCell,
@@ -451,6 +460,7 @@ function findPath({
   riverStrength,
   roadUsage,
   settlementProximityPenalty = null,
+  penaltyExemptSettlements = null,
 }) {
   if (!Number.isFinite(baseCost[from]) || !Number.isFinite(baseCost[to])) {
     return null;
@@ -488,6 +498,7 @@ function findPath({
         width,
         height,
         settlementProximityPenalty,
+        penaltyExemptSettlements,
       );
       if (!Number.isFinite(cost)) {
         return;
@@ -543,6 +554,27 @@ function hasRoadNeighbour(cell, roadUsage, width, height) {
   return false;
 }
 
+function isWithinSettlementExemptRadius(
+  cell,
+  width,
+  settlements,
+  radius,
+) {
+  if (!settlements?.length || width <= 0 || radius <= 0) {
+    return false;
+  }
+  const [x, y] = coordsOf(cell, width);
+  const radiusSquared = radius * radius;
+  for (const settlement of settlements) {
+    const dx = x - settlement.x;
+    const dy = y - settlement.y;
+    if (dx * dx + dy * dy <= radiusSquared) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function computeStepCost(
   from,
   to,
@@ -553,6 +585,7 @@ function computeStepCost(
   width = 0,
   height = 0,
   settlementProximityPenalty = null,
+  penaltyExemptSettlements = null,
 ) {
   if (!Number.isFinite(baseCost[from]) || !Number.isFinite(baseCost[to])) {
     return Number.POSITIVE_INFINITY;
@@ -597,7 +630,15 @@ function computeStepCost(
   // node from a shallow angle.  The settlement cell itself has penalty 0 so roads
   // can always reach their destination; only the surrounding cells are
   // penalised, pushing new roads to arrive at a perpendicular angle.
-  if (settlementProximityPenalty !== null) {
+  if (
+    settlementProximityPenalty !== null &&
+    !isWithinSettlementExemptRadius(
+      to,
+      width,
+      penaltyExemptSettlements,
+      SETTLEMENT_ENDPOINT_EXEMPT_RADIUS,
+    )
+  ) {
     cost += settlementProximityPenalty[to];
   }
 
@@ -611,6 +652,7 @@ function computeStepCost(
 function addLoopEdges({
   settlements,
   roads,
+  roadSignatures,
   roadUsage,
   settlementProximityPenalty,
   loopiness01,
@@ -708,10 +750,12 @@ function addLoopEdges({
     if (
       !materializeRoad({
         roads,
+        roadSignatures,
         roadUsage,
         settlementByCell,
         fromSettlement: settlementA,
         toSettlement: settlementB,
+        settlements,
         width,
         height,
         size,
@@ -719,6 +763,10 @@ function addLoopEdges({
         riverStrength,
         settlementProximityPenalty,
         cost: directCost,
+        requireDirectFrom: true,
+        minNovelCellCount: LOOP_MIN_NEW_CELL_COUNT,
+        minNovelCellShare: LOOP_MIN_NEW_CELL_SHARE,
+        thirdPartySettlementClearance: LOOP_THIRD_PARTY_SETTLEMENT_CLEARANCE,
       })
     ) {
       continue;
@@ -793,14 +841,70 @@ function stampSettlementProximity(settlement, field, width, height) {
   }
 }
 
+function countNovelCells(cells, roadUsage) {
+  let count = 0;
+  for (const cell of cells) {
+    if (roadUsage[cell] === 0) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function hasThirdPartySettlementNearPath(
+  cells,
+  settlements,
+  fromSettlementId,
+  toSettlementId,
+  width,
+  clearance,
+) {
+  if (!settlements?.length || clearance <= 0) {
+    return false;
+  }
+  const clearanceSquared = clearance * clearance;
+
+  for (let i = 1; i < cells.length - 1; i += 1) {
+    const [x, y] = coordsOf(cells[i], width);
+    for (const settlement of settlements) {
+      if (
+        settlement.id === fromSettlementId ||
+        settlement.id === toSettlementId
+      ) {
+        continue;
+      }
+      const dx = x - settlement.x;
+      const dy = y - settlement.y;
+      if (dx * dx + dy * dy <= clearanceSquared) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 function pairKey(idA, idB) {
   return idA < idB ? `${idA}_${idB}` : `${idB}_${idA}`;
 }
 
+function buildRoadSignature(type, cells) {
+  const forward = cells.join(",");
+  const reverse = [...cells].reverse().join(",");
+  const canonical = forward < reverse ? forward : reverse;
+  return `${type}|${canonical}`;
+}
+
 function pushRoadRecord(
   roads,
+  roadSignatures,
   { settlementId, fromSettlementId, cells, cost, type = "road" },
 ) {
+  const signature = buildRoadSignature(type, cells);
+  if (roadSignatures.has(signature)) {
+    return false;
+  }
+
   roads.push({
     id: roads.length,
     type,
@@ -810,6 +914,8 @@ function pushRoadRecord(
     length: cells.length,
     cost,
   });
+  roadSignatures.add(signature);
+  return true;
 }
 
 function incrementRoadUsage(roadUsage, cells) {
@@ -820,10 +926,12 @@ function incrementRoadUsage(roadUsage, cells) {
 
 function materializeRoad({
   roads,
+  roadSignatures,
   roadUsage,
   settlementByCell,
   fromSettlement,
   toSettlement,
+  settlements = null,
   width,
   height,
   size,
@@ -831,6 +939,10 @@ function materializeRoad({
   riverStrength,
   settlementProximityPenalty,
   cost,
+  requireDirectFrom = false,
+  minNovelCellCount = 0,
+  minNovelCellShare = 0,
+  thirdPartySettlementClearance = 0,
 }) {
   const rawPath = findPath({
     from: fromSettlement.cell,
@@ -842,6 +954,7 @@ function materializeRoad({
     riverStrength,
     roadUsage,
     settlementProximityPenalty,
+    penaltyExemptSettlements: [fromSettlement, toSettlement],
   });
   if (!rawPath || rawPath.length < 2) {
     return null;
@@ -864,12 +977,41 @@ function materializeRoad({
   }
 
   const actualFromSettlement = anchorSettlement ?? fromSettlement;
-  pushRoadRecord(roads, {
+  if (requireDirectFrom && actualFromSettlement.id !== fromSettlement.id) {
+    return null;
+  }
+  const novelCellCount = countNovelCells(trimmed, roadUsage);
+  if (novelCellCount < minNovelCellCount) {
+    return null;
+  }
+  if (
+    minNovelCellShare > 0 &&
+    novelCellCount / Math.max(1, trimmed.length) < minNovelCellShare
+  ) {
+    return null;
+  }
+  if (
+    hasThirdPartySettlementNearPath(
+      trimmed,
+      settlements,
+      fromSettlement.id,
+      toSettlement.id,
+      width,
+      thirdPartySettlementClearance,
+    )
+  ) {
+    return null;
+  }
+
+  const inserted = pushRoadRecord(roads, roadSignatures, {
     settlementId: toSettlement.id,
     fromSettlementId: actualFromSettlement.id,
     cells: trimmed,
     cost,
   });
+  if (!inserted) {
+    return null;
+  }
   incrementRoadUsage(roadUsage, trimmed);
   return actualFromSettlement;
 }

@@ -33,14 +33,127 @@ function compileRiverGeometry(world) {
 }
 
 function compileRoadGeometry(world) {
-  return world.features.roads.map((road) => ({
-    id: road.id,
-    type: road.type,
+  const width = world.terrain.width;
+  const uniqueRoadChains = buildUniqueRoadChains(world.features.roads ?? []);
+
+  return uniqueRoadChains.map((chain, index) => ({
+    id: index,
+    type: chain.type,
     points: resampleWorldPoints(
-      simplifyWorldPoints(cellsToWorldPoints(road.cells, world.terrain.width)),
+      simplifyWorldPoints(cellsToWorldPoints(chain.cells, width)),
       3.5,
     ),
   }));
+}
+
+function buildUniqueRoadChains(roads) {
+  const roadsByType = new Map();
+  for (const road of roads) {
+    const type = road?.type ?? "road";
+    if (!roadsByType.has(type)) {
+      roadsByType.set(type, []);
+    }
+    roadsByType.get(type).push(road);
+  }
+
+  const chains = [];
+  for (const [type, typeRoads] of roadsByType.entries()) {
+    chains.push(...traceUniqueChains(typeRoads, type));
+  }
+  return chains;
+}
+
+function traceUniqueChains(roads, type) {
+  const adjacency = new Map();
+  const edgeSet = new Set();
+
+  const addNeighbor = (fromCell, toCell) => {
+    let neighbors = adjacency.get(fromCell);
+    if (!neighbors) {
+      neighbors = new Set();
+      adjacency.set(fromCell, neighbors);
+    }
+    neighbors.add(toCell);
+  };
+
+  for (const road of roads) {
+    const cells = road?.cells ?? [];
+    for (let i = 1; i < cells.length; i += 1) {
+      const fromCell = cells[i - 1];
+      const toCell = cells[i];
+      if (fromCell === toCell) {
+        continue;
+      }
+      const edge = edgeKey(fromCell, toCell);
+      if (edgeSet.has(edge)) {
+        continue;
+      }
+      edgeSet.add(edge);
+      addNeighbor(fromCell, toCell);
+      addNeighbor(toCell, fromCell);
+    }
+  }
+
+  const visitedEdges = new Set();
+  const chains = [];
+
+  const walkChain = (startCell, nextCell) => {
+    const cells = [startCell, nextCell];
+    let previousCell = startCell;
+    let currentCell = nextCell;
+    visitedEdges.add(edgeKey(startCell, nextCell));
+
+    while (true) {
+      const neighbors = [...(adjacency.get(currentCell) ?? [])];
+      if (neighbors.length !== 2) {
+        break;
+      }
+      const forwardCell =
+        neighbors[0] === previousCell ? neighbors[1] : neighbors[0];
+      const edge = edgeKey(currentCell, forwardCell);
+      if (visitedEdges.has(edge)) {
+        break;
+      }
+      visitedEdges.add(edge);
+      cells.push(forwardCell);
+      previousCell = currentCell;
+      currentCell = forwardCell;
+    }
+
+    return cells;
+  };
+
+  // Start with endpoints and branch points.
+  for (const [startCell, neighbors] of adjacency.entries()) {
+    if (neighbors.size === 2) {
+      continue;
+    }
+    for (const nextCell of neighbors) {
+      const edge = edgeKey(startCell, nextCell);
+      if (visitedEdges.has(edge)) {
+        continue;
+      }
+      chains.push({ type, cells: walkChain(startCell, nextCell) });
+    }
+  }
+
+  // Remaining edges belong to pure cycles.
+  for (const edge of edgeSet) {
+    if (visitedEdges.has(edge)) {
+      continue;
+    }
+    const [a, b] = edge.split("_").map((value) => Number(value));
+    if (!Number.isFinite(a) || !Number.isFinite(b)) {
+      continue;
+    }
+    chains.push({ type, cells: walkChain(a, b) });
+  }
+
+  return chains.filter((chain) => (chain.cells?.length ?? 0) >= 2);
+}
+
+function edgeKey(a, b) {
+  return a < b ? `${a}_${b}` : `${b}_${a}`;
 }
 
 function resampleWorldPoints(points, maxSegmentLength) {

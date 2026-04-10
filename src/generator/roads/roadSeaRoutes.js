@@ -11,6 +11,7 @@ import {
 export function buildSeaRoutes({
   settlements,
   roads,
+  roadSignatures = null,
   terrain,
   climate,
   landComponentByCell,
@@ -71,6 +72,10 @@ export function buildSeaRoutes({
     if (cells.length < 2) {
       break;
     }
+    const signature = buildRoadSignature("sea-route", cells);
+    if (roadSignatures?.has(signature)) {
+      continue;
+    }
 
     seaRoutes.push({
       id: roads.length + seaRoutes.length,
@@ -81,9 +86,17 @@ export function buildSeaRoutes({
       length: cells.length,
       cost: best.waterPath.length,
     });
+    roadSignatures?.add(signature);
   }
 
   return seaRoutes;
+}
+
+function buildRoadSignature(type, cells) {
+  const forward = cells.join(",");
+  const reverse = [...cells].reverse().join(",");
+  const canonical = forward < reverse ? forward : reverse;
+  return `${type}|${canonical}`;
 }
 
 function findBestSeaRoute({

@@ -3,6 +3,9 @@ import { clamp, coordsOf, distance } from "../utils.js";
 import { describeNode } from "../node/model.js";
 
 const DEFAULT_NODE_WEIGHT = 50;
+const MIN_SIGNPOST_SPACING = 7.2;
+const MIN_CRASH_SETTLEMENT_CLEARANCE = 6.2;
+const MIN_CRASH_SIGNPOST_CLEARANCE = 5.1;
 
 export function buildFeatureCatalog(world, names) {
   const nodeName =
@@ -168,6 +171,11 @@ function buildDedicatedSignpostNodes(world, settlementNodes) {
     seedKey: `${world.params.seed}::node-signpost-select`,
     anchorPoints: settlementNodes,
     desiredSpacing: lerp(13.5, 8.2, signpostWeight),
+    minSelectedDistance: Math.max(
+      MIN_SIGNPOST_SPACING,
+      lerp(10.2, 7.4, signpostWeight),
+    ),
+    minAnchorDistance: minSettlementClearance,
     scoreCandidate(candidate, context) {
       const anchorClearZone = lerp(8.5, 7.0, signpostWeight);
       const anchorPenalty =
@@ -233,11 +241,20 @@ export function preselectCrashSiteCells(world) {
     return [];
   }
 
-  // Settlements/signposts don't exist yet so pass empty arrays; spacing
-  // quality is slightly lower but cell selection is fully correct.
+  const settlementAnchors = (world.settlements ?? []).map((settlement) => ({
+    x: settlement.x,
+    y: settlement.y,
+  }));
+  // Signposts do not exist yet at preselection time.
   const roadCellAdjacency = buildRoadCellAdjacency(roads);
   const candidates = mergeCrashCandidates(
-    collectGenericCrashCandidates(world, roads, [], [], roadCellAdjacency),
+    collectGenericCrashCandidates(
+      world,
+      roads,
+      settlementAnchors,
+      [],
+      roadCellAdjacency,
+    ),
   );
 
   if (!candidates.length) {
@@ -264,8 +281,10 @@ export function preselectCrashSiteCells(world) {
   const selected = chooseSpreadCandidates(candidates, {
     target,
     seedKey: `${world.params.seed}::node-crash-select`,
-    anchorPoints: [],
+    anchorPoints: settlementAnchors,
     desiredSpacing: lerp(11.6, 7.6, crashWeight),
+    minSelectedDistance: MIN_CRASH_SIGNPOST_CLEARANCE,
+    minAnchorDistance: MIN_CRASH_SETTLEMENT_CLEARANCE,
     initialStats: { endpointCount: 0 },
     scoreCandidate(candidate, context) {
       const endpointShare =
@@ -313,9 +332,32 @@ function buildDedicatedCrashSiteNodes(
     return [];
   }
 
+  const eligibleCrashNodes = crashNodes.filter((node) => {
+    const settlementClearance = getNearestPointDistance(
+      node.x,
+      node.y,
+      settlementNodes,
+    );
+    if (settlementClearance < MIN_CRASH_SETTLEMENT_CLEARANCE) {
+      return false;
+    }
+    const signpostClearance = getNearestPointDistance(
+      node.x,
+      node.y,
+      signpostNodes,
+    );
+    if (signpostClearance < MIN_CRASH_SIGNPOST_CLEARANCE) {
+      return false;
+    }
+    return true;
+  });
+  if (!eligibleCrashNodes.length) {
+    return [];
+  }
+
   const descriptor = describeNode({ marker: "abandoned", roadDegree: 2 });
   const baseId = settlementNodes.length + signpostNodes.length;
-  return crashNodes.map((node, index) => {
+  return eligibleCrashNodes.map((node, index) => {
     const nodeId = baseId + index;
     // Tag the node so buildTravelGraph treats it as a stop.
     node.nodeId = nodeId;
@@ -343,6 +385,8 @@ function chooseSpreadCandidates(candidates, options = {}) {
     seedKey = "node-spread",
     anchorPoints = [],
     desiredSpacing = 10,
+    minSelectedDistance = 0,
+    minAnchorDistance = 0,
     initialStats = {},
     scoreCandidate = (candidate) => Number(candidate?.score ?? 0),
     onPick = null,
@@ -380,6 +424,12 @@ function chooseSpreadCandidates(candidates, options = {}) {
         candidate.y,
         anchorPoints,
       );
+      if (nearestSelectedDistance < minSelectedDistance) {
+        continue;
+      }
+      if (nearestAnchorDistance < minAnchorDistance) {
+        continue;
+      }
       const nearestDistance = Math.min(
         nearestSelectedDistance,
         nearestAnchorDistance,
@@ -581,6 +631,12 @@ function collectGenericCrashCandidates(
         y,
         signpostNodes,
       );
+      if (nearestSettlementDistance < MIN_CRASH_SETTLEMENT_CLEARANCE) {
+        continue;
+      }
+      if (nearestSignpostDistance < MIN_CRASH_SIGNPOST_CLEARANCE) {
+        continue;
+      }
       const elevation = world.terrain.elevation[cell] ?? 0;
       const mountainField = world.terrain.mountainField[cell] ?? 0;
       const moisture = world.climate.moisture[cell] ?? 0.5;

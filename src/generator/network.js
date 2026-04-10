@@ -52,6 +52,23 @@ export function buildRoadNetwork({
     nodeIdByCell.set(cell, node.id);
   }
 
+  for (const cell of collectLandRoadJunctionCells(roads)) {
+    if (nodeIdByCell.has(cell)) {
+      continue;
+    }
+    const [x, y] = coordsOf(cell, width);
+    const node = {
+      id: nodes.length,
+      type: "junction",
+      cell,
+      x,
+      y,
+      name: "Vägknut",
+    };
+    nodes.push(node);
+    nodeIdByCell.set(cell, node.id);
+  }
+
   for (const road of roads) {
     for (const endpoint of [road.cells[0], road.cells[road.cells.length - 1]]) {
       if (nodeIdByCell.has(endpoint)) {
@@ -91,6 +108,43 @@ export function buildRoadNetwork({
     components,
     adjacencyByNodeId,
   };
+}
+
+function collectLandRoadJunctionCells(roads) {
+  const adjacencyByCell = new Map();
+
+  const connect = (fromCell, toCell) => {
+    let neighbors = adjacencyByCell.get(fromCell);
+    if (!neighbors) {
+      neighbors = new Set();
+      adjacencyByCell.set(fromCell, neighbors);
+    }
+    neighbors.add(toCell);
+  };
+
+  for (const road of roads) {
+    if ((road?.type ?? "road") !== "road") {
+      continue;
+    }
+    const cells = road?.cells ?? [];
+    for (let i = 1; i < cells.length; i += 1) {
+      const fromCell = cells[i - 1];
+      const toCell = cells[i];
+      if (fromCell === toCell) {
+        continue;
+      }
+      connect(fromCell, toCell);
+      connect(toCell, fromCell);
+    }
+  }
+
+  const junctions = [];
+  for (const [cell, neighbors] of adjacencyByCell.entries()) {
+    if (neighbors.size >= 3) {
+      junctions.push(cell);
+    }
+  }
+  return junctions;
 }
 
 function buildRoadLinks(roads, nodes, nodeIdByCell) {
