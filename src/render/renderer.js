@@ -23,7 +23,7 @@ import {
   drawTerrainRaster,
   drawTerrainTextures,
   drawShorelines,
-} from "./terrainLayer.js?v=20260402j";
+} from "./terrainLayer.js?v=20260411a";
 import { createViewport } from "./viewport.js?v=20260331l";
 import {
   drawLakeWaves,

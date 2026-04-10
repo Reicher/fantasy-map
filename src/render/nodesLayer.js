@@ -1,5 +1,7 @@
 import { drawNodeMarkerGlyph } from "./nodeGlyph.js?v=20260409a";
 
+const MAP_NODE_ICON_LIFT = 3.3;
+
 export function drawNodes(ctx, nodes, viewport, options = {}) {
   const validIds = new Set(options.validNodeIds ?? []);
   const visibleIds = new Set(
@@ -31,6 +33,7 @@ export function drawNodes(ctx, nodes, viewport, options = {}) {
       highlighted,
       hovered,
       pressed,
+      iconLift: MAP_NODE_ICON_LIFT * symbolScale,
     });
   }
 }
@@ -42,20 +45,39 @@ export function drawPlayerMarker(ctx, playerStart, viewport) {
 
   const point = viewport.worldToCanvas(playerStart.x, playerStart.y);
 
+  ctx.save();
   ctx.beginPath();
-  ctx.fillStyle = "rgba(255, 238, 234, 0.9)";
-  ctx.arc(point.x, point.y, 8.2, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(16, 8, 8, 0.26)";
+  ctx.arc(point.x, point.y, 10.6, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.beginPath();
+  ctx.strokeStyle = "rgba(255, 244, 226, 0.98)";
+  ctx.lineWidth = 3.1;
+  ctx.arc(point.x, point.y, 8.1, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.strokeStyle = "rgba(28, 11, 11, 0.86)";
+  ctx.lineWidth = 1.6;
+  ctx.arc(point.x, point.y, 6.0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.beginPath();
   ctx.fillStyle = "#b31e1e";
-  ctx.arc(point.x, point.y, 5.4, 0, Math.PI * 2);
+  ctx.arc(point.x, point.y, 4.25, 0, Math.PI * 2);
   ctx.fill();
+
+  ctx.beginPath();
+  ctx.fillStyle = "rgba(255, 244, 226, 0.98)";
+  ctx.arc(point.x, point.y, 1.45, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 function drawNodeTargetHalo(ctx, x, y, scale, hovered, pressed) {
   const expanded = hovered || pressed;
-  const haloCenterY = y - 1.6 * scale;
+  const haloCenterY = y - 0.45 * scale;
   const radiusX = (expanded ? 16.2 : 14.0) * scale;
   const radiusY = (expanded ? 10.9 : 9.4) * scale;
 

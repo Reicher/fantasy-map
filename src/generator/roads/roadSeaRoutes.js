@@ -1,5 +1,5 @@
 import { BIOME_KEYS } from "../../config.js";
-import { buildRoadNetwork } from "../network.js?v=20260401i";
+import { buildRoadNetwork } from "../network.js?v=20260410e";
 import {
   clamp,
   coordsOf,

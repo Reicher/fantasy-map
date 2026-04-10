@@ -1,6 +1,8 @@
 import { BIOME_KEYS } from "../config.js";
 import { LABEL_COLORS } from "./colorTokens.js";
 
+const MAP_NODE_ICON_LIFT = 3.3;
+
 export function drawLabels(ctx, world, viewport, options = {}) {
   const {
     showBiomeLabels = false,
@@ -73,7 +75,7 @@ function reserveNodeCollisionBoxesForMapNames(
 
   const allowedIds = visibleNodeIds ? new Set(visibleNodeIds) : null;
   const markerScale = getNodeCollisionScale(viewport);
-  const iconLift = markerScale * 7.2;
+  const iconLift = markerScale * MAP_NODE_ICON_LIFT;
   const halfWidth = markerScale * 7.0;
   const halfHeight = markerScale * 6.2;
   const padding = Math.max(2.2, markerScale * 0.7);
@@ -425,7 +427,7 @@ function drawNodeLabels(
 
     const point = viewport.worldToCanvas(node.x - 0.5, node.y - 0.5);
     const markerScale = getNodeCollisionScale(viewport);
-    const iconCenterY = point.y - markerScale * 7.2;
+    const iconCenterY = point.y - markerScale * MAP_NODE_ICON_LIFT;
     const labelX = point.x + Math.max(12, markerScale * 8.4);
     const labelY = iconCenterY;
     const textWidth = ctx.measureText(node.name).width;

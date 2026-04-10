@@ -9,7 +9,7 @@ import { createJourneyScene } from "../game/journeyScene.js?v=20260409ac";
 import {
   renderPlayWorldDynamic,
   renderPlayWorldStatic,
-} from "../render/renderer.js?v=20260409d";
+} from "../render/renderer.js?v=20260411a";
 import { inspectWorldAt } from "../inspector.js?v=20260408b";
 import { createPlayCamera as buildPlayCamera } from "./cameraState.js?v=20260407a";
 import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260408a";

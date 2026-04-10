@@ -20,6 +20,7 @@ export const DEFAULT_PARAMS = {
   moistureBias: 50,
   inlandPreference: 50,
   roadLoopiness: 50,
+  nodeMinDistance: 5,
 };
 
 const PARAM_LABELS = {
@@ -76,6 +77,7 @@ const PARAM_LABELS = {
           : value < 85
             ? "Många slingor"
             : "Täta slingor",
+  nodeMinDistance: (value) => `${value.toFixed(1)} celler`,
 };
 
 export const PARAM_SCHEMA = {
@@ -201,6 +203,14 @@ export const PARAM_SCHEMA = {
     step: 1,
     formatLabel: PARAM_LABELS.roadLoopiness,
     ui: { label: "Vägslingor", tab: "noder", order: 20 },
+  },
+  nodeMinDistance: {
+    type: "number",
+    min: 2,
+    max: 14,
+    step: 0.5,
+    formatLabel: PARAM_LABELS.nodeMinDistance,
+    ui: { label: "Min nodavstånd", tab: "noder", order: 30 },
   },
 };
 

@@ -1,5 +1,8 @@
 import { coordsOf } from "../utils.js";
 
+const JUNCTION_NODE_MERGE_RADIUS = 0;
+const JUNCTION_CLUSTER_RADIUS = 0;
+
 export function buildWorldNetwork(world) {
   return buildRoadNetwork({
     settlements: world.settlements,
@@ -52,8 +55,25 @@ export function buildRoadNetwork({
     nodeIdByCell.set(cell, node.id);
   }
 
-  for (const cell of collectLandRoadJunctionCells(roads)) {
+  const mergeAnchorNodes = nodes.filter(
+    (node) => node?.type === "settlement" || node?.type === "abandoned",
+  );
+
+  const { representativeCells, representativeByCell } =
+    collectLandRoadJunctionCells(roads, width);
+
+  for (const cell of representativeCells) {
     if (nodeIdByCell.has(cell)) {
+      continue;
+    }
+    const mergeTargetNodeId = findNearestNodeIdWithinRadius(
+      cell,
+      width,
+      mergeAnchorNodes,
+      JUNCTION_NODE_MERGE_RADIUS,
+    );
+    if (mergeTargetNodeId != null) {
+      nodeIdByCell.set(cell, mergeTargetNodeId);
       continue;
     }
     const [x, y] = coordsOf(cell, width);
@@ -67,6 +87,16 @@ export function buildRoadNetwork({
     };
     nodes.push(node);
     nodeIdByCell.set(cell, node.id);
+  }
+
+  for (const [cell, representativeCell] of representativeByCell.entries()) {
+    if (cell === representativeCell || nodeIdByCell.has(cell)) {
+      continue;
+    }
+    const representativeNodeId = nodeIdByCell.get(representativeCell);
+    if (representativeNodeId != null) {
+      nodeIdByCell.set(cell, representativeNodeId);
+    }
   }
 
   for (const road of roads) {
@@ -110,7 +140,7 @@ export function buildRoadNetwork({
   };
 }
 
-function collectLandRoadJunctionCells(roads) {
+function collectLandRoadJunctionCells(roads, width) {
   const adjacencyByCell = new Map();
 
   const connect = (fromCell, toCell) => {
@@ -144,7 +174,7 @@ function collectLandRoadJunctionCells(roads) {
       junctions.push(cell);
     }
   }
-  return junctions;
+  return clusterNearbyJunctionCells(junctions, width, JUNCTION_CLUSTER_RADIUS);
 }
 
 function buildRoadLinks(roads, nodes, nodeIdByCell) {
@@ -251,5 +281,122 @@ function buildNetworkComponents(nodes, links) {
   return {
     components,
     adjacencyByNodeId: adjacency,
+  };
+}
+
+function findNearestNodeIdWithinRadius(cell, width, nodes, radius) {
+  if (!nodes?.length || !Number.isFinite(cell) || width <= 0 || radius <= 0) {
+    return null;
+  }
+  const [x, y] = coordsOf(cell, width);
+  let bestNodeId = null;
+  let bestDistanceSq = radius * radius;
+
+  for (const node of nodes) {
+    if (!node || !Number.isFinite(node.x) || !Number.isFinite(node.y)) {
+      continue;
+    }
+    const dx = x - node.x;
+    const dy = y - node.y;
+    const distanceSq = dx * dx + dy * dy;
+    if (distanceSq > bestDistanceSq) {
+      continue;
+    }
+    if (bestNodeId == null || distanceSq < bestDistanceSq) {
+      bestNodeId = node.id;
+      bestDistanceSq = distanceSq;
+    }
+  }
+
+  return bestNodeId;
+}
+
+function clusterNearbyJunctionCells(cells, width, maxDistance) {
+  const representativeByCell = new Map();
+  const uniqueCells = [...new Set(cells)].sort((a, b) => a - b);
+  if (uniqueCells.length === 0) {
+    return {
+      representativeCells: [],
+      representativeByCell,
+    };
+  }
+  if (uniqueCells.length === 1 || maxDistance <= 0 || width <= 0) {
+    for (const cell of uniqueCells) {
+      representativeByCell.set(cell, cell);
+    }
+    return {
+      representativeCells: uniqueCells,
+      representativeByCell,
+    };
+  }
+
+  const maxDistanceSq = maxDistance * maxDistance;
+  const clusters = [];
+  const cellCoords = new Map();
+
+  for (const cell of uniqueCells) {
+    const [x, y] = coordsOf(cell, width);
+    cellCoords.set(cell, { x, y });
+    let bestCluster = null;
+    let bestDistanceSq = maxDistanceSq;
+
+    for (const cluster of clusters) {
+      const dx = x - cluster.centerX;
+      const dy = y - cluster.centerY;
+      const distanceSq = dx * dx + dy * dy;
+      if (distanceSq > bestDistanceSq) {
+        continue;
+      }
+      bestDistanceSq = distanceSq;
+      bestCluster = cluster;
+    }
+
+    if (!bestCluster) {
+      clusters.push({
+        cells: [cell],
+        sumX: x,
+        sumY: y,
+        centerX: x,
+        centerY: y,
+      });
+      continue;
+    }
+
+    bestCluster.cells.push(cell);
+    bestCluster.sumX += x;
+    bestCluster.sumY += y;
+    const count = bestCluster.cells.length;
+    bestCluster.centerX = bestCluster.sumX / count;
+    bestCluster.centerY = bestCluster.sumY / count;
+  }
+
+  const representativeCells = [];
+  for (const cluster of clusters) {
+    let representativeCell = cluster.cells[0];
+    let bestDistanceSq = Number.POSITIVE_INFINITY;
+    for (const cell of cluster.cells) {
+      const point = cellCoords.get(cell);
+      const dx = point.x - cluster.centerX;
+      const dy = point.y - cluster.centerY;
+      const distanceSq = dx * dx + dy * dy;
+      if (
+        distanceSq < bestDistanceSq ||
+        (Math.abs(distanceSq - bestDistanceSq) < 1e-9 &&
+          cell < representativeCell)
+      ) {
+        representativeCell = cell;
+        bestDistanceSq = distanceSq;
+      }
+    }
+    representativeCells.push(representativeCell);
+    for (const cell of cluster.cells) {
+      representativeByCell.set(cell, representativeCell);
+    }
+  }
+
+  representativeCells.sort((a, b) => a - b);
+  return {
+    representativeCells,
+    representativeByCell,
   };
 }

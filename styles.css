@@ -316,8 +316,8 @@ input[type="range"] {
 
 .play-map-button {
   position: absolute;
-  bottom: 28px;
   right: 28px;
+  bottom: 28px;
   z-index: 4;
   font-size: 0.95rem;
   font-weight: 700;
@@ -415,10 +415,10 @@ input[type="range"] {
   min-height: 0;
   padding: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   overflow: hidden;
-  background: #8fa3a8;
+  background: var(--panel);
 }
 
 canvas {
@@ -433,6 +433,10 @@ canvas {
   background: transparent;
   cursor: grab;
   margin: auto;
+}
+
+#map-canvas {
+  margin: 0 auto;
 }
 
 canvas[data-dragging="true"] {

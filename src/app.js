@@ -2,11 +2,11 @@ import {
   DEFAULT_PARAMS,
   RENDER_HEIGHT,
   RENDER_WIDTH,
-} from "./config.js?v=20260409c";
+} from "./config.js?v=20260410d";
 import {
   generateWorld,
   normalizeParams,
-} from "./generator/worldGenerator.js?v=20260409c";
+} from "./generator/worldGenerator.js?v=20260411a";
 import {
   bindRangeLabels,
   getFormValues,
@@ -15,7 +15,7 @@ import {
   renderControlsFromSchema,
   setSeedValue,
   updateLabels,
-} from "./ui/controls.js?v=20260408b";
+} from "./ui/controls.js?v=20260410a";
 import {
   inferInitialMode,
   syncLabelButtons as applyLabelButtonState,
@@ -25,9 +25,9 @@ import {
 import { applyCanvasResolution } from "./ui/canvasResolution.js?v=20260403a";
 import { createPlayProfiler } from "./ui/playProfiler.js?v=20260403a";
 import { updateStats } from "./ui/statsPanel.js";
-import { createEditorSession } from "./ui/editorSession.js?v=20260409c";
+import { createEditorSession } from "./ui/editorSession.js?v=20260411a";
 import { clearHover } from "./ui/hoverPanel.js?v=20260408a";
-import { createPlaySession } from "./ui/playSession.js?v=20260409h";
+import { createPlaySession } from "./ui/playSession.js?v=20260411a";
 import {
   createTransitionController,
   waitForNextPaintIfActive,
@@ -77,7 +77,7 @@ const refs = {
   randomSeedButton: document.querySelector("#random-seed"),
   resetButton: document.querySelector("#reset"),
   saveImageButton: document.querySelector("#save-image"),
-  enterPlayButton: document.querySelector("#enter-play"),
+  enterPlayButtons: Array.from(document.querySelectorAll("[data-enter-play]")),
 };
 
 const initialMode = inferInitialMode();
@@ -264,9 +264,11 @@ refs.saveImageButton.addEventListener("click", () => {
   link.click();
 });
 
-refs.enterPlayButton.addEventListener("click", () => {
-  playSession.enterPlayMode();
-});
+for (const button of refs.enterPlayButtons) {
+  button.addEventListener("click", () => {
+    playSession.enterPlayMode();
+  });
+}
 
 window.addEventListener("resize", () => {
   if (!state.isBootReady) {

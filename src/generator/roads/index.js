@@ -22,8 +22,8 @@ const BIOME_TRAVEL_COST = {
   [BIOME_KEYS.RAINFOREST]: 1.8,
   [BIOME_KEYS.DESERT]: 1.28,
   [BIOME_KEYS.TUNDRA]: 1.52,
-  [BIOME_KEYS.HIGHLANDS]: 2.25,
-  [BIOME_KEYS.MOUNTAIN]: 4.8,
+  [BIOME_KEYS.HIGHLANDS]: 3.1,
+  [BIOME_KEYS.MOUNTAIN]: 8.8,
 };
 
 // When both adjacent cells already carry a road, applying this multiplier
@@ -33,27 +33,37 @@ const BIOME_TRAVEL_COST = {
 // onto existing roads when the terrain genuinely makes them the shortest route.
 // Values close to 0 mean nearly-free travel on roads; the pathfinder will go
 // far out of its way to ride an existing road, producing parallel doubles.
-const ON_ROAD_COST_FACTOR = 0.54;
-const TOUCHING_ROAD_COST_FACTOR = 0.74;
+const ON_ROAD_COST_FACTOR = 0.5;
+const TOUCHING_ROAD_COST_FACTOR = 0.68;
 
 // Penalty applied when a destination cell is NOT on a road but directly
 // neighbours one.  This discourages new roads from running alongside an
 // existing road, pushing them to either merge onto it (ON_ROAD_COST_FACTOR
 // takes over) or detour far enough that the eventual junction forms a clean
 // T/+ shape rather than a narrow fork.
-const PARALLEL_ROAD_PENALTY = 2.8;
+const PARALLEL_ROAD_PENALTY = 4.2;
+const NEAR_PARALLEL_ROAD_PENALTY = 1.6;
 
 // Penalty applied to cells within SETTLEMENT_APPROACH_RADIUS of a settlement that
 // already has at least one road connection.  Prevents new roads from
 // sneaking up alongside an existing connection and forming a narrow Y fork.
 // The settlement cell itself carries no penalty (roads must be able to reach it).
-const SETTLEMENT_APPROACH_RADIUS = 5;
-const SETTLEMENT_APPROACH_PEAK_PENALTY = 6.0;
-const SETTLEMENT_ENDPOINT_EXEMPT_RADIUS = 2.2;
+const SETTLEMENT_APPROACH_RADIUS = 6;
+const SETTLEMENT_APPROACH_PEAK_PENALTY = 10.5;
 
 const LOOP_MIN_NEW_CELL_COUNT = 6;
 const LOOP_MIN_NEW_CELL_SHARE = 0.26;
-const LOOP_THIRD_PARTY_SETTLEMENT_CLEARANCE = 2.2;
+const BASE_LOOP_THIRD_PARTY_SETTLEMENT_CLEARANCE = 5.6;
+const LOOP_PARALLEL_PROXIMITY_MIN_COUNT = 5;
+const LOOP_PARALLEL_PROXIMITY_MAX_SHARE = 0.52;
+const LOOP_PARALLEL_PROXIMITY_ENDPOINT_TRIM = 2;
+const BASE_JUNCTION_COLLAPSE_RADIUS = 2.2;
+const JUNCTION_COLLAPSE_MAX_PASSES = 3;
+const SETTLEMENT_JUNCTION_MAGNET_RADIUS = 4.2;
+const BASE_SETTLEMENT_NEAR_JUNCTION_COLLAPSE_RADIUS = 3.8;
+const BASE_SETTLEMENT_NEAR_JUNCTION_FORCE_RADIUS = 4.9;
+const BASE_SETTLEMENT_NEAR_JUNCTION_LINK_DISTANCE = 4.9;
+const DEFAULT_NODE_MIN_DISTANCE = 5;
 
 const RIVER_COST_THRESHOLD = 0.06;
 const RIVER_BASE_PENALTY = 3.2;
@@ -88,6 +98,31 @@ export function generateRoads(world) {
   const { biome } = climate;
   const { lakeIdByCell, riverStrength } = hydrology;
   const loopiness01 = clamp(Number(params.roadLoopiness ?? 50), 0, 100) / 100;
+  const nodeMinDistance = clamp(
+    Number(params.nodeMinDistance ?? DEFAULT_NODE_MIN_DISTANCE),
+    2,
+    14,
+  );
+  const settlementNearJunctionCollapseRadius = Math.max(
+    BASE_SETTLEMENT_NEAR_JUNCTION_COLLAPSE_RADIUS,
+    nodeMinDistance + 0.4,
+  );
+  const settlementNearJunctionForceRadius = Math.max(
+    BASE_SETTLEMENT_NEAR_JUNCTION_FORCE_RADIUS,
+    nodeMinDistance + 0.8,
+  );
+  const settlementNearJunctionLinkDistance = Math.max(
+    BASE_SETTLEMENT_NEAR_JUNCTION_LINK_DISTANCE,
+    nodeMinDistance + 0.6,
+  );
+  const junctionCollapseRadius = Math.max(
+    BASE_JUNCTION_COLLAPSE_RADIUS,
+    nodeMinDistance + 0.35,
+  );
+  const loopThirdPartySettlementClearance = Math.max(
+    BASE_LOOP_THIRD_PARTY_SETTLEMENT_CLEARANCE,
+    nodeMinDistance + 0.8,
+  );
 
   if (settlements.length < 2) {
     return {
@@ -252,6 +287,7 @@ export function generateRoads(world) {
       landComponentByCell,
       pairwiseCosts,
       settlementByCell,
+      loopThirdPartySettlementClearance,
     });
   }
 
@@ -267,6 +303,38 @@ export function generateRoads(world) {
     landComponentByCell,
   });
   roads.push(...seaRoutes);
+
+  let collapsedNearSettlementJunctions = false;
+  let collapsedNearbyJunctions = false;
+  for (let pass = 0; pass < JUNCTION_COLLAPSE_MAX_PASSES; pass += 1) {
+    const nearSettlementChanged = collapseNearSettlementJunctions(
+      roads,
+      settlements,
+      width,
+      {
+        collapseRadius: settlementNearJunctionCollapseRadius,
+        forceRadius: settlementNearJunctionForceRadius,
+        linkDistance: settlementNearJunctionLinkDistance,
+      },
+    );
+    const nearbyJunctionChanged = collapseNearbyJunctionClusters(roads, width, {
+      collapseRadius: junctionCollapseRadius,
+    });
+    if (!nearSettlementChanged && !nearbyJunctionChanged) {
+      break;
+    }
+    if (nearSettlementChanged) {
+      collapsedNearSettlementJunctions = true;
+    }
+    if (nearbyJunctionChanged) {
+      collapsedNearbyJunctions = true;
+    }
+  }
+
+  if (collapsedNearSettlementJunctions || collapsedNearbyJunctions) {
+    removeDegenerateRoadsInPlace(roads);
+    rebuildLandRoadUsage(roadUsage, roads);
+  }
 
   return { roads, roadUsage, componentCount };
 }
@@ -292,10 +360,10 @@ function buildBaseCost(
     }
 
     const biomeCost = BIOME_TRAVEL_COST[biome[index]] ?? 1.2;
-    const slopePenalty = elevation[index] * 0.8;
+    const slopePenalty = elevation[index] * 1.05;
     const mountainPenalty =
-      mountainField[index] * 2.9 +
-      Math.max(0, mountainField[index] - 0.68) * 4.2;
+      mountainField[index] * 4.9 +
+      Math.max(0, mountainField[index] - 0.62) * 8.1;
     baseCost[index] = biomeCost + slopePenalty + mountainPenalty;
   }
 
@@ -460,7 +528,6 @@ function findPath({
   riverStrength,
   roadUsage,
   settlementProximityPenalty = null,
-  penaltyExemptSettlements = null,
 }) {
   if (!Number.isFinite(baseCost[from]) || !Number.isFinite(baseCost[to])) {
     return null;
@@ -498,7 +565,6 @@ function findPath({
         width,
         height,
         settlementProximityPenalty,
-        penaltyExemptSettlements,
       );
       if (!Number.isFinite(cost)) {
         return;
@@ -531,14 +597,20 @@ function findPath({
 // Per-step traversal cost (used by both Dijkstra and findPath)
 // ---------------------------------------------------------------------------
 
-// Returns true when any of `cell`'s 8 neighbours carries a road.
-// Used to detect when a path would run parallel/adjacent to an existing road.
-function hasRoadNeighbour(cell, roadUsage, width, height) {
+// Returns proximity band for a destination cell relative to existing roads:
+//   0 = no nearby road, 1 = directly adjacent (8-neighbour), 2 = very close
+//       (within two-cell Chebyshev radius).
+function getRoadProximityBand(cell, roadUsage, width, height) {
   const x = cell % width;
   const y = Math.floor(cell / width);
-  for (let oy = -1; oy <= 1; oy += 1) {
-    for (let ox = -1; ox <= 1; ox += 1) {
+  let nearBandHit = false;
+  for (let oy = -2; oy <= 2; oy += 1) {
+    for (let ox = -2; ox <= 2; ox += 1) {
       if (ox === 0 && oy === 0) {
+        continue;
+      }
+      const chebyshevDistance = Math.max(Math.abs(ox), Math.abs(oy));
+      if (chebyshevDistance > 2) {
         continue;
       }
       const nx = x + ox;
@@ -547,32 +619,14 @@ function hasRoadNeighbour(cell, roadUsage, width, height) {
         continue;
       }
       if (roadUsage[ny * width + nx] > 0) {
-        return true;
+        if (chebyshevDistance <= 1) {
+          return 1;
+        }
+        nearBandHit = true;
       }
     }
   }
-  return false;
-}
-
-function isWithinSettlementExemptRadius(
-  cell,
-  width,
-  settlements,
-  radius,
-) {
-  if (!settlements?.length || width <= 0 || radius <= 0) {
-    return false;
-  }
-  const [x, y] = coordsOf(cell, width);
-  const radiusSquared = radius * radius;
-  for (const settlement of settlements) {
-    const dx = x - settlement.x;
-    const dy = y - settlement.y;
-    if (dx * dx + dy * dy <= radiusSquared) {
-      return true;
-    }
-  }
-  return false;
+  return nearBandHit ? 2 : 0;
 }
 
 function computeStepCost(
@@ -585,7 +639,6 @@ function computeStepCost(
   width = 0,
   height = 0,
   settlementProximityPenalty = null,
-  penaltyExemptSettlements = null,
 ) {
   if (!Number.isFinite(baseCost[from]) || !Number.isFinite(baseCost[to])) {
     return Number.POSITIVE_INFINITY;
@@ -620,8 +673,13 @@ function computeStepCost(
       // existing road it would run alongside it — a fork.  Make this
       // noticeably more expensive so the path either merges onto the road or
       // swings wide enough for a clean T/+ intersection.
-      if (width > 0 && hasRoadNeighbour(to, roadUsage, width, height)) {
-        cost += PARALLEL_ROAD_PENALTY;
+      if (width > 0) {
+        const proximityBand = getRoadProximityBand(to, roadUsage, width, height);
+        if (proximityBand === 1) {
+          cost += PARALLEL_ROAD_PENALTY;
+        } else if (proximityBand === 2) {
+          cost += NEAR_PARALLEL_ROAD_PENALTY;
+        }
       }
     }
   }
@@ -630,15 +688,7 @@ function computeStepCost(
   // node from a shallow angle.  The settlement cell itself has penalty 0 so roads
   // can always reach their destination; only the surrounding cells are
   // penalised, pushing new roads to arrive at a perpendicular angle.
-  if (
-    settlementProximityPenalty !== null &&
-    !isWithinSettlementExemptRadius(
-      to,
-      width,
-      penaltyExemptSettlements,
-      SETTLEMENT_ENDPOINT_EXEMPT_RADIUS,
-    )
-  ) {
+  if (settlementProximityPenalty !== null) {
     cost += settlementProximityPenalty[to];
   }
 
@@ -664,6 +714,7 @@ function addLoopEdges({
   landComponentByCell,
   pairwiseCosts,
   settlementByCell,
+  loopThirdPartySettlementClearance,
 }) {
   // Only add extra edges when the current network path is a strong detour.
   const detourThreshold = 3.5 + (1.45 - 3.5) * loopiness01;
@@ -766,7 +817,7 @@ function addLoopEdges({
         requireDirectFrom: true,
         minNovelCellCount: LOOP_MIN_NEW_CELL_COUNT,
         minNovelCellShare: LOOP_MIN_NEW_CELL_SHARE,
-        thirdPartySettlementClearance: LOOP_THIRD_PARTY_SETTLEMENT_CLEARANCE,
+        thirdPartySettlementClearance: loopThirdPartySettlementClearance,
       })
     ) {
       continue;
@@ -851,6 +902,45 @@ function countNovelCells(cells, roadUsage) {
   return count;
 }
 
+function hasExcessiveParallelProximity(
+  cells,
+  roadUsage,
+  width,
+  height,
+  endpointTrim = LOOP_PARALLEL_PROXIMITY_ENDPOINT_TRIM,
+) {
+  if (!cells?.length || !roadUsage || width <= 0 || height <= 0) {
+    return false;
+  }
+
+  const start = Math.max(1, endpointTrim);
+  const end = Math.max(start, cells.length - 1 - endpointTrim);
+  let novelInteriorCount = 0;
+  let closeParallelCount = 0;
+
+  for (let i = start; i < end; i += 1) {
+    const cell = cells[i];
+    if (roadUsage[cell] > 0) {
+      continue;
+    }
+    novelInteriorCount += 1;
+    if (getRoadProximityBand(cell, roadUsage, width, height) === 1) {
+      closeParallelCount += 1;
+    }
+  }
+
+  if (
+    novelInteriorCount < LOOP_PARALLEL_PROXIMITY_MIN_COUNT ||
+    closeParallelCount < LOOP_PARALLEL_PROXIMITY_MIN_COUNT
+  ) {
+    return false;
+  }
+  return (
+    closeParallelCount / Math.max(1, novelInteriorCount) >
+    LOOP_PARALLEL_PROXIMITY_MAX_SHARE
+  );
+}
+
 function hasThirdPartySettlementNearPath(
   cells,
   settlements,
@@ -924,6 +1014,375 @@ function incrementRoadUsage(roadUsage, cells) {
   }
 }
 
+function rebuildLandRoadUsage(roadUsage, roads) {
+  roadUsage.fill(0);
+  for (const road of roads) {
+    if ((road?.type ?? "road") !== "road") {
+      continue;
+    }
+    incrementRoadUsage(roadUsage, road.cells ?? []);
+  }
+}
+
+function removeDegenerateRoadsInPlace(roads) {
+  let writeIndex = 0;
+  for (const road of roads) {
+    if (!road || !Array.isArray(road.cells) || road.cells.length < 2) {
+      continue;
+    }
+    road.id = writeIndex;
+    roads[writeIndex] = road;
+    writeIndex += 1;
+  }
+  roads.length = writeIndex;
+}
+
+function collapseNearSettlementJunctions(
+  roads,
+  settlements,
+  width,
+  { collapseRadius, forceRadius, linkDistance } = {},
+) {
+  if (!roads?.length || !settlements?.length || width <= 0) {
+    return false;
+  }
+
+  const settlementCells = new Set(
+    settlements
+      .map((settlement) => settlement?.cell)
+      .filter((cell) => Number.isFinite(cell)),
+  );
+  if (!settlementCells.size) {
+    return false;
+  }
+
+  const adjacencyByCell = new Map();
+  const connect = (fromCell, toCell) => {
+    let neighbors = adjacencyByCell.get(fromCell);
+    if (!neighbors) {
+      neighbors = new Set();
+      adjacencyByCell.set(fromCell, neighbors);
+    }
+    neighbors.add(toCell);
+  };
+
+  for (const road of roads) {
+    if ((road?.type ?? "road") !== "road") {
+      continue;
+    }
+    const cells = road?.cells ?? [];
+    for (let i = 1; i < cells.length; i += 1) {
+      const fromCell = cells[i - 1];
+      const toCell = cells[i];
+      if (fromCell === toCell) {
+        continue;
+      }
+      connect(fromCell, toCell);
+      connect(toCell, fromCell);
+    }
+  }
+
+  const settlementDegreeByCell = new Map();
+  for (const settlement of settlements) {
+    if (!settlement || !Number.isFinite(settlement.cell)) {
+      continue;
+    }
+    settlementDegreeByCell.set(
+      settlement.cell,
+      adjacencyByCell.get(settlement.cell)?.size ?? 0,
+    );
+  }
+
+  const effectiveCollapseRadius = Math.max(
+    1.5,
+    Number(collapseRadius) || BASE_SETTLEMENT_NEAR_JUNCTION_COLLAPSE_RADIUS,
+  );
+  const effectiveForceRadius = Math.max(
+    effectiveCollapseRadius,
+    Number(forceRadius) || BASE_SETTLEMENT_NEAR_JUNCTION_FORCE_RADIUS,
+  );
+  const effectiveLinkDistance = Math.max(
+    1.5,
+    Number(linkDistance) || BASE_SETTLEMENT_NEAR_JUNCTION_LINK_DISTANCE,
+  );
+  const collapseRadiusSquared = effectiveCollapseRadius * effectiveCollapseRadius;
+  const forceRadiusSquared = effectiveForceRadius * effectiveForceRadius;
+
+  const replacementByCell = new Map();
+  for (const [cell, neighbors] of adjacencyByCell.entries()) {
+    if (neighbors.size < 3 || settlementCells.has(cell)) {
+      continue;
+    }
+    const [x, y] = coordsOf(cell, width);
+    let nearestForcedSettlement = null;
+    let nearestForcedDistanceSquared = Number.POSITIVE_INFINITY;
+    for (const settlement of settlements) {
+      if (!settlement || !Number.isFinite(settlement.cell)) {
+        continue;
+      }
+      const dx = x - settlement.x;
+      const dy = y - settlement.y;
+      const distanceSquared = dx * dx + dy * dy;
+      if (distanceSquared > forceRadiusSquared) {
+        continue;
+      }
+      if (distanceSquared < nearestForcedDistanceSquared) {
+        nearestForcedSettlement = settlement;
+        nearestForcedDistanceSquared = distanceSquared;
+      }
+    }
+    if (nearestForcedSettlement) {
+      replacementByCell.set(cell, nearestForcedSettlement.cell);
+      continue;
+    }
+    let nearbySettlement = null;
+    let bestScore = Number.POSITIVE_INFINITY;
+    for (const settlement of settlements) {
+      if (!settlement || !Number.isFinite(settlement.cell)) {
+        continue;
+      }
+      const dx = x - settlement.x;
+      const dy = y - settlement.y;
+      const distanceSquared = dx * dx + dy * dy;
+      if (distanceSquared > collapseRadiusSquared) {
+        continue;
+      }
+      const settlementDegree =
+        settlementDegreeByCell.get(settlement.cell) ?? 0;
+      if (settlementDegree > 2) {
+        continue;
+      }
+      const score = distanceSquared;
+      if (score < bestScore) {
+        nearbySettlement = settlement;
+        bestScore = score;
+      }
+    }
+    if (!nearbySettlement) {
+      continue;
+    }
+    replacementByCell.set(cell, nearbySettlement.cell);
+  }
+
+  if (!replacementByCell.size) {
+    return false;
+  }
+
+  let changed = false;
+  for (const road of roads) {
+    if ((road?.type ?? "road") !== "road") {
+      continue;
+    }
+    const cells = road?.cells ?? [];
+    let roadChanged = false;
+    for (let i = 0; i < cells.length; i += 1) {
+      const replacementCell = replacementByCell.get(cells[i]);
+      if (replacementCell == null) {
+        continue;
+      }
+      const prev = i > 0 ? cells[i - 1] : -1;
+      const next = i < cells.length - 1 ? cells[i + 1] : -1;
+      const hasNearSegment =
+        isCellWithinDistance(
+          prev,
+          replacementCell,
+          width,
+          effectiveLinkDistance,
+        ) ||
+        isCellWithinDistance(
+          next,
+          replacementCell,
+          width,
+          effectiveLinkDistance,
+        );
+      if (prev !== replacementCell && next !== replacementCell && !hasNearSegment) {
+        continue;
+      }
+      cells[i] = replacementCell;
+      roadChanged = true;
+    }
+    if (!roadChanged) {
+      continue;
+    }
+    dedupeConsecutiveCellsInPlace(cells);
+    road.length = cells.length;
+    changed = true;
+  }
+
+  return changed;
+}
+
+function isCellWithinDistance(cellA, cellB, width, maxDistance) {
+  if (
+    !Number.isFinite(cellA) ||
+    !Number.isFinite(cellB) ||
+    cellA < 0 ||
+    cellB < 0 ||
+    width <= 0 ||
+    maxDistance <= 0
+  ) {
+    return false;
+  }
+  const [ax, ay] = coordsOf(cellA, width);
+  const [bx, by] = coordsOf(cellB, width);
+  return Math.hypot(ax - bx, ay - by) <= maxDistance;
+}
+
+function collapseNearbyJunctionClusters(
+  roads,
+  width,
+  { collapseRadius } = {},
+) {
+  if (!roads?.length || width <= 0) {
+    return false;
+  }
+
+  const adjacencyByCell = new Map();
+  const connect = (fromCell, toCell) => {
+    let neighbors = adjacencyByCell.get(fromCell);
+    if (!neighbors) {
+      neighbors = new Set();
+      adjacencyByCell.set(fromCell, neighbors);
+    }
+    neighbors.add(toCell);
+  };
+
+  for (const road of roads) {
+    if ((road?.type ?? "road") !== "road") {
+      continue;
+    }
+    const cells = road?.cells ?? [];
+    for (let i = 1; i < cells.length; i += 1) {
+      const fromCell = cells[i - 1];
+      const toCell = cells[i];
+      if (fromCell === toCell) {
+        continue;
+      }
+      connect(fromCell, toCell);
+      connect(toCell, fromCell);
+    }
+  }
+
+  const junctionCells = [...adjacencyByCell.entries()]
+    .filter(([, neighbors]) => neighbors.size >= 3)
+    .map(([cell]) => cell);
+  if (junctionCells.length < 2) {
+    return false;
+  }
+
+  const clusters = [];
+  const cellCoords = new Map();
+  const effectiveCollapseRadius = Math.max(
+    0.8,
+    Number(collapseRadius) || BASE_JUNCTION_COLLAPSE_RADIUS,
+  );
+  const maxDistanceSq = effectiveCollapseRadius * effectiveCollapseRadius;
+  const linkDistance = Math.max(1.5, effectiveCollapseRadius + 0.85);
+
+  for (const cell of junctionCells.sort((a, b) => a - b)) {
+    const [x, y] = coordsOf(cell, width);
+    cellCoords.set(cell, { x, y });
+    let bestCluster = null;
+    let bestDistanceSq = maxDistanceSq;
+    for (const cluster of clusters) {
+      const dx = x - cluster.centerX;
+      const dy = y - cluster.centerY;
+      const distanceSq = dx * dx + dy * dy;
+      if (distanceSq > bestDistanceSq) {
+        continue;
+      }
+      bestDistanceSq = distanceSq;
+      bestCluster = cluster;
+    }
+    if (!bestCluster) {
+      clusters.push({
+        cells: [cell],
+        sumX: x,
+        sumY: y,
+        centerX: x,
+        centerY: y,
+      });
+      continue;
+    }
+    bestCluster.cells.push(cell);
+    bestCluster.sumX += x;
+    bestCluster.sumY += y;
+    const count = bestCluster.cells.length;
+    bestCluster.centerX = bestCluster.sumX / count;
+    bestCluster.centerY = bestCluster.sumY / count;
+  }
+
+  const replacementByCell = new Map();
+  for (const cluster of clusters) {
+    if (cluster.cells.length < 2) {
+      continue;
+    }
+    let representativeCell = cluster.cells[0];
+    let bestDegree = adjacencyByCell.get(representativeCell)?.size ?? 0;
+    let bestCenterDistanceSq = Number.POSITIVE_INFINITY;
+    for (const cell of cluster.cells) {
+      const degree = adjacencyByCell.get(cell)?.size ?? 0;
+      const point = cellCoords.get(cell);
+      const dx = point.x - cluster.centerX;
+      const dy = point.y - cluster.centerY;
+      const centerDistanceSq = dx * dx + dy * dy;
+      if (
+        degree > bestDegree ||
+        (degree === bestDegree && centerDistanceSq < bestCenterDistanceSq) ||
+        (degree === bestDegree &&
+          Math.abs(centerDistanceSq - bestCenterDistanceSq) < 1e-9 &&
+          cell < representativeCell)
+      ) {
+        representativeCell = cell;
+        bestDegree = degree;
+        bestCenterDistanceSq = centerDistanceSq;
+      }
+    }
+    for (const cell of cluster.cells) {
+      if (cell !== representativeCell) {
+        replacementByCell.set(cell, representativeCell);
+      }
+    }
+  }
+
+  if (!replacementByCell.size) {
+    return false;
+  }
+
+  let changed = false;
+  for (const road of roads) {
+    if ((road?.type ?? "road") !== "road") {
+      continue;
+    }
+    const cells = road?.cells ?? [];
+    let roadChanged = false;
+    for (let i = 0; i < cells.length; i += 1) {
+      const replacementCell = replacementByCell.get(cells[i]);
+      if (replacementCell == null) {
+        continue;
+      }
+      const prev = i > 0 ? cells[i - 1] : -1;
+      const next = i < cells.length - 1 ? cells[i + 1] : -1;
+      const hasNearSegment =
+        isCellWithinDistance(prev, replacementCell, width, linkDistance) ||
+        isCellWithinDistance(next, replacementCell, width, linkDistance);
+      if (prev !== replacementCell && next !== replacementCell && !hasNearSegment) {
+        continue;
+      }
+      cells[i] = replacementCell;
+      roadChanged = true;
+    }
+    if (!roadChanged) {
+      continue;
+    }
+    dedupeConsecutiveCellsInPlace(cells);
+    road.length = cells.length;
+    changed = true;
+  }
+
+  return changed;
+}
+
 function materializeRoad({
   roads,
   roadSignatures,
@@ -954,24 +1413,54 @@ function materializeRoad({
     riverStrength,
     roadUsage,
     settlementProximityPenalty,
-    penaltyExemptSettlements: [fromSettlement, toSettlement],
   });
   if (!rawPath || rawPath.length < 2) {
     return null;
   }
 
+  const settlementAnchors = uniqueSettlementsFromMap(settlementByCell);
   // If a path crosses an already-known settlement, keep only the novel head.
   let anchorSettlement = null;
   let anchorIndex = -1;
+  let anchorByMagnet = false;
   for (let i = 1; i <= rawPath.length - 2; i += 1) {
-    const settlement = settlementByCell.get(rawPath[i]);
+    const settlement =
+      settlementByCell.get(rawPath[i]) ??
+      findSettlementNearCell(rawPath[i], width, settlementAnchors, {
+        radius: SETTLEMENT_JUNCTION_MAGNET_RADIUS,
+        excludeSettlementIds: [fromSettlement.id, toSettlement.id],
+      });
     if (settlement != null) {
       anchorSettlement = settlement;
       anchorIndex = i;
+      anchorByMagnet = settlementByCell.get(rawPath[i]) == null;
       break;
     }
   }
-  const trimmed = anchorIndex >= 0 ? rawPath.slice(0, anchorIndex + 1) : rawPath;
+  const trimmed = anchorIndex >= 0 ? rawPath.slice(0, anchorIndex + 1) : [...rawPath];
+  if (anchorByMagnet && anchorSettlement && trimmed.length >= 1) {
+    const nearCell = trimmed[trimmed.length - 1];
+    if (nearCell !== anchorSettlement.cell) {
+      const connector = findPath({
+        from: nearCell,
+        to: anchorSettlement.cell,
+        width,
+        height,
+        size,
+        baseCost,
+        riverStrength,
+        roadUsage,
+        settlementProximityPenalty,
+      });
+      if (connector && connector.length >= 2) {
+        const forward = [...connector].reverse();
+        trimmed.push(...forward.slice(1));
+      } else {
+        trimmed.push(anchorSettlement.cell);
+      }
+    }
+  }
+  dedupeConsecutiveCellsInPlace(trimmed);
   if (trimmed.length < 2) {
     return null;
   }
@@ -987,6 +1476,12 @@ function materializeRoad({
   if (
     minNovelCellShare > 0 &&
     novelCellCount / Math.max(1, trimmed.length) < minNovelCellShare
+  ) {
+    return null;
+  }
+  if (
+    requireDirectFrom &&
+    hasExcessiveParallelProximity(trimmed, roadUsage, width, height)
   ) {
     return null;
   }
@@ -1014,4 +1509,69 @@ function materializeRoad({
   }
   incrementRoadUsage(roadUsage, trimmed);
   return actualFromSettlement;
+}
+
+function uniqueSettlementsFromMap(settlementByCell) {
+  if (!settlementByCell?.size) {
+    return [];
+  }
+  const uniqueById = new Map();
+  for (const settlement of settlementByCell.values()) {
+    if (!settlement || settlement.id == null) {
+      continue;
+    }
+    if (!uniqueById.has(settlement.id)) {
+      uniqueById.set(settlement.id, settlement);
+    }
+  }
+  return [...uniqueById.values()];
+}
+
+function findSettlementNearCell(
+  cell,
+  width,
+  settlements,
+  { radius = 0, excludeSettlementIds = [] } = {},
+) {
+  if (!Number.isFinite(cell) || width <= 0 || !settlements?.length || radius <= 0) {
+    return null;
+  }
+  const excluded = new Set(excludeSettlementIds ?? []);
+  const [x, y] = coordsOf(cell, width);
+  const radiusSquared = radius * radius;
+  let bestSettlement = null;
+  let bestDistanceSquared = radiusSquared;
+
+  for (const settlement of settlements) {
+    if (!settlement || excluded.has(settlement.id)) {
+      continue;
+    }
+    const dx = x - settlement.x;
+    const dy = y - settlement.y;
+    const distanceSquared = dx * dx + dy * dy;
+    if (distanceSquared > bestDistanceSquared) {
+      continue;
+    }
+    if (!bestSettlement || distanceSquared < bestDistanceSquared) {
+      bestSettlement = settlement;
+      bestDistanceSquared = distanceSquared;
+    }
+  }
+
+  return bestSettlement;
+}
+
+function dedupeConsecutiveCellsInPlace(cells) {
+  if (!cells?.length) {
+    return;
+  }
+  let writeIndex = 1;
+  for (let readIndex = 1; readIndex < cells.length; readIndex += 1) {
+    if (cells[readIndex] === cells[writeIndex - 1]) {
+      continue;
+    }
+    cells[writeIndex] = cells[readIndex];
+    writeIndex += 1;
+  }
+  cells.length = writeIndex;
 }
