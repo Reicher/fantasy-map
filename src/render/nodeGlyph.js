@@ -1,4 +1,4 @@
-import { normalizeNodeMarker } from "../nodeModel.js";
+import { normalizeNodeMarker } from "../node/model.js";
 
 export function drawNodeMarkerGlyph(
   ctx,

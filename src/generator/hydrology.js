@@ -25,11 +25,16 @@ export function generateHydrology(terrain, params) {
   const lakeAmountFactor = sliderFactor(params.lakeAmount, 0.72);
   const lakeSizeFactor = sliderFactor(params.lakeSize, 0.68);
   const rng = createRng(`${params.seed}::hydrology`);
-  const { oceanSources, coastSources } = collectShoreSources(
-    size,
-    oceanMask,
-    coastMask,
-  );
+  const oceanSources = [];
+  const coastSources = [];
+  for (let index = 0; index < size; index += 1) {
+    if (oceanMask[index]) {
+      oceanSources.push(index);
+    } else if (coastMask[index]) {
+      coastSources.push(index);
+    }
+  }
+
   const oceanDistance = distanceField(width, height, oceanSources, false);
   const coastDistance = distanceField(width, height, coastSources, false);
   const baseRainfall = buildBaseRainfall(
@@ -41,7 +46,12 @@ export function generateHydrology(terrain, params) {
     elevation,
     mountainField,
   );
-  const state = createHydrologyState(size);
+  const riverStrength = new Float32Array(size);
+  const riverCellOwner = new Int16Array(size);
+  riverCellOwner.fill(-1);
+  const lakeIdByCell = new Int16Array(size);
+  lakeIdByCell.fill(-1);
+
   const context = {
     width,
     height,
@@ -58,7 +68,11 @@ export function generateHydrology(terrain, params) {
     oceanDistance,
     coastDistance,
     baseRainfall,
-    ...state,
+    riverStrength,
+    riverCellOwner,
+    lakeIdByCell,
+    lakes: [],
+    rivers: [],
   };
 
   registerNaturalLakes(context);
@@ -125,23 +139,6 @@ export function generateHydrology(terrain, params) {
     lakeIdByCell: context.lakeIdByCell,
     lakes: context.lakes,
     rivers: context.rivers,
-  };
-}
-
-function createHydrologyState(size) {
-  const riverStrength = new Float32Array(size);
-  const riverCellOwner = new Int16Array(size);
-  riverCellOwner.fill(-1);
-
-  const lakeIdByCell = new Int16Array(size);
-  lakeIdByCell.fill(-1);
-
-  return {
-    riverStrength,
-    riverCellOwner,
-    lakeIdByCell,
-    lakes: [],
-    rivers: [],
   };
 }
 
@@ -314,27 +311,23 @@ function traceRiver(context, sourceIndex, sourceScore) {
       continue;
     }
 
-    // River is stuck — flood a basin lake and continue from its outlet
-    const outlet = resolveStuckRiver(context, cells, current, sourceScore);
-    if (outlet === null) {
+    // River is stuck — flood a basin lake and continue from its outlet.
+    const lake = createLake(context, current, sourceScore);
+    if (!lake) {
       break;
     }
+    if (!cells.includes(lake.anchor)) {
+      cells.push(lake.anchor);
+    }
+    if (lake.outlet === null) {
+      break;
+    }
+
     previous = current;
-    current = outlet;
+    current = lake.outlet;
   }
 
   return { cells, joinsRiver };
-}
-
-function resolveStuckRiver(context, cells, current, sourceScore) {
-  const lake = createLake(context, current, sourceScore);
-  if (!lake) {
-    return null;
-  }
-  if (!cells.includes(lake.anchor)) {
-    cells.push(lake.anchor);
-  }
-  return lake.outlet; // null means terminal lake with no outlet
 }
 
 function chooseNextFlowCell(context, current, previous) {
@@ -349,6 +342,14 @@ function chooseNextFlowCell(context, current, previous) {
   } = context;
   const [x, y] = coordsOf(current, width);
   const currentHeight = elevation[current];
+  let forwardPenaltyX = 0;
+  let forwardPenaltyY = 0;
+  if (previous >= 0) {
+    const [px, py] = coordsOf(previous, width);
+    forwardPenaltyX = x - px;
+    forwardPenaltyY = y - py;
+  }
+
   let best = null;
   let bestScore = Number.POSITIVE_INFINITY;
 
@@ -365,8 +366,13 @@ function chooseNextFlowCell(context, current, previous) {
       return;
     }
 
-    const previousBias =
-      previous >= 0 ? directionPenalty(previous, current, neighbor, width) : 0;
+    let previousBias = 0;
+    if (previous >= 0) {
+      const nextX = nx - x;
+      const nextY = ny - y;
+      const dot = forwardPenaltyX * nextX + forwardPenaltyY * nextY;
+      previousBias = dot >= 0 ? -0.01 : 0.02;
+    }
     const riverBias = riverCellOwner[neighbor] >= 0 ? -0.06 : 0;
     const score =
       elevation[neighbor] +
@@ -579,21 +585,6 @@ function placeBasinLakes(context) {
   }
 }
 
-function collectShoreSources(size, oceanMask, coastMask) {
-  const oceanSources = [];
-  const coastSources = [];
-
-  for (let index = 0; index < size; index += 1) {
-    if (oceanMask[index]) {
-      oceanSources.push(index);
-    } else if (coastMask[index]) {
-      coastSources.push(index);
-    }
-  }
-
-  return { oceanSources, coastSources };
-}
-
 function buildBaseRainfall(
   width,
   size,
@@ -706,14 +697,7 @@ function selectRiverSources({
   return selectedSources;
 }
 
-function buildWaterDistance(
-  width,
-  height,
-  size,
-  oceanSources,
-  lakes,
-  riverStrength,
-) {
+function buildWaterDistance(width, height, size, oceanSources, lakes, riverStrength) {
   const waterSources = [...oceanSources];
 
   for (const lake of lakes) {
@@ -726,16 +710,4 @@ function buildWaterDistance(
   }
 
   return distanceField(width, height, waterSources, false);
-}
-
-function directionPenalty(previous, current, next, width) {
-  const [px, py] = [previous % width, Math.floor(previous / width)];
-  const [cx, cy] = [current % width, Math.floor(current / width)];
-  const [nx, ny] = [next % width, Math.floor(next / width)];
-  const prevX = cx - px;
-  const prevY = cy - py;
-  const nextX = nx - cx;
-  const nextY = ny - cy;
-  const dot = prevX * nextX + prevY * nextY;
-  return dot >= 0 ? -0.01 : 0.02;
 }

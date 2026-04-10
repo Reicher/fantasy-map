@@ -1,5 +1,5 @@
-import { BIOME_KEYS } from "../config.js";
-import { coordsOf, forEachNeighbor, indexOf } from "../utils.js";
+import { BIOME_KEYS } from "../../config.js";
+import { coordsOf, forEachNeighbor, indexOf } from "../../utils.js";
 
 export function isSnowCell(biomeKey, elevation, mountain, temperature, showSnow = true) {
   if (!showSnow || biomeKey === BIOME_KEYS.OCEAN || biomeKey === BIOME_KEYS.LAKE) {

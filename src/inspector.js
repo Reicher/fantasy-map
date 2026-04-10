@@ -1,7 +1,6 @@
-import { clamp, distance } from "./utils.js";
-import { isFrozenLake } from "./generator/surfaceModel.js?v=20260402b";
-import { getNodeTitle } from "./nodeModel.js";
-import { riverDistanceInCells } from "./query/rivers.js";
+import { clamp, coordsOf, distance, segmentPointDistance } from "./utils.js";
+import { isFrozenLake } from "./generator/models/surfaceModel.js?v=20260402b";
+import { getNodeTitle } from "./node/model.js";
 
 export function inspectWorldAt(world, worldX, worldY, renderContext = null) {
   const x = clamp(Math.floor(worldX), 0, world.terrain.width - 1);
@@ -86,4 +85,23 @@ function findMountainGlyphHit(world, renderContext) {
   }
 
   return world.features.mountainRegions[nearest.hit.regionId] ?? null;
+}
+
+function riverDistanceInCells(world, cellX, cellY) {
+  let best = null;
+  for (const river of world.features.rivers) {
+    for (let index = 0; index < river.cells.length - 1; index += 1) {
+      const [ax, ay] = coordsOf(river.cells[index], world.terrain.width);
+      const [bx, by] = coordsOf(river.cells[index + 1], world.terrain.width);
+      const segmentDistance = segmentPointDistance(cellX, cellY, ax, ay, bx, by);
+      if (!best || segmentDistance < best.distance) {
+        best = {
+          river,
+          distance: segmentDistance,
+          stepsToMouth: Math.max(0, river.cells.length - 1 - index),
+        };
+      }
+    }
+  }
+  return best;
 }

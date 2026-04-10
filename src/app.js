@@ -64,6 +64,10 @@ const refs = {
   toggleBiomeLabelsButton: document.querySelector("#toggle-biome-labels"),
   toggleNodeLabelsButton: document.querySelector("#toggle-node-labels"),
   toggleSnowButton: document.querySelector("#toggle-snow"),
+  zoomOutButton: document.querySelector("#zoom-out"),
+  zoomInButton: document.querySelector("#zoom-in"),
+  zoomLevelChip: document.querySelector("#zoom-level"),
+  resetViewButton: document.querySelector("#reset-view"),
   zoom1Button: document.querySelector("#zoom-1"),
   zoom2Button: document.querySelector("#zoom-2"),
   zoom3Button: document.querySelector("#zoom-3"),
@@ -213,6 +217,29 @@ for (const button of [refs.zoom1Button, refs.zoom2Button, refs.zoom3Button]) {
   if (!button) continue;
   button.addEventListener("click", () => {
     editorSession.setZoom(Number(button.dataset.zoom));
+  });
+}
+
+if (refs.zoomOutButton) {
+  refs.zoomOutButton.addEventListener("click", () => {
+    editorSession.stepZoom(-1);
+  });
+}
+
+if (refs.zoomInButton) {
+  refs.zoomInButton.addEventListener("click", () => {
+    editorSession.stepZoom(1);
+  });
+}
+
+if (refs.resetViewButton) {
+  refs.resetViewButton.addEventListener("click", () => {
+    if (!state.currentWorld) {
+      return;
+    }
+    state.cameraState = editorSession.createDefaultCamera();
+    syncViewUi();
+    editorSession.rerenderCurrentWorld();
   });
 }
 
@@ -366,6 +393,10 @@ function syncViewUi() {
     refs,
     cameraState: state.cameraState,
   });
+
+  if (refs.zoomLevelChip) {
+    refs.zoomLevelChip.textContent = `${Math.round(state.cameraState.zoom * 100)}%`;
+  }
 }
 
 syncLabelButtons();

@@ -145,14 +145,7 @@ function collapseDiagonalBiomeSingletons(width, height, isLand, lakeIdByCell, bi
         continue;
       }
 
-      let targetBiome = null;
-      let bestCount = -1;
-      for (const [neighborBiome, count] of neighborCounts.entries()) {
-        if (count > bestCount) {
-          targetBiome = neighborBiome;
-          bestCount = count;
-        }
-      }
+      const targetBiome = getMostCommonNeighborBiome(neighborCounts);
 
       if (targetBiome != null) {
         changes.push({ index, biome: targetBiome });
@@ -207,14 +200,7 @@ function simplifyTinyBiomePatches(width, height, isLand, lakeIdByCell, biome, ma
         continue;
       }
 
-      let targetBiome = null;
-      let bestScore = -1;
-      for (const [neighborBiome, count] of neighborCounts.entries()) {
-        if (count > bestScore) {
-          targetBiome = neighborBiome;
-          bestScore = count;
-        }
-      }
+      const targetBiome = getMostCommonNeighborBiome(neighborCounts);
 
       if (targetBiome == null) {
         continue;
@@ -233,4 +219,16 @@ function simplifyTinyBiomePatches(width, height, isLand, lakeIdByCell, biome, ma
       }
     }
   }
+}
+
+function getMostCommonNeighborBiome(neighborCounts) {
+  let targetBiome = null;
+  let bestCount = -1;
+  for (const [neighborBiome, count] of neighborCounts.entries()) {
+    if (count > bestCount) {
+      targetBiome = neighborBiome;
+      bestCount = count;
+    }
+  }
+  return targetBiome;
 }

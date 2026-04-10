@@ -10,9 +10,10 @@ import {
   sampleClimateCell,
   sampleClimateNoise,
   WIND_OPTIONS,
-} from "./climateModel.js?v=20260407a";
+} from "./models/climateModel.js?v=20260407a";
 
 export function generateClimate(terrain, hydrology, params) {
+  const { lakeAmount, lakeSize, mapSize } = params;
   const {
     width,
     height,
@@ -35,8 +36,9 @@ export function generateClimate(terrain, hydrology, params) {
   } = hydrology;
   const rng = createRng(`${params.seed}::climate`);
   const windAngle = rng.pick(WIND_OPTIONS);
-  rng.range(-0.12, 0.12); // advance rng for determinism; temperature is now set by param
+  void rng.range(-0.12, 0.12); // advance rng for determinism
   const temperatureBias = (params.temperatureBias / 100 - 0.5) * 0.36;
+  const globalMoistureBias = (params.moistureBias / 100 - 0.5) * 0.5;
   const climateCells = buildClimateCells(rng);
 
   const temperature = new Float32Array(size);
@@ -84,14 +86,14 @@ export function generateClimate(terrain, hydrology, params) {
     moisture[index] = computeMoisture({
       baseRainfall: baseRainfall[index],
       waterDistance: waterDistance[index],
-      lakeAmount: params.lakeAmount,
-      lakeSize: params.lakeSize,
+      lakeAmount,
+      lakeSize,
       y,
       height,
       beltNoise: noise.beltNoise,
       latShift: climateCell.latShift,
       oceanDistance: oceanDistance[index],
-      mapSize: params.mapSize,
+      mapSize,
       riverStrength: riverStrength[index],
       wetNoise: noise.wetNoise,
       climateMoistureBias: climateCell.moistureBias,
@@ -100,7 +102,7 @@ export function generateClimate(terrain, hydrology, params) {
       provinceField: provinceField[index],
       temperature: temperature[index],
       rainShadow,
-      globalMoistureBias: (params.moistureBias / 100 - 0.5) * 0.5,
+      globalMoistureBias,
     });
 
     biome[index] = classifyBiome({

@@ -1,7 +1,15 @@
 import { getNearestEditorZoom } from "./cameraState.js?v=20260407a";
 import { setElementVisible } from "./viewState.js?v=20260403a";
 
-export function inferInitialMode(pathname = window.location.pathname) {
+export function inferInitialMode(
+  pathname = window.location.pathname,
+  search = window.location.search,
+) {
+  const requestedMode = new URLSearchParams(search).get("mode");
+  if (requestedMode === "editor" || requestedMode === "play") {
+    return requestedMode;
+  }
+
   const path = pathname.replace(/\/+$/, "") || "/";
   return path.endsWith("/editor") || path.endsWith("/editor/index.html")
     ? "editor"

@@ -76,7 +76,14 @@ export function buildRoadNetwork({
     nodes,
     links,
   );
-  tagComponents(nodes, links, components);
+  for (const component of components) {
+    for (const nodeId of component.nodeIds) {
+      nodes[nodeId].componentId = component.id;
+    }
+    for (const linkId of component.linkIds) {
+      links[linkId].componentId = component.id;
+    }
+  }
 
   return {
     nodes,
@@ -191,15 +198,4 @@ function buildNetworkComponents(nodes, links) {
     components,
     adjacencyByNodeId: adjacency,
   };
-}
-
-function tagComponents(nodes, links, components) {
-  for (const component of components) {
-    for (const nodeId of component.nodeIds) {
-      nodes[nodeId].componentId = component.id;
-    }
-    for (const linkId of component.linkIds) {
-      links[linkId].componentId = component.id;
-    }
-  }
 }

@@ -1,5 +1,5 @@
 import { BIOME_KEYS } from "../config.js";
-import { isFrozenLake } from "../generator/surfaceModel.js?v=20260402b";
+import { isFrozenLake } from "../generator/models/surfaceModel.js?v=20260402b";
 import { clamp, coordsOf } from "../utils.js";
 import { hashSeed, nextHash } from "./hash.js";
 export function drawRivers(ctx, geometry, viewport) {

@@ -7,7 +7,7 @@ import {
   getBiomeBaseHex,
   hexToRgb,
   mixRgb,
-} from "../../palette/colorSystem.js";
+} from "../../colorSystem.js";
 import { drawNodeMarkerGlyph } from "../../render/nodeGlyph.js?v=20260409a";
 
 const SNOW_GROUND_RGB = WORLD_RGB.snow;

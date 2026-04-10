@@ -1,5 +1,5 @@
 import { BIOME_KEYS } from "../config.js";
-import { isFrozenLake, isSnowCell } from "../generator/surfaceModel.js?v=20260402b";
+import { isFrozenLake, isSnowCell } from "../generator/models/surfaceModel.js?v=20260402b";
 import {
   ALPHA,
   WORLD_RGB,
@@ -7,7 +7,7 @@ import {
   capToGamePalette,
   getBiomeBaseRgb,
   rgbToRgbaString,
-} from "../palette/colorSystem.js";
+} from "../colorSystem.js";
 import { clamp, coordsOf, forEachNeighbor, indexOf } from "../utils.js";
 import { COAST } from "./constants.js";
 import { hashSeed, nextHash } from "./hash.js";

@@ -1,5 +1,6 @@
 import { createNameGenerator } from "../naming.js?v=20260402d";
 import { createRng } from "../random.js";
+import { clamp } from "../utils.js";
 import { generateSettlements } from "./settlements.js?v=20260407a";
 import { generateClimate } from "./climate.js?v=20260407a";
 import { compileGeometry } from "./compileGeometry.js?v=20260409c";
@@ -11,7 +12,7 @@ import { generateHydrology } from "./hydrology.js?v=20260407a";
 import { buildWorldNetwork } from "./network.js?v=20260401i";
 import { applyFeatureNames } from "./nameFeatures.js";
 import { buildRegions } from "./regions.js?v=20260402c";
-import { generateRoads } from "./roads.js?v=20260409c";
+import { generateRoads } from "./roads/index.js?v=20260409c";
 import { buildSurfaceGeometry } from "./surface.js?v=20260403b";
 import { generateTerrain } from "./terrain.js?v=20260401i";
 import { buildTravelGraph } from "./travelGraph.js?v=20260409b";
@@ -102,8 +103,4 @@ function selectPlayerStart(settlements, seed) {
 function asNumber(value, fallback) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
-}
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
 }

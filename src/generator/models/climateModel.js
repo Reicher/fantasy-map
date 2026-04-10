@@ -1,6 +1,6 @@
-import { BIOME_KEYS } from "../config.js";
-import { fractalNoise2D } from "../noise.js";
-import { clamp, indexOf } from "../utils.js";
+import { BIOME_KEYS } from "../../config.js";
+import { fractalNoise2D } from "../../noise.js";
+import { clamp, indexOf } from "../../utils.js";
 
 export const WIND_OPTIONS = [
   { x: 1, y: 0.25 },

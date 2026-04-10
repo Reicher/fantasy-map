@@ -1,6 +1,6 @@
 import { floodFillRegions } from "./grid.js";
-import { coordsOf, forEachNeighbor, indexOf } from "../utils.js";
-import { isSnowCell } from "./surfaceModel.js";
+import { coordsOf, indexOf } from "../utils.js";
+import { isSnowCell } from "./models/surfaceModel.js";
 
 export function buildSurfaceGeometry(world) {
   const { terrain, climate, hydrology, regions } = world;
@@ -42,13 +42,13 @@ export function buildSurfaceGeometry(world) {
   collapseDiagonalMaskSingletons(width, height, snowMask, 2);
   simplifyTinyMaskPatches(width, height, snowMask, 4, 2);
 
-  const snowRegions = floodFillRegions(width, height, (index) => snowMask[index] === 1, true)
-    .filter((cells) => cells.length > 0)
-    .map((cells, id) => ({
+  const snowRegions = floodFillRegions(width, height, (index) => snowMask[index] === 1, true).map(
+    (cells, id) => ({
       id,
       size: cells.length,
       loops: traceRenderLoops(cells, width, 1, 0.9)
-    }));
+    })
+  );
 
   const landCells = [];
   for (let index = 0; index < size; index += 1) {
@@ -157,7 +157,17 @@ function traceExactLoops(cells, width) {
         break;
       }
 
-      const nextIndex = chooseNextEdge(edges, candidates, current.dir);
+      const priority = TURN_PRIORITY[current.dir];
+      let nextIndex = candidates[0];
+      let bestRank = priority.indexOf(edges[nextIndex].dir);
+      for (let index = 1; index < candidates.length; index += 1) {
+        const candidateIndex = candidates[index];
+        const rank = priority.indexOf(edges[candidateIndex].dir);
+        if (rank < bestRank) {
+          nextIndex = candidateIndex;
+          bestRank = rank;
+        }
+      }
       edges[nextIndex].used = true;
       current = edges[nextIndex];
     }
@@ -191,17 +201,16 @@ function chaikinSmoothClosedLoop(loop, cornerWeight = 0.24) {
   for (let index = 0; index < loop.length; index += 1) {
     const current = loop[index];
     const next = loop[(index + 1) % loop.length];
-    smoothed.push(lerpPoint(current, next, cornerWeight));
-    smoothed.push(lerpPoint(current, next, 1 - cornerWeight));
+    smoothed.push({
+      x: current.x + (next.x - current.x) * cornerWeight,
+      y: current.y + (next.y - current.y) * cornerWeight
+    });
+    smoothed.push({
+      x: current.x + (next.x - current.x) * (1 - cornerWeight),
+      y: current.y + (next.y - current.y) * (1 - cornerWeight)
+    });
   }
   return smoothed;
-}
-
-function lerpPoint(a, b, t) {
-  return {
-    x: a.x + (b.x - a.x) * t,
-    y: a.y + (b.y - a.y) * t
-  };
 }
 
 function collapseDiagonalMaskSingletons(width, height, mask, passes = 1) {
@@ -265,11 +274,13 @@ function simplifyTinyMaskPatches(width, height, mask, maxSize = 4, passes = 1) {
 }
 
 function addEdge(edges, edgesByStartKey, from, to, dir) {
+  const fromKey = `${from.x},${from.y}`;
+  const toKey = `${to.x},${to.y}`;
   const edge = {
     from,
     to,
-    fromKey: pointKey(from),
-    toKey: pointKey(to),
+    fromKey,
+    toKey,
     dir,
     used: false
   };
@@ -280,23 +291,6 @@ function addEdge(edges, edgesByStartKey, from, to, dir) {
     edgesByStartKey.set(edge.fromKey, []);
   }
   edgesByStartKey.get(edge.fromKey).push(index);
-}
-
-function chooseNextEdge(edges, candidateIndices, currentDir) {
-  const priority = TURN_PRIORITY[currentDir];
-  let bestIndex = candidateIndices[0];
-  let bestRank = priority.indexOf(edges[bestIndex].dir);
-
-  for (let index = 1; index < candidateIndices.length; index += 1) {
-    const candidateIndex = candidateIndices[index];
-    const rank = priority.indexOf(edges[candidateIndex].dir);
-    if (rank < bestRank) {
-      bestIndex = candidateIndex;
-      bestRank = rank;
-    }
-  }
-
-  return bestIndex;
 }
 
 function simplifyLoop(loop) {
@@ -330,10 +324,6 @@ function signedArea(loop) {
     area += current.x * next.y - next.x * current.y;
   }
   return area * 0.5;
-}
-
-function pointKey(point) {
-  return `${point.x},${point.y}`;
 }
 
 const TURN_PRIORITY = {

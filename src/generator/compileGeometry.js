@@ -19,11 +19,13 @@ function compileRiverGeometry(world) {
       const points = cellsToWorldPoints(river.cells, world.terrain.width);
       const mouthInfo = findRiverMouth(world, river);
       const delta = buildSimpleRiverDelta(world, river, points, mouthInfo);
+      const trimmed =
+        mouthInfo != null ? points.slice(0, mouthInfo.landIndex + 1) : points;
       return {
         id: river.id,
         width: river.width,
         cellCount: river.cells.length,
-        points: delta?.mainPoints ?? trimRiverToCoast(points, mouthInfo),
+        points: delta?.mainPoints ?? trimmed,
         deltaBranches: delta?.branches ?? [],
       };
     })
@@ -128,7 +130,7 @@ function compileLabelGeometry(world) {
     biomeRegions,
     mountainRegions,
     lakes,
-    nodes: nodes,
+    nodes,
   };
 }
 
@@ -258,10 +260,7 @@ function findDeltaEndpoints(
   const { terrain } = world;
   const candidates = [];
   const radius = 4;
-  const [originX, originY] = coordsOf(
-    terrain.width * 0 + mouthInfo.oceanCell,
-    terrain.width,
-  );
+  const [originX, originY] = coordsOf(mouthInfo.oceanCell, terrain.width);
   const oceanX = originX + 0.5;
   const oceanY = originY + 0.5;
 
@@ -328,14 +327,6 @@ function oceanTouchesLand(terrain, x, y) {
     }
   });
   return touchesLand;
-}
-
-function trimRiverToCoast(points, mouthInfo) {
-  if (!mouthInfo) {
-    return points;
-  }
-
-  return points.slice(0, mouthInfo.landIndex + 1);
 }
 
 function findRiverMouth(world, river) {

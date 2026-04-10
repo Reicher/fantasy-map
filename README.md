@@ -18,7 +18,8 @@ npm start
 Öppna sedan:
 
 - [http://localhost:4173/](http://localhost:4173/) för spelläget
-- [http://localhost:4173/editor](http://localhost:4173/editor) för editorn
+- [http://localhost:4173/?mode=editor](http://localhost:4173/?mode=editor) för editorn
+  (`/editor` finns kvar som redirect till samma läge)
 
 Verifiering:
 
@@ -168,7 +169,7 @@ Några centrala filer:
 
 UI-shell och kontrollflöden för editor och spel:
 
-- boot/routing mellan `/` och `/editor`
+- boot/routing mellan `/` (default: play) och `/?mode=editor`
 - editor-session
 - play-session
 - play-controller
@@ -185,9 +186,9 @@ Några centrala filer:
 
 ### Toppnivåfiler
 
-- [index.html](/Users/robin.reicher/Projects/fantasy-map/index.html): spelläge
-- [editor/index.html](/Users/robin.reicher/Projects/fantasy-map/editor/index.html): editorentrypoint
-- [styles.css](/Users/robin.reicher/Projects/fantasy-map/styles.css): gemensam styling för båda entrypoints
+- [index.html](/Users/robin.reicher/Projects/fantasy-map/index.html): primär entrypoint för både play och editor (via `mode`-query)
+- [editor/index.html](/Users/robin.reicher/Projects/fantasy-map/editor/index.html): kompatibilitetsentrypoint som redirectar till `/?mode=editor`
+- [styles.css](/Users/robin.reicher/Projects/fantasy-map/styles.css): gemensam styling
 - [src/config.js](/Users/robin.reicher/Projects/fantasy-map/src/config.js): standardvärden och centrala konstanter
 
 ## Nuvarande datastruktur

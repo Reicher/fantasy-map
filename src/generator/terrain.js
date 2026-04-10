@@ -22,7 +22,8 @@ import {
 import { blendStyles, STYLE_BUILDERS } from "./terrainStyles.js";
 
 export function generateTerrain(params) {
-  const { width, height } = getTerrainResolution(params.edgeDetail);
+  const width = clamp(Math.round(params.edgeDetail ?? 300), 180, 520);
+  const height = Math.round(width * (MAP_HEIGHT / MAP_WIDTH));
   const size = width * height;
   const rng = createRng(`${params.seed}::terrain`);
   const styleKeys = rng.shuffle(Object.keys(STYLE_BUILDERS));
@@ -46,7 +47,19 @@ export function generateTerrain(params) {
     secondaryKey,
     rng,
   );
-  const fields = createTerrainFields(size);
+  const fields = {
+    rawLand: new Float32Array(size),
+    elevation: new Float32Array(size),
+    isLand: new Uint8Array(size),
+    mountainField: new Float32Array(size),
+    provinceField: new Float32Array(size),
+    reliefHeightField: new Float32Array(size),
+    reliefMoistureField: new Float32Array(size),
+    reliefHeatField: new Float32Array(size),
+    oceanMask: new Uint8Array(size),
+    inlandWaterMask: new Uint8Array(size),
+    coastMask: new Uint8Array(size),
+  };
   const terrainProvinces = buildTerrainProvinces(rng.fork("terrain-provinces"));
   const interiorFeatures = buildInteriorFeatures(rng.fork("interior-features"));
   populateTerrainBaseFields({
@@ -104,28 +117,6 @@ export function generateTerrain(params) {
     size,
     style,
     ...fields,
-  };
-}
-
-function getTerrainResolution(edgeDetail = 300) {
-  const width = clamp(Math.round(edgeDetail), 180, 520);
-  const height = Math.round(width * (MAP_HEIGHT / MAP_WIDTH));
-  return { width, height };
-}
-
-function createTerrainFields(size) {
-  return {
-    rawLand: new Float32Array(size),
-    elevation: new Float32Array(size),
-    isLand: new Uint8Array(size),
-    mountainField: new Float32Array(size),
-    provinceField: new Float32Array(size),
-    reliefHeightField: new Float32Array(size),
-    reliefMoistureField: new Float32Array(size),
-    reliefHeatField: new Float32Array(size),
-    oceanMask: new Uint8Array(size),
-    inlandWaterMask: new Uint8Array(size),
-    coastMask: new Uint8Array(size),
   };
 }
 

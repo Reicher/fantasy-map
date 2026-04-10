@@ -1,6 +1,6 @@
 import { createRng } from "../random.js";
 import { clamp, coordsOf, distance } from "../utils.js";
-import { describeNode } from "../nodeModel.js";
+import { describeNode } from "../node/model.js";
 
 const DEFAULT_NODE_WEIGHT = 50;
 
@@ -106,8 +106,9 @@ function buildDedicatedSignpostNodes(world, settlementNodes) {
     if (shape === "y") {
       continue;
     }
-    const nearestSettlementDistance = getNearestNodeDistance(
-      node,
+    const nearestSettlementDistance = getNearestPointDistance(
+      node.x,
+      node.y,
       settlementNodes,
     );
     if (nearestSettlementDistance < minSettlementClearance) {
@@ -116,7 +117,10 @@ function buildDedicatedSignpostNodes(world, settlementNodes) {
 
     let totalEdgeLength = 0;
     for (const edge of adjacency) {
-      totalEdgeLength += getEdgeLength(network.links, edge.linkId);
+      totalEdgeLength += Math.max(
+        1,
+        Number(network.links[edge.linkId]?.length ?? 1),
+      );
     }
     const meanEdgeLength = totalEdgeLength / Math.max(1, adjacency.length);
 
@@ -439,24 +443,24 @@ function buildRoadDegreeBySettlementId(network, settlementCount) {
 function buildRoadCellAdjacency(roads) {
   const adjacency = new Map();
 
+  const addNeighbor = (fromCell, toCell) => {
+    let neighbors = adjacency.get(fromCell);
+    if (!neighbors) {
+      neighbors = new Set();
+      adjacency.set(fromCell, neighbors);
+    }
+    neighbors.add(toCell);
+  };
+
   for (const road of roads) {
     const cells = road?.cells ?? [];
     for (let i = 1; i < cells.length; i += 1) {
-      addCellNeighbor(adjacency, cells[i - 1], cells[i]);
-      addCellNeighbor(adjacency, cells[i], cells[i - 1]);
+      addNeighbor(cells[i - 1], cells[i]);
+      addNeighbor(cells[i], cells[i - 1]);
     }
   }
 
   return adjacency;
-}
-
-function addCellNeighbor(adjacency, fromCell, toCell) {
-  let neighbors = adjacency.get(fromCell);
-  if (!neighbors) {
-    neighbors = new Set();
-    adjacency.set(fromCell, neighbors);
-  }
-  neighbors.add(toCell);
 }
 
 function classifyJunctionShape(node, adjacency, nodes) {
@@ -514,17 +518,6 @@ function getAngleSeparationDeg(origin, pointA, pointB) {
   }
   const dot = clamp((ax * bx + ay * by) / (lenA * lenB), -1, 1);
   return (Math.acos(dot) * 180) / Math.PI;
-}
-
-function getNearestNodeDistance(node, nodes) {
-  let best = Number.POSITIVE_INFINITY;
-  for (const node of nodes) {
-    const d = distance(node.x, node.y, node.x, node.y);
-    if (d < best) {
-      best = d;
-    }
-  }
-  return best;
 }
 
 function getNearestPointDistance(x, y, points) {
@@ -661,11 +654,6 @@ function mergeCrashCandidates(candidates) {
   }
 
   return [...byCell.values()];
-}
-
-function getEdgeLength(links, linkId) {
-  const link = links[linkId];
-  return Math.max(1, Number(link?.length ?? 1));
 }
 
 function getWeight01(value, fallback = DEFAULT_NODE_WEIGHT) {

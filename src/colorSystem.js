@@ -1,4 +1,4 @@
-import { BIOME_INFO, BIOME_KEYS } from "../config.js";
+import { BIOME_INFO, BIOME_KEYS } from "./config.js";
 
 const BIOME_BASE_HEX_BY_ID = Object.fromEntries(
   Object.entries(BIOME_INFO).map(([id, info]) => [

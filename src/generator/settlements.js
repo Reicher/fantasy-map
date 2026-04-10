@@ -4,7 +4,7 @@ import {
   buildSettlementCandidates,
   ensureInlandSettlements,
   selectSettlements,
-} from "./settlementModel.js?v=20260409b";
+} from "./models/settlementModel.js?v=20260409b";
 
 export function generateSettlements(world, names) {
   const { params, terrain, climate, hydrology } = world;

@@ -1,5 +1,5 @@
 import { BIOME_KEYS } from "../config.js";
-import { isSnowCell } from "../generator/surfaceModel.js?v=20260402b";
+import { isSnowCell } from "../generator/models/surfaceModel.js?v=20260402b";
 import { coordsOf } from "../utils.js";
 import { glyphNoise } from "./hash.js";
 

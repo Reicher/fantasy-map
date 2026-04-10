@@ -2,7 +2,7 @@ import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
 import { createViewport } from "../render/renderer.js?v=20260409d";
 import { findPlayableNodeAtWorldPoint } from "../game/playQueries.js?v=20260409e";
 import { advanceTimeOfDayHours } from "../game/timeOfDay.js";
-import { getNodeTitle } from "../nodeModel.js";
+import { getNodeTitle } from "../node/model.js";
 
 export function createPlayController({
   playCanvas,

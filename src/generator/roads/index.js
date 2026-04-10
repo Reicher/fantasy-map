@@ -1,12 +1,12 @@
-import { BIOME_KEYS } from "../config.js";
-import { buildRoadNetwork } from "./network.js?v=20260401i";
+import { BIOME_KEYS } from "../../config.js";
+import { MinHeap } from "./minHeap.js";
+import { buildSeaRoutes } from "./roadSeaRoutes.js";
 import {
   clamp,
   coordsOf,
-  distance,
   forEachNeighbor,
   indexOf,
-} from "../utils.js";
+} from "../../utils.js";
 
 // ---------------------------------------------------------------------------
 // Terrain travel cost per biome.
@@ -191,7 +191,7 @@ export function generateRoads(world) {
     for (const edge of mstEdges) {
       const fromSettlement = componentSettlements[edge.i];
       const toSettlement = componentSettlements[edge.j];
-      const placedRoad = materializeRoad({
+      const actualFromSettlement = materializeRoad({
         roads,
         roadUsage,
         settlementByCell,
@@ -205,24 +205,19 @@ export function generateRoads(world) {
         settlementProximityPenalty,
         cost: edge.cost,
       });
-      if (!placedRoad) {
+      if (!actualFromSettlement) {
         continue;
       }
 
       // Stamp a proximity penalty around each connected settlement so future roads
       // approach from a different angle rather than forking close to the node.
       stampSettlementProximity(
-        placedRoad.fromSettlement,
+        actualFromSettlement,
         settlementProximityPenalty,
         width,
         height,
       );
-      stampSettlementProximity(
-        placedRoad.toSettlement,
-        settlementProximityPenalty,
-        width,
-        height,
-      );
+      stampSettlementProximity(toSettlement, settlementProximityPenalty, width, height);
     }
   }
 
@@ -253,11 +248,7 @@ export function generateRoads(world) {
   }
 
   // =========================================================================
-  // Phase 3 — Sea routes
-  //
-  // Connect isolated landmasses with the minimum number of sea links.
-  // Each link joins the nearest meaningful coastal settlements of two
-  // separate network components.
+  // Phase 3 — Sea routes: connect isolated landmasses with minimal sea links.
   // =========================================================================
   const seaRoutes = buildSeaRoutes({
     settlements,
@@ -514,7 +505,15 @@ function findPath({
     return null;
   }
 
-  return reconstructPath(to, prev);
+  const path = [to];
+  let current = to;
+  while (prev[current] >= 0) {
+    current = prev[current];
+    if (path[path.length - 1] !== current) {
+      path.push(current);
+    }
+  }
+  return path;
 }
 
 // ---------------------------------------------------------------------------
@@ -624,10 +623,7 @@ function addLoopEdges({
   pairwiseCosts,
   settlementByCell,
 }) {
-  // Detour ratio threshold: only add an edge when the current network path
-  // is this many times longer than the direct travel cost.
-  // At low loopiness the threshold is high (very few extras).
-  // At high loopiness the threshold is lower (more extras added).
+  // Only add extra edges when the current network path is a strong detour.
   const detourThreshold = 3.5 + (1.45 - 3.5) * loopiness01;
   const maxExtraEdges = Math.max(
     1,
@@ -644,7 +640,11 @@ function addLoopEdges({
   const directlyConnected = new Set();
 
   for (const road of roads) {
-    if (!isMaterializedRoad(road)) {
+    if (
+      road?.type !== "road" ||
+      road.settlementId == null ||
+      road.fromSettlementId == null
+    ) {
       continue;
     }
     const { settlementId, fromSettlementId, cost } = road;
@@ -705,21 +705,22 @@ function addLoopEdges({
     if (added >= maxExtraEdges) {
       break;
     }
-    const placedRoad = materializeRoad({
-      roads,
-      roadUsage,
-      settlementByCell,
-      fromSettlement: settlementA,
-      toSettlement: settlementB,
-      width,
-      height,
-      size,
-      baseCost,
-      riverStrength,
-      settlementProximityPenalty,
-      cost: directCost,
-    });
-    if (!placedRoad) {
+    if (
+      !materializeRoad({
+        roads,
+        roadUsage,
+        settlementByCell,
+        fromSettlement: settlementA,
+        toSettlement: settlementB,
+        width,
+        height,
+        size,
+        baseCost,
+        riverStrength,
+        settlementProximityPenalty,
+        cost: directCost,
+      })
+    ) {
       continue;
     }
 
@@ -750,298 +751,6 @@ function dijkstraOnSettlementGraph(sourceId, adjacency) {
   }
 
   return dist;
-}
-
-// ---------------------------------------------------------------------------
-// Sea routes — connect isolated landmasses with minimal sea links
-// ---------------------------------------------------------------------------
-
-function buildSeaRoutes({
-  settlements,
-  roads,
-  terrain,
-  climate,
-  landComponentByCell,
-}) {
-  const { width, height, isLand } = terrain;
-  const { biome } = climate;
-  const harborBySettlementId = buildHarborMap(settlements, width, height, isLand, biome);
-  const seaRoutes = [];
-
-  for (
-    let iteration = 0;
-    iteration < Math.max(0, settlements.length * 2);
-    iteration += 1
-  ) {
-    const network = buildRoadNetwork({
-      settlements,
-      roads: [...roads, ...seaRoutes],
-      width,
-    });
-
-    const activeComponents = network.components.filter(
-      (comp) => comp.settlementIds.length > 0,
-    );
-    if (activeComponents.length <= 1) {
-      break;
-    }
-
-    const best = findBestSeaRoute({
-      components: activeComponents,
-      settlements,
-      harborBySettlementId,
-      landComponentByCell,
-      width,
-      height,
-      isLand,
-      biome,
-    });
-    if (!best) {
-      break;
-    }
-
-    const cells = dedupePath([
-      best.fromSettlement.cell,
-      ...best.waterPath,
-      best.toSettlement.cell,
-    ]);
-    if (cells.length < 2) {
-      break;
-    }
-
-    seaRoutes.push({
-      id: roads.length + seaRoutes.length,
-      type: "sea-route",
-      settlementId: best.toSettlement.id,
-      fromSettlementId: best.fromSettlement.id,
-      cells,
-      length: cells.length,
-      cost: best.waterPath.length,
-    });
-  }
-
-  return seaRoutes;
-}
-
-function findBestSeaRoute({
-  components,
-  settlements,
-  harborBySettlementId,
-  landComponentByCell,
-  width,
-  height,
-  isLand,
-  biome,
-}) {
-  let best = null;
-
-  for (let aIndex = 0; aIndex < components.length; aIndex += 1) {
-    const portSettlementsA = getPortSettlements(
-      components[aIndex],
-      settlements,
-      harborBySettlementId,
-    );
-    if (portSettlementsA.length === 0) {
-      continue;
-    }
-
-    for (let bIndex = aIndex + 1; bIndex < components.length; bIndex += 1) {
-      const portSettlementsB = getPortSettlements(
-        components[bIndex],
-        settlements,
-        harborBySettlementId,
-      );
-      if (portSettlementsB.length === 0) {
-        continue;
-      }
-
-      for (const fromSettlement of portSettlementsA) {
-        const sourceHarbor = harborBySettlementId.get(fromSettlement.id);
-        if (sourceHarbor == null) {
-          continue;
-        }
-
-        for (const toSettlement of portSettlementsB) {
-          const targetHarbor = harborBySettlementId.get(toSettlement.id);
-          if (targetHarbor == null) {
-            continue;
-          }
-
-          // Skip pairs that share a land component — they can meet overland.
-          if (
-            landComponentByCell[fromSettlement.cell] ===
-            landComponentByCell[toSettlement.cell]
-          ) {
-            continue;
-          }
-
-          const settlementDist = distance(fromSettlement.x, fromSettlement.y, toSettlement.x, toSettlement.y);
-          if (settlementDist > 220) {
-            continue;
-          }
-
-          const waterPath =
-            buildDirectSeaLane(
-              sourceHarbor,
-              targetHarbor,
-              width,
-              height,
-              isLand,
-              biome,
-            ) ||
-            buildSeaLane(
-              sourceHarbor,
-              targetHarbor,
-              width,
-              height,
-              isLand,
-              biome,
-            );
-          if (!waterPath) {
-            continue;
-          }
-
-          const score =
-            waterPath.length - (fromSettlement.score + toSettlement.score) * 0.04;
-          if (!best || score < best.score) {
-            best = { fromSettlement, toSettlement, waterPath, score };
-          }
-        }
-      }
-    }
-  }
-
-  return best;
-}
-
-function getPortSettlements(component, settlements, harborBySettlementId) {
-  const candidates = component.settlementIds
-    .map((id) => settlements[id])
-    .filter((settlement) => settlement != null);
-  const coastal = candidates.filter(
-    (settlement) => settlement.coastal && harborBySettlementId.has(settlement.id),
-  );
-  if (coastal.length > 0) {
-    return coastal;
-  }
-  return candidates.filter((settlement) =>
-    harborBySettlementId.has(settlement.id),
-  );
-}
-
-function buildHarborMap(settlements, width, height, isLand, biome) {
-  const harborBySettlementId = new Map();
-  for (const settlement of settlements) {
-    const harbor = findNearestOceanCell(
-      settlement.cell,
-      width,
-      height,
-      isLand,
-      biome,
-      settlement.coastal ? 4 : 8,
-    );
-    if (harbor != null) {
-      harborBySettlementId.set(settlement.id, harbor);
-    }
-  }
-  return harborBySettlementId;
-}
-
-function findNearestOceanCell(
-  startCell,
-  width,
-  height,
-  isLand,
-  biome,
-  maxRadius,
-) {
-  const [startX, startY] = coordsOf(startCell, width);
-  let best = null;
-
-  for (let radius = 1; radius <= maxRadius; radius += 1) {
-    for (
-      let y = Math.max(0, startY - radius);
-      y <= Math.min(height - 1, startY + radius);
-      y += 1
-    ) {
-      for (
-        let x = Math.max(0, startX - radius);
-        x <= Math.min(width - 1, startX + radius);
-        x += 1
-      ) {
-        const cell = indexOf(x, y, width);
-        if (isLand[cell] || biome[cell] !== BIOME_KEYS.OCEAN) {
-          continue;
-        }
-        const d = distance(startX, startY, x, y);
-        if (!best || d < best.dist) {
-          best = { cell, dist: d };
-        }
-      }
-    }
-    if (best) {
-      return best.cell;
-    }
-  }
-
-  return null;
-}
-
-function buildDirectSeaLane(startCell, endCell, width, height, isLand, biome) {
-  const [startX, startY] = coordsOf(startCell, width);
-  const [endX, endY] = coordsOf(endCell, width);
-  const cells = [];
-  const steps = Math.max(Math.abs(endX - startX), Math.abs(endY - startY));
-
-  for (let step = 0; step <= steps; step += 1) {
-    const t = steps === 0 ? 0 : step / steps;
-    const x = clamp(Math.round(startX + (endX - startX) * t), 0, width - 1);
-    const y = clamp(Math.round(startY + (endY - startY) * t), 0, height - 1);
-    const cell = indexOf(x, y, width);
-    if (cells[cells.length - 1] !== cell) {
-      if (isLand[cell] || biome[cell] !== BIOME_KEYS.OCEAN) {
-        return null;
-      }
-      cells.push(cell);
-    }
-  }
-
-  return cells.length >= 2 ? cells : null;
-}
-
-function buildSeaLane(startCell, endCell, width, height, isLand, biome) {
-  const visited = new Uint8Array(isLand.length);
-  const previous = new Int32Array(isLand.length);
-  previous.fill(-1);
-  const queue = [startCell];
-  let head = 0;
-  visited[startCell] = 1;
-
-  while (head < queue.length) {
-    const current = queue[head];
-    head += 1;
-
-    if (current === endCell) {
-      return reconstructPath(endCell, previous).reverse();
-    }
-
-    const [x, y] = coordsOf(current, width);
-    forEachNeighbor(width, height, x, y, true, (nx, ny) => {
-      const neighbor = indexOf(nx, ny, width);
-      if (
-        visited[neighbor] ||
-        isLand[neighbor] ||
-        biome[neighbor] !== BIOME_KEYS.OCEAN
-      ) {
-        return;
-      }
-      visited[neighbor] = 1;
-      previous[neighbor] = current;
-      queue.push(neighbor);
-    });
-  }
-
-  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1084,51 +793,8 @@ function stampSettlementProximity(settlement, field, width, height) {
   }
 }
 
-// `path` comes from reconstructPath() as [toSettlement, ..., fromSettlement].
-// If it passes through an intermediate settlement, keep only the leading
-// segment up to that settlement and skip the already-connected tail.
-function trimPathAtFirstAnchor(path, settlementByCell) {
-  for (let i = 1; i <= path.length - 2; i += 1) {
-    const settlement = settlementByCell.get(path[i]);
-    if (settlement != null) {
-      return { path: path.slice(0, i + 1), anchorSettlement: settlement };
-    }
-  }
-  return { path, anchorSettlement: null };
-}
-
-function reconstructPath(end, prev) {
-  const path = [end];
-  let current = end;
-  while (prev[current] >= 0) {
-    current = prev[current];
-    if (path[path.length - 1] !== current) {
-      path.push(current);
-    }
-  }
-  return path;
-}
-
-function dedupePath(path) {
-  const result = [];
-  for (const cell of path) {
-    if (result[result.length - 1] !== cell) {
-      result.push(cell);
-    }
-  }
-  return result;
-}
-
 function pairKey(idA, idB) {
   return idA < idB ? `${idA}_${idB}` : `${idB}_${idA}`;
-}
-
-function isMaterializedRoad(road) {
-  return (
-    road?.type === "road" &&
-    road.settlementId != null &&
-    road.fromSettlementId != null
-  );
 }
 
 function pushRoadRecord(
@@ -1181,10 +847,18 @@ function materializeRoad({
     return null;
   }
 
-  const { path: trimmed, anchorSettlement } = trimPathAtFirstAnchor(
-    rawPath,
-    settlementByCell,
-  );
+  // If a path crosses an already-known settlement, keep only the novel head.
+  let anchorSettlement = null;
+  let anchorIndex = -1;
+  for (let i = 1; i <= rawPath.length - 2; i += 1) {
+    const settlement = settlementByCell.get(rawPath[i]);
+    if (settlement != null) {
+      anchorSettlement = settlement;
+      anchorIndex = i;
+      break;
+    }
+  }
+  const trimmed = anchorIndex >= 0 ? rawPath.slice(0, anchorIndex + 1) : rawPath;
   if (trimmed.length < 2) {
     return null;
   }
@@ -1197,74 +871,5 @@ function materializeRoad({
     cost,
   });
   incrementRoadUsage(roadUsage, trimmed);
-  return { fromSettlement: actualFromSettlement, toSettlement };
-}
-
-// ---------------------------------------------------------------------------
-// Min-heap priority queue
-// ---------------------------------------------------------------------------
-
-class MinHeap {
-  constructor() {
-    this.items = [];
-  }
-
-  get size() {
-    return this.items.length;
-  }
-
-  push(index, priority) {
-    this.items.push({ index, priority });
-    this.bubbleUp(this.items.length - 1);
-  }
-
-  pop() {
-    const top = this.items[0];
-    const last = this.items.pop();
-    if (this.items.length > 0) {
-      this.items[0] = last;
-      this.bubbleDown(0);
-    }
-    return top;
-  }
-
-  bubbleUp(i) {
-    while (i > 0) {
-      const parent = (i - 1) >> 1;
-      if (this.items[parent].priority <= this.items[i].priority) {
-        break;
-      }
-      [this.items[parent], this.items[i]] = [this.items[i], this.items[parent]];
-      i = parent;
-    }
-  }
-
-  bubbleDown(i) {
-    const n = this.items.length;
-    while (true) {
-      const left = (i << 1) + 1;
-      const right = left + 1;
-      let smallest = i;
-      if (
-        left < n &&
-        this.items[left].priority < this.items[smallest].priority
-      ) {
-        smallest = left;
-      }
-      if (
-        right < n &&
-        this.items[right].priority < this.items[smallest].priority
-      ) {
-        smallest = right;
-      }
-      if (smallest === i) {
-        break;
-      }
-      [this.items[i], this.items[smallest]] = [
-        this.items[smallest],
-        this.items[i],
-      ];
-      i = smallest;
-    }
-  }
+  return actualFromSettlement;
 }

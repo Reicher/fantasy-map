@@ -1,5 +1,5 @@
-import { BIOME_KEYS } from "../config.js";
-import { clamp, coordsOf, distance } from "../utils.js";
+import { BIOME_KEYS } from "../../config.js";
+import { clamp, coordsOf, distance } from "../../utils.js";
 
 const BIOME_HABITABILITY = {
   [BIOME_KEYS.PLAINS]: 1,

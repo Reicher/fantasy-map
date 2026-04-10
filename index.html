@@ -6,6 +6,13 @@
     <title>Isolerad fantasivärld</title>
     <script>
       (() => {
+        const params = new URLSearchParams(window.location.search);
+        const requestedMode = params.get("mode");
+        if (requestedMode === "editor" || requestedMode === "play") {
+          document.documentElement.dataset.route = requestedMode;
+          return;
+        }
+
         const path = window.location.pathname.replace(/\/+$/, "") || "/";
         document.documentElement.dataset.route =
           path.endsWith("/editor") || path.endsWith("/editor/index.html")

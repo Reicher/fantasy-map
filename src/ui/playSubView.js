@@ -1,5 +1,5 @@
 import { describePlayHud } from "../game/playViewText.js?v=20260409f";
-import { getNodeTitle } from "../nodeModel.js";
+import { getNodeTitle } from "../node/model.js";
 import { setElementVisible } from "./viewState.js?v=20260403a";
 
 export function createPlaySubViewController({

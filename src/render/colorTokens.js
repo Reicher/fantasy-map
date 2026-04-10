@@ -1,4 +1,4 @@
-import { ALPHA, rgbToRgbaString } from "../palette/colorSystem.js";
+import { ALPHA, rgbToRgbaString } from "../colorSystem.js";
 
 const rgba = (rgb, alpha) => rgbToRgbaString(rgb, alpha);
 
