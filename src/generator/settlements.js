@@ -4,7 +4,7 @@ import {
   buildSettlementCandidates,
   ensureInlandSettlements,
   selectSettlements,
-} from "./models/settlementModel.js?v=20260409b";
+} from "./models/settlementModel.js?v=20260411d";
 
 export function generateSettlements(world, names) {
   const { params, terrain, climate, hydrology } = world;
@@ -40,7 +40,14 @@ export function generateSettlements(world, names) {
     maxCountByArea,
   );
   const minSpacing = clamp(18 - density * 8.4, 8.5, 18);
-  const settlements = selectSettlements({ width, candidates, desiredCount, minSpacing });
+  const settlements = selectSettlements({
+    width,
+    candidates,
+    desiredCount,
+    minSpacing,
+    randomness: params.settlementRandomness,
+    rng,
+  });
   ensureInlandSettlements({
     width,
     rng,

@@ -19,7 +19,9 @@ export const DEFAULT_PARAMS = {
   temperatureBias: 50,
   moistureBias: 50,
   inlandPreference: 50,
-  roadLoopiness: 50,
+  settlementRandomness: 20,
+  signpostFrequency: 50,
+  abandonedFrequency: 50,
   nodeMinDistance: 5,
 };
 
@@ -67,16 +69,36 @@ const PARAM_LABELS = {
           : value < 80
             ? "Blandat inland"
             : "Inlandskt",
-  roadLoopiness: (value) =>
+  settlementRandomness: (value) =>
     value < 15
-      ? "Inga slingor"
+      ? "Nästan inga avvikare"
       : value < 35
-        ? "Sparsamma slingor"
-        : value < 65
-          ? "Normala slingor"
+        ? "Få avvikare"
+        : value < 60
+          ? "Blandat"
           : value < 85
-            ? "Många slingor"
-            : "Täta slingor",
+            ? "Många avvikare"
+            : "Mycket slump",
+  signpostFrequency: (value) =>
+    value < 15
+      ? "Få vägposter"
+      : value < 35
+        ? "Ganska få"
+        : value < 65
+          ? "Normalt"
+          : value < 85
+            ? "Många"
+            : "Täta vägposter",
+  abandonedFrequency: (value) =>
+    value < 15
+      ? "Nästan inga övergivna"
+      : value < 35
+        ? "Få övergivna"
+        : value < 65
+          ? "Normalt"
+          : value < 85
+            ? "Många övergivna"
+            : "Väldigt många",
   nodeMinDistance: (value) => `${value.toFixed(1)} celler`,
 };
 
@@ -156,6 +178,14 @@ export const PARAM_SCHEMA = {
     formatLabel: PARAM_LABELS.settlementDensity,
     ui: { label: "Nodtäthet", tab: "noder", order: 10 },
   },
+  settlementRandomness: {
+    type: "number",
+    min: 0,
+    max: 100,
+    step: 1,
+    formatLabel: PARAM_LABELS.settlementRandomness,
+    ui: { label: "Bosättningsslump", tab: "noder", order: 15 },
+  },
   renderScale: {
     type: "number",
     min: 50,
@@ -196,13 +226,21 @@ export const PARAM_SCHEMA = {
     formatLabel: PARAM_LABELS.inlandPreference,
     ui: { label: "Inlandspreferens", tab: "avancerat", order: 50 },
   },
-  roadLoopiness: {
+  signpostFrequency: {
     type: "number",
     min: 0,
     max: 100,
     step: 1,
-    formatLabel: PARAM_LABELS.roadLoopiness,
-    ui: { label: "Vägslingor", tab: "noder", order: 20 },
+    formatLabel: PARAM_LABELS.signpostFrequency,
+    ui: { label: "Vägpostfrekvens", tab: "noder", order: 20 },
+  },
+  abandonedFrequency: {
+    type: "number",
+    min: 0,
+    max: 100,
+    step: 1,
+    formatLabel: PARAM_LABELS.abandonedFrequency,
+    ui: { label: "Övergivna platser", tab: "noder", order: 30 },
   },
   nodeMinDistance: {
     type: "number",
@@ -210,7 +248,7 @@ export const PARAM_SCHEMA = {
     max: 14,
     step: 0.5,
     formatLabel: PARAM_LABELS.nodeMinDistance,
-    ui: { label: "Min nodavstånd", tab: "noder", order: 30 },
+    ui: { label: "Min nodavstånd", tab: "noder", order: 25 },
   },
 };
 

@@ -1,44 +1,59 @@
-import { createRng } from "../random.js";
-import { clamp, coordsOf, distance } from "../utils.js";
+import { clamp, coordsOf, distance, lerp } from "../utils.js";
 import { describeNode } from "../node/model.js";
 
-const DEFAULT_NODE_WEIGHT = 50;
 const DEFAULT_NODE_MIN_DISTANCE = 5;
-const MAX_NODE_MIN_DISTANCE = 14;
+const DEFAULT_SIGNPOST_FREQUENCY = 50;
+const DEFAULT_ABANDONED_FREQUENCY = 50;
+
 const MIN_SIGNPOST_DEGREE = 3;
-const MIN_CRASH_SETTLEMENT_CLEARANCE = 6.2;
-const MIN_CRASH_SIGNPOST_CLEARANCE = 5.1;
+const MAX_SETTLEMENT_SIGNPOST_SHARE = 0.32;
+const MIN_SETTLEMENT_SIGNPOST_SHARE = 0.04;
+
+const MIN_ABANDONED_ROAD_LENGTH = 22;
+const MAX_ABANDONED_PER_ROAD = 6;
+const ABANDONED_ENDPOINT_BUFFER = 4;
 
 export function buildFeatureCatalog(world, names) {
   const nodeName =
     typeof names?.nodeName === "function"
       ? (kind, key) => names.nodeName(kind, key)
       : (_kind, key) => key;
+
+  const signpostFrequency01 = getFrequency01(
+    world.params?.signpostFrequency,
+    DEFAULT_SIGNPOST_FREQUENCY,
+  );
+
   const roadDegreeBySettlementId = buildRoadDegreeBySettlementId(
     world.network,
     world.settlements.length,
   );
+
   const settlementNodes = buildSettlementNodes(
     world,
     nodeName,
     roadDegreeBySettlementId,
   );
-  const signpostNodes = ensureIntersectionCoverage(
+  promoteHubSettlementsToSignposts(
     world,
     settlementNodes,
-    buildDedicatedSignpostNodes(world, settlementNodes),
+    signpostFrequency01,
   );
+
+  const signpostNodes = buildDedicatedSignpostNodes(
+    world,
+    settlementNodes,
+  );
+
+  const settlementAnchors = settlementNodes;
   const crashSiteNodes = buildDedicatedCrashSiteNodes(
     world,
     nodeName,
-    settlementNodes,
+    settlementAnchors,
     signpostNodes,
   );
-  const nodes = [
-    ...settlementNodes,
-    ...signpostNodes,
-    ...crashSiteNodes,
-  ];
+
+  const nodes = [...settlementNodes, ...signpostNodes, ...crashSiteNodes];
 
   return {
     nodes,
@@ -55,6 +70,54 @@ export function buildFeatureCatalog(world, names) {
       mountainRegionId: world.regions.mountainRegionId,
     },
   };
+}
+
+export function preselectCrashSiteCells(world) {
+  const roads = (world.roads?.roads ?? []).filter(
+    (road) => (road?.type ?? "road") === "road",
+  );
+  if (!roads.length) {
+    return [];
+  }
+
+  const abandonedFrequency01 = getFrequency01(
+    world.params?.abandonedFrequency,
+    DEFAULT_ABANDONED_FREQUENCY,
+  );
+  if (abandonedFrequency01 <= 0.001) {
+    return [];
+  }
+
+  const nodeMinDistance = getEffectiveNodeMinDistance(world.params);
+  const minSettlementClearance = Math.max(4.8, nodeMinDistance * 0.98);
+  const minCrashSpacing = Math.max(4.8, nodeMinDistance * 0.96);
+
+  const settlementAnchors = (world.settlements ?? []).map((settlement) => ({
+    x: settlement.x,
+    y: settlement.y,
+  }));
+
+  const roadCellAdjacency = buildRoadCellAdjacency(roads);
+  const candidates = collectLongRoadCrashCandidates(
+    world,
+    roads,
+    roadCellAdjacency,
+    abandonedFrequency01,
+    minSettlementClearance,
+  );
+  if (!candidates.length) {
+    return [];
+  }
+
+  const selected = chooseSpreadCandidates(candidates, {
+    target: candidates.length,
+    minSelectedDistance: minCrashSpacing,
+    minAnchorDistance: minSettlementClearance,
+    anchorPoints: settlementAnchors,
+    desiredSpacing: minCrashSpacing + 1.3,
+  });
+
+  return selected.map((entry) => entry.cell);
 }
 
 function buildSettlementNodes(world, nodeName, roadDegreeBySettlementId) {
@@ -79,53 +142,144 @@ function buildSettlementNodes(world, nodeName, roadDegreeBySettlementId) {
   });
 }
 
-function buildDedicatedSignpostNodes(world, settlementNodes) {
-  const network = world.network;
-  if (
-    !network?.nodes?.length ||
-    !network?.adjacencyByNodeId ||
-    !network?.links
-  ) {
-    return [];
+function promoteHubSettlementsToSignposts(
+  world,
+  settlementNodes,
+  signpostFrequency01,
+) {
+  const candidates = settlementNodes.filter(
+    (node) => node?.marker === "settlement" && (node.roadDegree ?? 0) >= MIN_SIGNPOST_DEGREE,
+  );
+  if (!candidates.length) {
+    return;
   }
 
+  const scoreValues = settlementNodes
+    .map((node) => Number(node?.score ?? 0))
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+  if (!scoreValues.length) {
+    return;
+  }
+
+  const lowScoreThreshold = quantile(
+    scoreValues,
+    0.32 + signpostFrequency01 * 0.38,
+  );
+
+  const conversionBudget = clamp(
+    Math.round(
+      settlementNodes.length *
+        (MIN_SETTLEMENT_SIGNPOST_SHARE +
+          signpostFrequency01 * (MAX_SETTLEMENT_SIGNPOST_SHARE - MIN_SETTLEMENT_SIGNPOST_SHARE)),
+    ),
+    0,
+    candidates.length,
+  );
+  if (conversionBudget <= 0) {
+    return;
+  }
+
+  const spacing = Math.max(5.1, getEffectiveNodeMinDistance(world.params) * 1.02);
+
+  const ranked = candidates
+    .map((node) => {
+      const hardship = getSettlementHardship(world, node.cell);
+      const scorePenalty = Math.max(0, lowScoreThreshold - Number(node.score ?? 0));
+      return {
+        node,
+        priority:
+          ((node.roadDegree ?? 0) - 2) * 1.28 +
+          scorePenalty * 2.0 +
+          hardship * 0.85 +
+          (!node.coastal && !node.river ? 0.2 : 0),
+      };
+    })
+    .sort((a, b) => b.priority - a.priority);
+
+  const converted = [];
+  for (const entry of ranked) {
+    if (converted.length >= conversionBudget) {
+      break;
+    }
+
+    if (getNearestPointDistance(entry.node.x, entry.node.y, converted) < spacing) {
+      continue;
+    }
+
+    const descriptor = describeNode({
+      marker: "signpost",
+      roadDegree: entry.node.roadDegree,
+    });
+    entry.node.marker = descriptor.marker;
+    entry.node.kind = descriptor.kind;
+    entry.node.subtitle = descriptor.subtitle;
+    entry.node.detail = descriptor.detail;
+    converted.push(entry.node);
+  }
+}
+
+function buildDedicatedSignpostNodes(world, settlementNodes) {
   const roads = (world.roads?.roads ?? []).filter(
     (road) => (road?.type ?? "road") === "road",
   );
-  const roadCellAdjacency = buildRoadCellAdjacency(roads);
-  const junctions = [];
-  for (const node of network.nodes) {
-    if (node?.type !== "junction" || node.cell == null || node.cell < 0) {
-      continue;
-    }
-    const networkDegree = (network.adjacencyByNodeId.get(node.id) ?? []).length;
-    const degree = roadCellAdjacency.get(node.cell)?.size ?? networkDegree;
-    if (degree < MIN_SIGNPOST_DEGREE) {
-      continue;
-    }
-    junctions.push({ node, degree });
-  }
-
-  if (!junctions.length) {
+  if (!roads.length) {
     return [];
   }
 
-  junctions.sort((a, b) => a.node.cell - b.node.cell);
+  const roadCellAdjacency = buildRoadCellAdjacency(roads);
+  const settlementCellSet = new Set(
+    settlementNodes.map((node) => node?.cell).filter((cell) => Number.isFinite(cell)),
+  );
+  const forcedCandidates = [];
+  for (const [cell, neighbors] of roadCellAdjacency.entries()) {
+    const degree = neighbors.size;
+    // Structural rule: every real junction (degree >= 3) must become a node.
+    if (degree < MIN_SIGNPOST_DEGREE || settlementCellSet.has(cell)) {
+      continue;
+    }
+
+    const [x, y] = coordsOf(cell, world.terrain.width);
+    forcedCandidates.push({
+      id: cell,
+      cell,
+      x,
+      y,
+      degree,
+      score: degree,
+    });
+  }
+
+  if (!forcedCandidates.length) {
+    return [];
+  }
+
+  const selected = forcedCandidates.sort((a, b) => a.cell - b.cell);
+
+  const junctionByCell = new Map();
+  for (const node of world.network?.nodes ?? []) {
+    if (node?.type === "junction" && node.cell != null && node.cell >= 0) {
+      junctionByCell.set(node.cell, node);
+    }
+  }
 
   const baseId = settlementNodes.length;
-  return junctions.map((entry, index) => {
+  return selected.map((entry, index) => {
     const nodeId = baseId + index;
-    // Tag the network node so buildTravelGraph treats this junction as a stop.
-    entry.node.nodeId = nodeId;
+    const networkJunction = junctionByCell.get(entry.cell);
+    if (networkJunction && networkJunction.nodeId == null) {
+      networkJunction.nodeId = nodeId;
+    }
+
     const descriptor = describeNode({
       marker: "signpost",
       roadDegree: entry.degree,
     });
     return {
       id: nodeId,
-      cell: entry.node.cell,
-      x: entry.node.x,
-      y: entry.node.y,
+      cell: entry.cell,
+      x: entry.x,
+      y: entry.y,
       name: "",
       marker: descriptor.marker,
       kind: descriptor.kind,
@@ -139,253 +293,54 @@ function buildDedicatedSignpostNodes(world, settlementNodes) {
   });
 }
 
-function ensureIntersectionCoverage(world, settlementNodes, signpostNodes) {
-  const roads = (world.roads?.roads ?? []).filter(
-    (road) => (road?.type ?? "road") === "road",
-  );
-  if (!roads.length) {
-    return signpostNodes;
-  }
-
-  const roadCellAdjacency = buildRoadCellAdjacency(roads);
-  const width = world.terrain?.width ?? 0;
-  if (width <= 0 || !roadCellAdjacency.size) {
-    return signpostNodes;
-  }
-
-  const coveredCells = new Set();
-  for (const settlement of settlementNodes) {
-    if (settlement?.cell != null) {
-      coveredCells.add(settlement.cell);
-    }
-  }
-  for (const signpost of signpostNodes) {
-    if (signpost?.cell != null) {
-      coveredCells.add(signpost.cell);
-    }
-  }
-
-  const networkJunctionByCell = new Map();
-  for (const node of world.network?.nodes ?? []) {
-    if (node?.type === "junction" && node.cell != null && node.cell >= 0) {
-      networkJunctionByCell.set(node.cell, node);
-    }
-  }
-
-  let nextNodeId = settlementNodes.length + signpostNodes.length;
-  const fallbackSignposts = [];
-  const junctionCells = [...roadCellAdjacency.entries()]
-    .filter(([, neighbors]) => neighbors.size >= MIN_SIGNPOST_DEGREE)
-    .map(([cell]) => cell)
-    .sort((a, b) => a - b);
-
-  for (const cell of junctionCells) {
-    if (coveredCells.has(cell)) {
-      continue;
-    }
-    const roadDegree = roadCellAdjacency.get(cell)?.size ?? MIN_SIGNPOST_DEGREE;
-    const descriptor = describeNode({
-      marker: "signpost",
-      roadDegree,
-    });
-    const networkJunction = networkJunctionByCell.get(cell) ?? null;
-    const [x, y] =
-      networkJunction != null
-        ? [networkJunction.x, networkJunction.y]
-        : coordsOf(cell, width);
-    if (networkJunction && networkJunction.nodeId == null) {
-      networkJunction.nodeId = nextNodeId;
-    }
-    fallbackSignposts.push({
-      id: nextNodeId,
-      cell,
-      x,
-      y,
-      name: "",
-      marker: descriptor.marker,
-      kind: descriptor.kind,
-      roadDegree,
-      subtitle: descriptor.subtitle,
-      detail: descriptor.detail,
-      score: clamp(roadDegree / 6, 0.35, 1),
-      coastal: false,
-      river: false,
-    });
-    coveredCells.add(cell);
-    nextNodeId += 1;
-  }
-
-  if (!fallbackSignposts.length) {
-    return signpostNodes;
-  }
-  return [...signpostNodes, ...fallbackSignposts];
-}
-
-/**
- * Pre-compute which road cells should become crash-site nodes BEFORE the
- * network is built.  The world object only needs `roads`, `terrain`,
- * `climate`, and `params` at this point.
- */
-export function preselectCrashSiteCells(world) {
-  const roads = (world.roads?.roads ?? []).filter(
-    (road) => (road?.type ?? "road") === "road",
-  );
-  if (!roads.length) {
-    return [];
-  }
-
-  const crashWeight = getWeight01(
-    world.params?.nodeCrashSiteWeight,
-    DEFAULT_NODE_WEIGHT,
-  );
-  if (crashWeight <= 0.01) {
-    return [];
-  }
-  const crashSpacing = getCrashSpacingThresholds(world.params);
-
-  const settlementAnchors = (world.settlements ?? []).map((settlement) => ({
-    x: settlement.x,
-    y: settlement.y,
-  }));
-  // Signposts do not exist yet at preselection time.
-  const roadCellAdjacency = buildRoadCellAdjacency(roads);
-  const candidates = mergeCrashCandidates(
-    collectGenericCrashCandidates(
-      world,
-      roads,
-      settlementAnchors,
-      [],
-      roadCellAdjacency,
-      {
-        minSettlementClearance: crashSpacing.settlementClearance,
-        minSignpostClearance: crashSpacing.signpostClearance,
-      },
-    ),
-  );
-
-  if (!candidates.length) {
-    return [];
-  }
-
-  candidates.sort((a, b) => b.score - a.score);
-  const totalRoadCells = roads.reduce(
-    (sum, road) => sum + Math.max(0, (road.cells?.length ?? 0) - 1),
-    0,
-  );
-  const maxByRoadLength = clamp(Math.round(totalRoadCells / 120), 1, 42);
-  const target = clamp(
-    Math.round(
-      Math.max(1, world.settlements?.length ?? 1) * lerp(0.05, 0.62, crashWeight),
-    ),
-    crashWeight >= 0.15 ? 1 : 0,
-    Math.min(candidates.length, maxByRoadLength),
-  );
-  if (target <= 0) {
-    return [];
-  }
-
-  const selected = chooseSpreadCandidates(candidates, {
-    target,
-    seedKey: `${world.params.seed}::node-crash-select`,
-    anchorPoints: settlementAnchors,
-    desiredSpacing: Math.max(
-      lerp(11.6, 7.6, crashWeight),
-      crashSpacing.crashClearance + 1.2,
-    ),
-    minSelectedDistance: crashSpacing.crashClearance,
-    minAnchorDistance: crashSpacing.settlementClearance,
-    initialStats: { endpointCount: 0 },
-    scoreCandidate(candidate, context) {
-      const endpointShare =
-        context.stats.endpointCount / Math.max(1, context.target);
-      const endpointPenalty = candidate.isEndpoint
-        ? 1.2 + endpointShare * 1.4
-        : 0;
-      const corridorBoost = candidate.isCorridorCandidate ? 0.84 : 0;
-      return (
-        candidate.score +
-        corridorBoost +
-        context.spreadScore * 1.1 -
-        context.crowdingPenalty * 1.28 -
-        endpointPenalty
-      );
-    },
-    onPick(candidate, stats) {
-      if (candidate.isEndpoint) {
-        stats.endpointCount += 1;
-      }
-    },
-  });
-
-  return selected.map((entry) => entry.cell);
-}
-
 function buildDedicatedCrashSiteNodes(
   world,
   nodeName,
   settlementNodes,
   signpostNodes,
 ) {
-  const crashWeight = getWeight01(
-    world.params?.nodeCrashSiteWeight,
-    DEFAULT_NODE_WEIGHT,
-  );
-  if (crashWeight <= 0.01) {
-    return [];
-  }
-
-  // Find abandoned-site nodes that were pre-injected into the network.
   const crashNodes =
     world.network?.nodes?.filter((node) => node?.type === "abandoned") ?? [];
   if (!crashNodes.length) {
     return [];
   }
-  const crashSpacing = getCrashSpacingThresholds(world.params);
 
-  const eligibleCrashNodes = crashNodes.filter((node) => {
-    const settlementClearance = getNearestPointDistance(
-      node.x,
-      node.y,
-      settlementNodes,
-    );
-    if (settlementClearance < crashSpacing.settlementClearance) {
-      return false;
-    }
-    const signpostClearance = getNearestPointDistance(
-      node.x,
-      node.y,
-      signpostNodes,
-    );
-    if (signpostClearance < crashSpacing.signpostClearance) {
-      return false;
-    }
-    return true;
-  });
-  if (!eligibleCrashNodes.length) {
+  const nodeMinDistance = getEffectiveNodeMinDistance(world.params);
+  const settlementClearance = Math.max(4.8, nodeMinDistance * 0.98);
+  const signpostClearance = Math.max(4.8, nodeMinDistance * 0.94);
+  const crashClearance = Math.max(4.8, nodeMinDistance * 0.98);
+
+  const eligible = crashNodes
+    .filter((node) => {
+      if (
+        getNearestPointDistance(node.x, node.y, settlementNodes) < settlementClearance
+      ) {
+        return false;
+      }
+      if (getNearestPointDistance(node.x, node.y, signpostNodes) < signpostClearance) {
+        return false;
+      }
+      return true;
+    })
+    .sort((a, b) => a.cell - b.cell);
+
+  if (!eligible.length) {
     return [];
   }
-  const spacedCrashNodes = [];
-  const sortedCrashNodes = [...eligibleCrashNodes].sort((a, b) => a.cell - b.cell);
-  for (const node of sortedCrashNodes) {
-    const nearestCrashClearance = getNearestPointDistance(
-      node.x,
-      node.y,
-      spacedCrashNodes,
-    );
-    if (nearestCrashClearance < crashSpacing.crashClearance) {
+
+  const spaced = [];
+  for (const node of eligible) {
+    if (getNearestPointDistance(node.x, node.y, spaced) < crashClearance) {
       continue;
     }
-    spacedCrashNodes.push(node);
-  }
-  if (!spacedCrashNodes.length) {
-    return [];
+    spaced.push(node);
   }
 
   const descriptor = describeNode({ marker: "abandoned", roadDegree: 2 });
   const baseId = settlementNodes.length + signpostNodes.length;
-  return spacedCrashNodes.map((node, index) => {
+
+  return spaced.map((node, index) => {
     const nodeId = baseId + index;
-    // Tag the node so buildTravelGraph treats it as a stop.
     node.nodeId = nodeId;
     return {
       id: nodeId,
@@ -405,38 +360,120 @@ function buildDedicatedCrashSiteNodes(
   });
 }
 
+function collectLongRoadCrashCandidates(
+  world,
+  roads,
+  roadCellAdjacency,
+  abandonedFrequency01,
+  minSettlementClearance,
+) {
+  const width = world.terrain.width;
+  const settlementAnchors = (world.settlements ?? []).map((settlement) => ({
+    x: settlement.x,
+    y: settlement.y,
+  }));
+
+  const candidates = [];
+  const occupiedCells = new Set();
+
+  for (const road of roads) {
+    const cells = road.cells ?? [];
+    const longThreshold = Math.max(
+      MIN_ABANDONED_ROAD_LENGTH,
+      Math.round(lerp(78, 24, abandonedFrequency01)),
+    );
+    if (cells.length < longThreshold) {
+      continue;
+    }
+
+    const count = getAbandonedCountForRoad(cells.length, abandonedFrequency01);
+    if (count <= 0) {
+      continue;
+    }
+
+    const start = ABANDONED_ENDPOINT_BUFFER;
+    const end = Math.max(start, cells.length - 1 - ABANDONED_ENDPOINT_BUFFER);
+
+    for (let i = 1; i <= count; i += 1) {
+      const t = i / (count + 1);
+      const desired = Math.round(start + (end - start) * t);
+      const adjustedCell = findNearestStraightRoadCell(cells, desired, roadCellAdjacency, occupiedCells);
+      if (adjustedCell == null) {
+        continue;
+      }
+
+      const [x, y] = coordsOf(adjustedCell, width);
+      if (getNearestPointDistance(x, y, settlementAnchors) < minSettlementClearance) {
+        continue;
+      }
+
+      occupiedCells.add(adjustedCell);
+      candidates.push({
+        id: adjustedCell,
+        cell: adjustedCell,
+        x,
+        y,
+        score: cells.length + (1 - Math.abs(t - 0.5)) * 4,
+      });
+    }
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  return dedupeByCell(candidates);
+}
+
+function findNearestStraightRoadCell(cells, desiredIndex, roadCellAdjacency, occupiedCells) {
+  const maxOffset = 4;
+  for (let offset = 0; offset <= maxOffset; offset += 1) {
+    for (const direction of [-1, 1]) {
+      const index =
+        offset === 0 ? desiredIndex : desiredIndex + offset * direction;
+      if (index <= 0 || index >= cells.length - 1) {
+        continue;
+      }
+      const cell = cells[index];
+      if (occupiedCells.has(cell)) {
+        continue;
+      }
+      const degree = roadCellAdjacency.get(cell)?.size ?? 0;
+      if (degree !== 2) {
+        continue;
+      }
+      return cell;
+    }
+  }
+  return null;
+}
+
+function getAbandonedCountForRoad(length, abandonedFrequency01) {
+  const spacing = lerp(118, 28, abandonedFrequency01);
+  const estimated = Math.max(0, Math.floor((length - 10) / spacing));
+  return clamp(estimated, 1, MAX_ABANDONED_PER_ROAD);
+}
+
 function chooseSpreadCandidates(candidates, options = {}) {
   const {
     target = 0,
-    seedKey = "node-spread",
-    anchorPoints = [],
-    desiredSpacing = 10,
     minSelectedDistance = 0,
     minAnchorDistance = 0,
-    initialStats = {},
-    scoreCandidate = (candidate) => Number(candidate?.score ?? 0),
-    onPick = null,
+    anchorPoints = [],
+    desiredSpacing = 10,
   } = options;
 
   if (target <= 0 || !candidates.length) {
     return [];
   }
 
-  const rng = createRng(seedKey);
+  const spacingTarget = Math.max(1.5, Number(desiredSpacing) || 10);
   const selected = [];
   const selectedIds = new Set();
-  const stats = { ...initialStats };
-  const spacingTarget = Math.max(1.5, Number(desiredSpacing) || 10);
 
   while (selected.length < target) {
     let best = null;
     let bestScore = Number.NEGATIVE_INFINITY;
 
     for (const candidate of candidates) {
-      if (!candidate) {
-        continue;
-      }
-      if (selectedIds.has(candidate.id)) {
+      if (!candidate || selectedIds.has(candidate.id)) {
         continue;
       }
 
@@ -456,6 +493,7 @@ function chooseSpreadCandidates(candidates, options = {}) {
       if (nearestAnchorDistance < minAnchorDistance) {
         continue;
       }
+
       const nearestDistance = Math.min(
         nearestSelectedDistance,
         nearestAnchorDistance,
@@ -466,17 +504,9 @@ function chooseSpreadCandidates(candidates, options = {}) {
         0,
         1,
       );
+
       const effectiveScore =
-        scoreCandidate(candidate, {
-          target,
-          selected,
-          stats,
-          nearestDistance,
-          nearestSelectedDistance,
-          nearestAnchorDistance,
-          spreadScore,
-          crowdingPenalty,
-        }) + rng.range(-0.05, 0.05);
+        Number(candidate.score ?? 0) + spreadScore * 1.12 - crowdingPenalty * 1.24;
 
       if (effectiveScore > bestScore) {
         bestScore = effectiveScore;
@@ -490,9 +520,6 @@ function chooseSpreadCandidates(candidates, options = {}) {
 
     selected.push(best);
     selectedIds.add(best.id);
-    if (typeof onPick === "function") {
-      onPick(best, stats);
-    }
   }
 
   return selected;
@@ -505,7 +532,11 @@ function buildRoadDegreeBySettlementId(network, settlementCount) {
   }
 
   for (const node of network.nodes) {
-    if (node?.type !== "settlement" || node.settlementId == null || node.settlementId < 0) {
+    if (
+      node?.type !== "settlement" ||
+      node.settlementId == null ||
+      node.settlementId < 0
+    ) {
       continue;
     }
     degreeBySettlementId[node.settlementId] = (
@@ -531,69 +562,17 @@ function buildRoadCellAdjacency(roads) {
   for (const road of roads) {
     const cells = road?.cells ?? [];
     for (let i = 1; i < cells.length; i += 1) {
-      addNeighbor(cells[i - 1], cells[i]);
-      addNeighbor(cells[i], cells[i - 1]);
+      const from = cells[i - 1];
+      const to = cells[i];
+      if (from === to) {
+        continue;
+      }
+      addNeighbor(from, to);
+      addNeighbor(to, from);
     }
   }
 
   return adjacency;
-}
-
-function classifyJunctionShape(node, adjacency, nodes) {
-  if (!adjacency?.length) {
-    return "multi";
-  }
-  if (adjacency.length === 3) {
-    const maxSep = getMaxPairSeparationDeg(node, adjacency, nodes);
-    return maxSep >= 146 ? "t" : "y";
-  }
-  if (adjacency.length === 4) {
-    let oppositePairs = 0;
-    for (let i = 0; i < adjacency.length; i += 1) {
-      for (let j = i + 1; j < adjacency.length; j += 1) {
-        const a = nodes[adjacency[i].nodeId];
-        const b = nodes[adjacency[j].nodeId];
-        if (!a || !b) {
-          continue;
-        }
-        const sep = getAngleSeparationDeg(node, a, b);
-        if (sep >= 160) {
-          oppositePairs += 1;
-        }
-      }
-    }
-    return oppositePairs >= 2 ? "cross" : "multi";
-  }
-  return adjacency.length > 4 ? "cross" : "multi";
-}
-
-function getMaxPairSeparationDeg(node, adjacency, nodes) {
-  let maxSep = 0;
-  for (let i = 0; i < adjacency.length; i += 1) {
-    for (let j = i + 1; j < adjacency.length; j += 1) {
-      const a = nodes[adjacency[i].nodeId];
-      const b = nodes[adjacency[j].nodeId];
-      if (!a || !b) {
-        continue;
-      }
-      maxSep = Math.max(maxSep, getAngleSeparationDeg(node, a, b));
-    }
-  }
-  return maxSep;
-}
-
-function getAngleSeparationDeg(origin, pointA, pointB) {
-  const ax = pointA.x - origin.x;
-  const ay = pointA.y - origin.y;
-  const bx = pointB.x - origin.x;
-  const by = pointB.y - origin.y;
-  const lenA = Math.hypot(ax, ay);
-  const lenB = Math.hypot(bx, by);
-  if (lenA <= 1e-6 || lenB <= 1e-6) {
-    return 0;
-  }
-  const dot = clamp((ax * bx + ay * by) / (lenA * lenB), -1, 1);
-  return (Math.acos(dot) * 180) / Math.PI;
 }
 
 function getNearestPointDistance(x, y, points) {
@@ -610,162 +589,53 @@ function getNearestPointDistance(x, y, points) {
   return best;
 }
 
-function collectGenericCrashCandidates(
-  world,
-  roads,
-  settlementNodes,
-  signpostNodes,
-  roadCellAdjacency,
-  { minSettlementClearance, minSignpostClearance } = {},
-) {
-  const effectiveSettlementClearance = Math.max(
-    0,
-    Number(minSettlementClearance) || MIN_CRASH_SETTLEMENT_CLEARANCE,
-  );
-  const effectiveSignpostClearance = Math.max(
-    0,
-    Number(minSignpostClearance) || MIN_CRASH_SIGNPOST_CLEARANCE,
-  );
-  const { width } = world.terrain;
-  const seenCells = new Set();
-  const candidates = [];
-  const rng = createRng(`${world.params.seed}::node-crash-candidates`);
-
-  for (const road of roads) {
-    const cells = road.cells ?? [];
-    if (cells.length < 4) {
-      continue;
-    }
-
-    for (let index = 0; index < cells.length; index += 1) {
-      const cell = cells[index];
-      if (seenCells.has(cell)) {
-        continue;
-      }
-      seenCells.add(cell);
-
-      const isEndpoint = index === 0 || index === cells.length - 1;
-      const distanceToRoadEnd = Math.min(index, cells.length - 1 - index);
-      if (!isEndpoint && distanceToRoadEnd < 2) {
-        continue;
-      }
-
-      const degree = roadCellAdjacency.get(cell)?.size ?? 0;
-      if (degree !== 2) {
-        continue;
-      }
-
-      const [x, y] = coordsOf(cell, width);
-      const nearestSettlementDistance = getNearestPointDistance(
-        x,
-        y,
-        settlementNodes,
-      );
-      const nearestSignpostDistance = getNearestPointDistance(
-        x,
-        y,
-        signpostNodes,
-      );
-      if (nearestSettlementDistance < effectiveSettlementClearance) {
-        continue;
-      }
-      if (nearestSignpostDistance < effectiveSignpostClearance) {
-        continue;
-      }
-      const elevation = world.terrain.elevation[cell] ?? 0;
-      const mountainField = world.terrain.mountainField[cell] ?? 0;
-      const moisture = world.climate.moisture[cell] ?? 0.5;
-      const ruggedness = clamp(mountainField * 0.72 + elevation * 0.48, 0, 1);
-      const dryness = clamp(1 - moisture, 0, 1);
-      const settlementSpacingScore = clamp(
-        (nearestSettlementDistance - 2.4) / 10.5,
-        0,
-        1,
-      );
-      const signpostSpacingScore = clamp(
-        (nearestSignpostDistance - 1.8) / 8.5,
-        0,
-        1,
-      );
-      const interiorScore = clamp(
-        distanceToRoadEnd / Math.max(2, Math.round(cells.length * 0.35)),
-        0,
-        1,
-      );
-      const endpointPenalty = isEndpoint ? 0.82 : 0;
-      const score =
-        interiorScore * 1.2 +
-        0.88 +
-        ruggedness * 0.46 +
-        settlementSpacingScore * 0.48 +
-        signpostSpacingScore * 0.38 +
-        dryness * 0.26 -
-        endpointPenalty +
-        rng.range(-0.08, 0.08);
-      if (score < 0.16) {
-        continue;
-      }
-
-      candidates.push({
-        id: cell,
-        cell,
-        x,
-        y,
-        degree,
-        isEndpoint,
-        isCorridorCandidate: false,
-        score,
-      });
-    }
-  }
-
-  return candidates;
-}
-
-function mergeCrashCandidates(candidates) {
+function dedupeByCell(candidates) {
   const byCell = new Map();
-
   for (const candidate of candidates) {
-    if (!candidate || candidate.cell == null) {
-      continue;
-    }
     const existing = byCell.get(candidate.cell);
-    if (!existing || candidate.score > existing.score) {
+    if (!existing || Number(candidate.score ?? 0) > Number(existing.score ?? 0)) {
       byCell.set(candidate.cell, candidate);
-      continue;
-    }
-    if (candidate.isCorridorCandidate && !existing.isCorridorCandidate) {
-      byCell.set(candidate.cell, {
-        ...existing,
-        isCorridorCandidate: true,
-      });
     }
   }
-
   return [...byCell.values()];
 }
 
-function getWeight01(value, fallback = DEFAULT_NODE_WEIGHT) {
+function getFrequency01(value, fallback) {
   const numeric = Number(value);
   const safe = Number.isFinite(numeric) ? numeric : fallback;
   return clamp(safe / 100, 0, 1);
 }
 
-function getCrashSpacingThresholds(params) {
-  const nodeMinDistance = getEffectiveNodeMinDistance(params);
-  return {
-    settlementClearance: Math.max(MIN_CRASH_SETTLEMENT_CLEARANCE, nodeMinDistance),
-    signpostClearance: Math.max(MIN_CRASH_SIGNPOST_CLEARANCE, nodeMinDistance),
-    crashClearance: Math.max(MIN_CRASH_SIGNPOST_CLEARANCE, nodeMinDistance),
-  };
-}
-
 function getEffectiveNodeMinDistance(params) {
   const numeric = Number(params?.nodeMinDistance);
   const safe = Number.isFinite(numeric) ? numeric : DEFAULT_NODE_MIN_DISTANCE;
-  return clamp(safe, 2, MAX_NODE_MIN_DISTANCE);
+  return clamp(safe, 2, 14);
 }
 
-function lerp(a, b, t) {
-  return a + (b - a) * t;
+function getSettlementHardship(world, cell) {
+  if (!world || cell == null || cell < 0) {
+    return 0;
+  }
+
+  const elevation = world.terrain?.elevation?.[cell] ?? 0;
+  const mountain = world.terrain?.mountainField?.[cell] ?? 0;
+  const moisture = world.climate?.moisture?.[cell] ?? 0.5;
+  const waterDistance = world.hydrology?.waterDistance?.[cell] ?? 0;
+
+  const ruggedness = clamp(mountain * 0.72 + elevation * 0.44, 0, 1);
+  const aridity = clamp(Math.abs(moisture - 0.52) * 1.7, 0, 1);
+  const remoteness = clamp(waterDistance / 12, 0, 1);
+  return clamp(ruggedness * 0.43 + aridity * 0.26 + remoteness * 0.31, 0, 1);
+}
+
+function quantile(sortedValues, q) {
+  if (!sortedValues?.length) {
+    return 0;
+  }
+  const index = clamp(
+    Math.floor((sortedValues.length - 1) * clamp(q, 0, 1)),
+    0,
+    sortedValues.length - 1,
+  );
+  return sortedValues[index];
 }

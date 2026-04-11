@@ -1,18 +1,18 @@
 import { createNameGenerator } from "../naming.js?v=20260402d";
 import { createRng } from "../random.js";
 import { clamp } from "../utils.js";
-import { generateSettlements } from "./settlements.js?v=20260407a";
+import { generateSettlements } from "./settlements.js?v=20260411b";
 import { generateClimate } from "./climate.js?v=20260407a";
 import { compileGeometry } from "./compileGeometry.js?v=20260409c";
 import {
   buildFeatureCatalog,
   preselectCrashSiteCells,
-} from "./features.js?v=20260410h";
+} from "./features.js?v=20260411l";
 import { generateHydrology } from "./hydrology.js?v=20260407a";
 import { buildWorldNetwork } from "./network.js?v=20260410e";
 import { applyFeatureNames } from "./nameFeatures.js";
 import { buildRegions } from "./regions.js?v=20260402c";
-import { generateRoads } from "./roads/index.js?v=20260411b";
+import { generateRoads } from "./roads/index.js?v=20260411f";
 import { buildSurfaceGeometry } from "./surface.js?v=20260403b";
 import { generateTerrain } from "./terrain.js?v=20260401i";
 import { buildTravelGraph } from "./travelGraph.js?v=20260409b";
@@ -45,7 +45,9 @@ export function normalizeParams(input) {
       0,
       100,
     ),
-    roadLoopiness: clamp(asNumber(input.roadLoopiness, 50), 0, 100),
+    settlementRandomness: clamp(asNumber(input.settlementRandomness, 20), 0, 100),
+    signpostFrequency: clamp(asNumber(input.signpostFrequency, 50), 0, 100),
+    abandonedFrequency: clamp(asNumber(input.abandonedFrequency, 50), 0, 100),
     nodeMinDistance: clamp(asNumber(input.nodeMinDistance, 5), 2, 14),
   };
 }

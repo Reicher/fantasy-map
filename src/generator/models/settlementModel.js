@@ -19,8 +19,10 @@ export function buildSettlementCandidates({
 }) {
   // coastalBias01 = 1.0 → fully water-oriented (inlandPreference=0)
   // coastalBias01 = 0.0 → fully inland-oriented (inlandPreference=100)
-  const coastalBias01 = 1 - clamp(inlandPreference / 100, 0, 1);
+  const inlandPreference01 = clamp(inlandPreference / 100, 0, 1);
+  const coastalBias01 = 1 - inlandPreference01;
   const coastalWeight = 0.16 + coastalBias01 * 0.56;
+  const frontierChance = 0.018 + inlandPreference01 * 0.082;
   const candidates = [];
   let habitableArea = 0;
 
@@ -42,6 +44,14 @@ export function buildSettlementCandidates({
     const dryInland =
       !coastal && waterDistance[index] >= 3 && waterDistance[index] <= 7;
     const oddballBoost = rng.chance(0.045) ? 0.22 : 0;
+    const frontierBoost =
+      !coastal &&
+      habitability < 0.46 &&
+      waterDistance[index] <= 10 &&
+      mountainField[index] < 0.58 &&
+      rng.chance(frontierChance * clamp(1.06 - habitability, 0.18, 1))
+        ? 0.12 + (0.46 - habitability) * 0.5 + inlandness * 0.12
+        : 0;
     const flatness = clamp(1 - elevation[index], 0, 1);
     const waterBonus =
       (coastal ? coastalWeight : 0) +
@@ -78,6 +88,7 @@ export function buildSettlementCandidates({
       mountainField[index] * 0.24 -
       remotePenalty +
       oddballBoost +
+      frontierBoost +
       rng.range(-0.08, 0.08);
 
     if (
@@ -85,13 +96,20 @@ export function buildSettlementCandidates({
       (oddballBoost > 0 &&
         habitability > 0.18 &&
         elevation[index] < 0.72 &&
-        mountainField[index] < 0.32)
+        mountainField[index] < 0.32) ||
+      (frontierBoost > 0 &&
+        !coastal &&
+        elevation[index] < 0.8 &&
+        mountainField[index] < 0.62 &&
+        score > 0.2)
     ) {
       candidates.push({
         index,
         score,
+        habitability,
         coastal,
         river: river || inlandWater,
+        frontier: frontierBoost > 0,
         oddball: oddballBoost > 0,
       });
     }
@@ -102,18 +120,27 @@ export function buildSettlementCandidates({
   return { candidates, habitableArea };
 }
 
-export function selectSettlements({ width, candidates, desiredCount, minSpacing }) {
+export function selectSettlements({
+  width,
+  candidates,
+  desiredCount,
+  minSpacing,
+  randomness = 0,
+  rng,
+}) {
+  const rankedCandidates = initializeCandidateSelectionScores(candidates, rng);
   const settlements = [];
 
   fillSettlements({
     width,
     settlements,
     desiredCount,
-    pool: candidates.filter(
+    pool: rankedCandidates.filter(
       (candidate) => !candidate.oddball || candidate.score > 0.42,
     ),
     spacing: minSpacing,
     preferSpread: false,
+    randomness,
   });
 
   if (settlements.length < desiredCount) {
@@ -121,9 +148,10 @@ export function selectSettlements({ width, candidates, desiredCount, minSpacing 
       width,
       settlements,
       desiredCount,
-      pool: candidates,
+      pool: rankedCandidates,
       spacing: Math.max(8, minSpacing - 1.25),
       preferSpread: true,
+      randomness,
     });
   }
 
@@ -146,7 +174,9 @@ export function ensureInlandSettlements({
 
   const inlandCandidates = candidates.filter(
     (candidate) =>
-      !candidate.coastal && !candidate.river && candidate.score > 0.18,
+      !candidate.coastal &&
+      !candidate.river &&
+      (candidate.score > 0.18 || candidate.frontier),
   );
 
   // If no inland settlement exists yet, try adding one with a 60% chance (looser thresholds)
@@ -169,7 +199,9 @@ export function ensureInlandSettlements({
   }
 
   // Ensure minimum inland count with stricter score threshold
-  const strictCandidates = inlandCandidates.filter((c) => c.score > 0.2);
+  const strictCandidates = inlandCandidates.filter(
+    (c) => c.score > 0.2 || c.frontier,
+  );
   for (const candidate of strictCandidates) {
     if (currentInlandCount >= targetInlandCount) {
       break;
@@ -226,8 +258,10 @@ function fillSettlements({
   pool,
   spacing,
   preferSpread,
+  randomness,
 }) {
   const available = [...pool];
+  const randomness01 = clamp(Number(randomness) / 100, 0, 1);
 
   while (available.length > 0 && settlements.length < desiredCount) {
     let bestIndex = -1;
@@ -247,8 +281,11 @@ function fillSettlements({
           : !candidate.coastal
             ? 0.015
             : 0;
+      const baseSelectionScore =
+        (candidate.rankScore ?? 0) * (1 - randomness01) +
+        (candidate.randomScore ?? 0.5) * randomness01;
       const effectiveScore =
-        candidate.score +
+        baseSelectionScore +
         (preferSpread ? spreadBonus * 0.28 : spreadBonus * 0.18) +
         inlandSpreadBonus;
 
@@ -271,6 +308,15 @@ function fillSettlements({
   }
 }
 
+function initializeCandidateSelectionScores(candidates, rng) {
+  const total = Math.max(1, candidates.length - 1);
+  return candidates.map((candidate, index) => ({
+    ...candidate,
+    rankScore: 1 - index / total,
+    randomScore: rng?.range(0, 1) ?? 0.5,
+  }));
+}
+
 function toSettlementRecord(width, id, candidate) {
   const [x, y] = coordsOf(candidate.index, width);
   return {
@@ -281,6 +327,8 @@ function toSettlementRecord(width, id, candidate) {
     y,
     coastal: candidate.coastal,
     river: candidate.river,
+    frontier: Boolean(candidate.frontier),
+    habitability: Number(candidate.habitability ?? 0),
     score: candidate.score,
   };
 }
