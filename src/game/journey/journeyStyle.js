@@ -1,4 +1,7 @@
-import { BIOME_INFO } from "../../config.js";
+import {
+  getBiomeDefinitionByKey,
+  normalizeBiomeKeyName,
+} from "../../biomes/index.js";
 import {
   capToGamePalette,
   DEPTH_SHADE_BY_LAYER,
@@ -77,7 +80,7 @@ export function getBiomeLayerColorRgb(
   layerDepth,
   { isSnow = false } = {},
 ) {
-  const normalizedBiome = normalizeBiomeKey(biomeKey) ?? "plains";
+  const normalizedBiome = normalizeBiomeKeyName(biomeKey) ?? "plains";
   const biomeBase = hexToRgb(getBiomeBaseHex(normalizedBiome));
   if (isSnow && layerDepth === "ground") {
     return SNOW_GROUND_RGB;
@@ -120,7 +123,7 @@ export function buildSilhouetteTopEdge(
   layerDepth,
 ) {
   const spec = getSilhouetteSpec(
-    normalizeBiomeKey(biomeKey) ?? "plains",
+    normalizeBiomeKeyName(biomeKey) ?? "plains",
     layerDepth,
   );
   const samples = new Float32Array(Math.max(1, Math.ceil(stripWidthPx) + 1));
@@ -136,7 +139,7 @@ export function buildSilhouetteTopEdge(
  */
 export function sampleSilhouetteAtX(biomeKey, globalX, layerDepth) {
   const spec = getSilhouetteSpec(
-    normalizeBiomeKey(biomeKey) ?? "plains",
+    normalizeBiomeKeyName(biomeKey) ?? "plains",
     layerDepth,
   );
   return sampleSilhouetteY(spec, globalX);
@@ -170,75 +173,12 @@ function getSilhouetteSpec(biomeKey, layerDepth) {
 }
 
 function getBiomeBaseSpec(biomeKey) {
-  switch (biomeKey) {
-    case "forest":
-      return {
-        baseY: 0.38,
-        amplitude: 0.18,
-        wavelength1: 120,
-        wavelength2: 54,
-        sharpness: 1.7,
-      };
-    case "rainforest":
-      return {
-        baseY: 0.34,
-        amplitude: 0.2,
-        wavelength1: 100,
-        wavelength2: 48,
-        sharpness: 1.6,
-      };
-    case "desert":
-      return {
-        baseY: 0.55,
-        amplitude: 0.1,
-        wavelength1: 280,
-        wavelength2: 140,
-        sharpness: 0.75,
-      };
-    case "mountain":
-      return {
-        baseY: 0.24,
-        amplitude: 0.34,
-        wavelength1: 108,
-        wavelength2: 40,
-        sharpness: 3.7,
-      };
-    case "highlands":
-      return {
-        baseY: 0.4,
-        amplitude: 0.2,
-        wavelength1: 180,
-        wavelength2: 80,
-        sharpness: 1.4,
-      };
-    case "tundra":
-      return {
-        baseY: 0.5,
-        amplitude: 0.12,
-        wavelength1: 220,
-        wavelength2: 100,
-        sharpness: 1.1,
-      };
-    case "ocean":
-    case "lake":
-      // Flat horizon – barely any silhouette visible above the ground line
-      return {
-        baseY: 0.97,
-        amplitude: 0.02,
-        wavelength1: 800,
-        wavelength2: 400,
-        sharpness: 0.5,
-      };
-    case "plains":
-    default:
-      return {
-        baseY: 0.58,
-        amplitude: 0.08,
-        wavelength1: 260,
-        wavelength2: 120,
-        sharpness: 0.9,
-      };
-  }
+  const normalizedBiome = normalizeBiomeKeyName(biomeKey) ?? "plains";
+  const biomeDefinition = getBiomeDefinitionByKey(normalizedBiome);
+  return (
+    biomeDefinition?.journey?.silhouette ??
+    getBiomeDefinitionByKey("plains").journey.silhouette
+  );
 }
 
 function sampleSilhouetteY(spec, x) {
@@ -909,10 +849,7 @@ function drawLimb(ctx, px, py, angle, length, thickness, alpha) {
 // ---------------------------------------------------------------------------
 
 export function normalizeBiomeKey(biomeKey) {
-  if (typeof biomeKey === "number") {
-    return BIOME_INFO[biomeKey]?.key ?? null;
-  }
-  return biomeKey ?? null;
+  return normalizeBiomeKeyName(biomeKey);
 }
 
 export function rgbToCss(rgb) {

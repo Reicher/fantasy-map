@@ -1,4 +1,4 @@
-import { BIOME_KEYS } from "../../config.js";
+import { getBiomeRoadTravelCostById } from "../../biomes/index.js";
 import { MinHeap } from "./minHeap.js";
 import { buildSeaRoutes } from "./roadSeaRoutes.js";
 import {
@@ -13,18 +13,6 @@ import {
 // Easy terrain (plains) is cheap; difficult terrain (mountains, jungle) is
 // expensive. Ocean and lakes are impassable for land roads.
 // ---------------------------------------------------------------------------
-
-const BIOME_TRAVEL_COST = {
-  [BIOME_KEYS.OCEAN]: Number.POSITIVE_INFINITY,
-  [BIOME_KEYS.LAKE]: Number.POSITIVE_INFINITY,
-  [BIOME_KEYS.PLAINS]: 0.9,
-  [BIOME_KEYS.FOREST]: 1.45,
-  [BIOME_KEYS.RAINFOREST]: 1.8,
-  [BIOME_KEYS.DESERT]: 1.28,
-  [BIOME_KEYS.TUNDRA]: 1.52,
-  [BIOME_KEYS.HIGHLANDS]: 3.1,
-  [BIOME_KEYS.MOUNTAIN]: 8.8,
-};
 
 // When both adjacent cells already carry a road, applying this multiplier
 // makes later roads prefer to follow existing paths — producing natural T/+
@@ -359,7 +347,7 @@ function buildBaseCost(
       continue;
     }
 
-    const biomeCost = BIOME_TRAVEL_COST[biome[index]] ?? 1.2;
+    const biomeCost = getBiomeRoadTravelCostById(biome[index]) ?? 1.2;
     const slopePenalty = elevation[index] * 1.05;
     const mountainPenalty =
       mountainField[index] * 4.9 +

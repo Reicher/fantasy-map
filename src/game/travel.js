@@ -1,4 +1,4 @@
-import { BIOME_INFO } from "../config.js";
+import { getBiomeDefinitionById } from "../biomes/index.js";
 import { dedupePoints } from "../utils.js";
 import { regionAtCell, regionAtPosition } from "./playQueries.js";
 import { DEFAULT_TIME_OF_DAY_HOURS } from "./timeOfDay.js";
@@ -274,10 +274,7 @@ function buildBiomeSegmentsFromPoints(world, points) {
   for (let index = 0; index < points.length; index += 1) {
     const point = points[index];
     const biomeKey = biomeKeyAtPoint(world, point);
-    const biomeInfo = BIOME_INFO[biomeKey] ?? {
-      key: "unknown",
-      label: "Okänd",
-    };
+    const biomeInfo = getBiomeDefinitionById(biomeKey);
     const nextPoint = points[index + 1];
     const distance = nextPoint
       ? Math.hypot(nextPoint.x - point.x, nextPoint.y - point.y)

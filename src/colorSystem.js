@@ -1,14 +1,21 @@
-import { BIOME_INFO, BIOME_KEYS } from "./config.js";
+import {
+  BIOME_DEFINITIONS,
+  BIOME_INFO,
+  BIOME_KEYS,
+} from "./biomes/index.js";
 
 const BIOME_BASE_HEX_BY_ID = Object.fromEntries(
-  Object.entries(BIOME_INFO).map(([id, info]) => [
-    Number(id),
-    info.color.toLowerCase(),
+  BIOME_DEFINITIONS.map((definition) => [
+    definition.id,
+    definition.baseColor.toLowerCase(),
   ]),
 );
 
 const BIOME_BASE_HEX_BY_NAME = Object.fromEntries(
-  Object.values(BIOME_INFO).map((info) => [info.key, info.color.toLowerCase()]),
+  BIOME_DEFINITIONS.map((definition) => [
+    definition.key,
+    definition.baseColor.toLowerCase(),
+  ]),
 );
 
 export const ALPHA = Object.freeze({
@@ -97,36 +104,11 @@ const GAME_PALETTE_RGB = [
     [129, 112, 93],
 ];
 
-const BIOME_TONE_PALETTE_BY_NAME = {
-  plains: [
-    [171, 166, 118],
-    [185, 178, 127],
-    [196, 186, 136],
-  ],
-  highlands: [
-    [137, 122, 101],
-    [148, 133, 108],
-    [160, 145, 118],
-  ],
-  desert: [
-    [183, 156, 104],
-    [201, 176, 123],
-    [214, 191, 139],
-  ],
-  tundra: [
-    [159, 163, 147],
-    [174, 178, 161],
-    [188, 192, 177],
-  ],
-  forest: [
-    [95, 123, 85],
-    [125, 144, 101],
-  ],
-  rainforest: [
-    [80, 97, 66],
-    [95, 123, 85],
-  ],
-};
+const BIOME_TONE_PALETTE_BY_NAME = Object.fromEntries(
+  BIOME_DEFINITIONS.filter(
+    (definition) => definition.render?.tonePalette?.length > 0,
+  ).map((definition) => [definition.key, definition.render.tonePalette]),
+);
 
 function normalizeAlpha(alpha) {
   let best = ALPHA_VALUES[0];

@@ -16,8 +16,8 @@
 import {
   buildJourneyStrip,
   extendStripWithTravel,
-} from "./journey/journeyStrip.js?v=20260409r";
-import { drawPlayerFigure } from "./journey/journeyStyle.js?v=20260409o";
+} from "./journey/journeyStrip.js?v=20260411a";
+import { drawPlayerFigure } from "./journey/journeyStyle.js?v=20260411a";
 import {
   drawDebugOverlay,
   drawForegroundCanopyTrees,

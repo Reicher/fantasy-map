@@ -1,4 +1,5 @@
 import { BIOME_KEYS } from "../config.js";
+import { getBiomeDefinitionById } from "../biomes/index.js";
 import { LABEL_COLORS } from "./colorTokens.js";
 
 const MAP_NODE_ICON_LIFT = 3.3;
@@ -493,49 +494,11 @@ function getMountainLabelStyle(fontSize) {
 }
 
 function getBiomeLabelStyle(biome, fontSize) {
-  switch (biome) {
-    case BIOME_KEYS.FOREST:
-      return {
-        font: `italic ${fontSize}px "Palatino Linotype", Baskerville, Georgia, serif`,
-        fillStyle: LABEL_COLORS.biome.forest.fill,
-        strokeStyle: LABEL_COLORS.biome.forest.stroke,
-        lineWidth: 4.1,
-      };
-    case BIOME_KEYS.RAINFOREST:
-      return {
-        font: `600 italic ${fontSize}px "Palatino Linotype", Baskerville, Georgia, serif`,
-        fillStyle: LABEL_COLORS.biome.rainforest.fill,
-        strokeStyle: LABEL_COLORS.biome.rainforest.stroke,
-        lineWidth: 4.2,
-      };
-    case BIOME_KEYS.DESERT:
-      return {
-        font: `italic ${fontSize}px Baskerville, "Palatino Linotype", Georgia, serif`,
-        fillStyle: LABEL_COLORS.biome.desert.fill,
-        strokeStyle: LABEL_COLORS.biome.desert.stroke,
-        lineWidth: 4,
-      };
-    case BIOME_KEYS.TUNDRA:
-      return {
-        font: `italic ${fontSize}px Georgia, Baskerville, "Palatino Linotype", serif`,
-        fillStyle: LABEL_COLORS.biome.tundra.fill,
-        strokeStyle: LABEL_COLORS.biome.tundra.stroke,
-        lineWidth: 4.15,
-      };
-    case BIOME_KEYS.HIGHLANDS:
-      return {
-        font: `600 italic ${fontSize}px Baskerville, "Palatino Linotype", Georgia, serif`,
-        fillStyle: LABEL_COLORS.biome.highlands.fill,
-        strokeStyle: LABEL_COLORS.biome.highlands.stroke,
-        lineWidth: 4.2,
-      };
-    case BIOME_KEYS.PLAINS:
-    default:
-      return {
-        font: `italic ${fontSize}px Baskerville, "Palatino Linotype", Georgia, serif`,
-        fillStyle: LABEL_COLORS.biome.plains.fill,
-        strokeStyle: LABEL_COLORS.biome.plains.stroke,
-        lineWidth: 4.2,
-      };
-  }
+  const style = getBiomeDefinitionById(biome).labels.mapRegion;
+  return {
+    font: `${style.fontWeight} ${style.fontStyle} ${fontSize}px ${style.fontFamily}`,
+    fillStyle: style.fillStyle,
+    strokeStyle: style.strokeStyle,
+    lineWidth: style.lineWidth,
+  };
 }

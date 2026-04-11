@@ -1,4 +1,5 @@
 import { BIOME_KEYS } from "../config.js";
+import { getBiomeDefinitionById } from "../biomes/index.js";
 import { isSnowCell } from "../generator/models/surfaceModel.js?v=20260402b";
 import { coordsOf } from "../utils.js";
 import { glyphNoise } from "./hash.js";
@@ -38,60 +39,7 @@ export function collectForestRenderGlyphs(world, viewport, options = {}) {
 }
 
 function getVegetationStyle(biomeKey) {
-  switch (biomeKey) {
-    case BIOME_KEYS.PLAINS:
-      return {
-        type: "tuft",
-        density: 0.052,
-        minSpacing: 12.2,
-        minSize: 2.4,
-        sizeRange: 1.5,
-        fill: "rgba(126, 116, 76, 0.42)",
-        stroke: "rgba(102, 90, 58, 0.52)"
-      };
-    case BIOME_KEYS.DESERT:
-      return {
-        type: "cactus",
-        density: 0.01,
-        minSpacing: 17.5,
-        minSize: 4,
-        sizeRange: 2.4,
-        fill: "rgba(104, 116, 82, 0.58)",
-        stroke: "rgba(74, 82, 58, 0.72)"
-      };
-    case BIOME_KEYS.HIGHLANDS:
-      return {
-        type: "tree",
-        density: 0.022,
-        minSpacing: 15.5,
-        minSize: 7.4,
-        sizeRange: 3.2,
-        fill: "rgba(92, 94, 80, 0.68)",
-        stroke: "rgba(68, 60, 47, 0.82)"
-      };
-    case BIOME_KEYS.FOREST:
-      return {
-        type: "tree",
-        density: 0.19,
-        minSpacing: 7.1,
-        minSize: 8.2,
-        sizeRange: 4.2,
-        fill: "rgba(80, 97, 66, 0.74)",
-        stroke: "rgba(54, 66, 41, 0.86)"
-      };
-    case BIOME_KEYS.RAINFOREST:
-      return {
-        type: "tree",
-        density: 0.29,
-        minSpacing: 5.8,
-        minSize: 8.8,
-        sizeRange: 4.8,
-        fill: "rgba(65, 87, 53, 0.8)",
-        stroke: "rgba(42, 58, 34, 0.9)"
-      };
-    default:
-      return null;
-  }
+  return getBiomeDefinitionById(biomeKey).render?.vegetation ?? null;
 }
 
 function collectForestGlyphs(cells, region, style, world, viewport, roadSegments, showSnow) {

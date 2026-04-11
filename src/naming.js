@@ -1,4 +1,4 @@
-import { BIOME_KEYS } from "./config.js";
+import { getBiomeRegionSuffixesById } from "./biomes/index.js";
 import { createRng } from "./random.js";
 import { titleCase } from "./utils.js";
 
@@ -87,16 +87,6 @@ const CODA_GROUPS = [
   ["", "", "", "d", "g", "k", "l", "m", "n", "nn", "r", "rk", "s", "t"],
   ["", "", "", "d", "ld", "m", "n", "ng", "r", "s", "st", "t", "v"],
 ];
-
-const BIOME_SUFFIXES = {
-  [BIOME_KEYS.PLAINS]: ["slätt", "hed", "vall", "mark"],
-  [BIOME_KEYS.FOREST]: ["skog", "lund", "mark", "hage"],
-  [BIOME_KEYS.RAINFOREST]: ["djupskog", "storskog", "lund", "mark"],
-  [BIOME_KEYS.DESERT]: ["ödemark", "sand", "mo", "vidder"],
-  [BIOME_KEYS.TUNDRA]: ["vidd", "frostmark", "fjällhed", "snövidd"],
-  [BIOME_KEYS.HIGHLANDS]: ["höjd", "ås", "utmark", "bergmark"],
-  [BIOME_KEYS.MOUNTAIN]: ["bergen", "ås", "kam", "höjder"],
-};
 
 const WORLD_ENDINGS = {
   shield: ["övärld", "rike", "skär"],
@@ -372,7 +362,7 @@ export function createNameGenerator(seed) {
     biomeRegionName(index, biome) {
       const rng = createRng(`${seed}::biome:${biome}:${index}`);
       const root = createRoot(profile, rng, 2, 9);
-      const suffix = rng.pick(BIOME_SUFFIXES[biome] ?? ["mark"]);
+      const suffix = rng.pick(getBiomeRegionSuffixesById(biome) ?? ["mark"]);
       return uniqueName(titleCase(joinNameParts(root, suffix)));
     },
   };

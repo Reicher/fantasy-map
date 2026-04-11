@@ -1,11 +1,10 @@
-import { BIOME_INFO } from "../../config.js";
 import {
   normalizeBiomeKey,
   getBiomeLayerColorRgb,
   buildSilhouetteTopEdge,
   sampleSilhouetteAtX,
   rgbToCss,
-} from "./journeyStyle.js?v=20260409o";
+} from "./journeyStyle.js?v=20260411a";
 
 // ---------------------------------------------------------------------------
 // Fixed offsets for parallel sampling lines (world-space units).

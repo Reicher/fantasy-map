@@ -2,11 +2,11 @@ import {
   DEFAULT_PARAMS,
   RENDER_HEIGHT,
   RENDER_WIDTH,
-} from "./config.js?v=20260410d";
+} from "./config.js?v=20260411a";
 import {
   generateWorld,
   normalizeParams,
-} from "./generator/worldGenerator.js?v=20260411a";
+} from "./generator/worldGenerator.js?v=20260411b";
 import {
   bindRangeLabels,
   getFormValues,
@@ -15,7 +15,7 @@ import {
   renderControlsFromSchema,
   setSeedValue,
   updateLabels,
-} from "./ui/controls.js?v=20260410a";
+} from "./ui/controls.js?v=20260411a";
 import {
   inferInitialMode,
   syncLabelButtons as applyLabelButtonState,
@@ -25,9 +25,9 @@ import {
 import { applyCanvasResolution } from "./ui/canvasResolution.js?v=20260403a";
 import { createPlayProfiler } from "./ui/playProfiler.js?v=20260403a";
 import { updateStats } from "./ui/statsPanel.js";
-import { createEditorSession } from "./ui/editorSession.js?v=20260411a";
+import { createEditorSession } from "./ui/editorSession.js?v=20260411b";
 import { clearHover } from "./ui/hoverPanel.js?v=20260408a";
-import { createPlaySession } from "./ui/playSession.js?v=20260411a";
+import { createPlaySession } from "./ui/playSession.js?v=20260411b";
 import {
   createTransitionController,
   waitForNextPaintIfActive,

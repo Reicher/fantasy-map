@@ -12,7 +12,7 @@ import { generateHydrology } from "./hydrology.js?v=20260407a";
 import { buildWorldNetwork } from "./network.js?v=20260410e";
 import { applyFeatureNames } from "./nameFeatures.js";
 import { buildRegions } from "./regions.js?v=20260402c";
-import { generateRoads } from "./roads/index.js?v=20260411a";
+import { generateRoads } from "./roads/index.js?v=20260411b";
 import { buildSurfaceGeometry } from "./surface.js?v=20260403b";
 import { generateTerrain } from "./terrain.js?v=20260401i";
 import { buildTravelGraph } from "./travelGraph.js?v=20260409b";

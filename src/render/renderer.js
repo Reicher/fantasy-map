@@ -11,7 +11,7 @@ import {
   collectForestRenderGlyphs,
   drawForestEntry,
 } from "./forestLayer.js?v=20260403o";
-import { drawLabels } from "./labelsLayer.js?v=20260402l";
+import { drawLabels } from "./labelsLayer.js?v=20260411a";
 import {
   collectMountainRenderGlyphs,
   drawMountainGlyph,

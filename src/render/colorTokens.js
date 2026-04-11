@@ -15,32 +15,6 @@ export const LABEL_COLORS = {
     fill: rgba([88, 78, 68], ALPHA.label),
     stroke: rgba([244, 235, 214], ALPHA.rich),
   },
-  biome: {
-    forest: {
-      fill: rgba([64, 79, 50], ALPHA.rich),
-      stroke: rgba([244, 238, 224], ALPHA.opaqueSoft),
-    },
-    rainforest: {
-      fill: rgba([48, 66, 38], ALPHA.label),
-      stroke: rgba([244, 238, 224], ALPHA.opaqueSoft),
-    },
-    desert: {
-      fill: rgba([124, 92, 50], ALPHA.rich),
-      stroke: rgba([244, 235, 214], ALPHA.rich),
-    },
-    tundra: {
-      fill: rgba([88, 90, 98], ALPHA.rich),
-      stroke: rgba([245, 241, 233], ALPHA.label),
-    },
-    highlands: {
-      fill: rgba([92, 69, 49], ALPHA.rich),
-      stroke: rgba([244, 235, 214], ALPHA.rich),
-    },
-    plains: {
-      fill: rgba([74, 58, 37], ALPHA.rich),
-      stroke: rgba([244, 235, 214], ALPHA.rich),
-    },
-  },
 };
 
 export const MOUNTAIN_COLORS = {

@@ -1,15 +1,5 @@
-import { BIOME_KEYS } from "../../config.js";
+import { getBiomeSettlementHabitabilityById } from "../../biomes/index.js";
 import { clamp, coordsOf, distance } from "../../utils.js";
-
-const BIOME_HABITABILITY = {
-  [BIOME_KEYS.PLAINS]: 1,
-  [BIOME_KEYS.FOREST]: 0.84,
-  [BIOME_KEYS.RAINFOREST]: 0.64,
-  [BIOME_KEYS.DESERT]: 0.16,
-  [BIOME_KEYS.TUNDRA]: 0.2,
-  [BIOME_KEYS.HIGHLANDS]: 0.48,
-  [BIOME_KEYS.MOUNTAIN]: 0.05,
-};
 
 export function buildSettlementCandidates({
   width,
@@ -39,7 +29,7 @@ export function buildSettlementCandidates({
       continue;
     }
 
-    const habitability = BIOME_HABITABILITY[biome[index]] ?? 0.4;
+    const habitability = getBiomeSettlementHabitabilityById(biome[index]) ?? 0.4;
     if (habitability > 0.35) {
       habitableArea += 1;
     }
