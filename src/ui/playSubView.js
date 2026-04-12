@@ -1,6 +1,7 @@
-import { describePlayHud } from "../game/playViewText.js?v=20260409f";
-import { isNodeDiscovered } from "../game/travel.js?v=20260411a";
+import { describePlayHud } from "../game/playViewText.js?v=20260412e";
+import { isNodeDiscovered } from "../game/travel.js?v=20260412f";
 import { getNodeTitle } from "../node/model.js";
+import { createInventoryGridController } from "./inventoryGrid.js?v=20260412d";
 import { setElementVisible } from "./viewState.js?v=20260403a";
 
 export function createPlaySubViewController({
@@ -12,17 +13,29 @@ export function createPlaySubViewController({
   let lastJourneyVisible = null;
   let lastBottomHudVisible = null;
   let lastLocationLine = null;
+  let lastCharacterHeartsSignature = null;
   let lastModeButtonLabel = null;
-  let lastCharacterPrimary = null;
-  let lastCharacterTime = null;
-  let lastCharacterTravel = null;
-  let lastInventorySignature = null;
   let lastJourneyEventDialogVisible = null;
   let lastJourneyEventDialogMessage = null;
+  let lastGameOverVisible = null;
+  let lastGameOverMessage = null;
   let activeTravelCueKey = null;
   let activeTravelTargetNodeId = null;
   let lastDestMarkerCanvasX = null;
   const shownArrivalCueKeys = new Set();
+  const inventoryGrid = createInventoryGridController({
+    root: refs.playInventoryList,
+    getInventory: () => state.playState?.inventory ?? null,
+    onInventoryChange: (nextInventory) => {
+      if (!state.playState) {
+        return;
+      }
+      state.playState = {
+        ...state.playState,
+        inventory: nextInventory,
+      };
+    },
+  });
 
   return {
     reset,
@@ -33,19 +46,20 @@ export function createPlaySubViewController({
     lastJourneyVisible = null;
     lastBottomHudVisible = null;
     lastLocationLine = null;
+    lastCharacterHeartsSignature = null;
     lastModeButtonLabel = null;
-    lastCharacterPrimary = null;
-    lastCharacterTime = null;
-    lastCharacterTravel = null;
-    lastInventorySignature = null;
     lastJourneyEventDialogVisible = null;
     lastJourneyEventDialogMessage = null;
+    lastGameOverVisible = null;
+    lastGameOverMessage = null;
     activeTravelCueKey = null;
     activeTravelTargetNodeId = null;
     lastDestMarkerCanvasX = null;
     shownArrivalCueKeys.clear();
     hideArrivalCue();
     hideJourneyEventDialog();
+    hideGameOverDialog();
+    inventoryGrid.reset();
   }
 
   function update(world, playState) {
@@ -76,6 +90,7 @@ export function createPlaySubViewController({
     if (!isPlay || !world || !playState) {
       hideArrivalCue();
       hideJourneyEventDialog();
+      hideGameOverDialog();
       resetTravelCueTracking();
       return;
     }
@@ -85,26 +100,20 @@ export function createPlaySubViewController({
       refs.playLocationLine.textContent = hud.locationLine;
       lastLocationLine = hud.locationLine;
     }
-    lastCharacterPrimary = syncLineText(
-      refs.playCharacterPrimaryLine,
-      buildCharacterPrimaryLine(hud),
-      lastCharacterPrimary,
+    lastCharacterHeartsSignature = syncCharacterHearts(
+      refs.playCharacterHearts,
+      playState,
+      lastCharacterHeartsSignature,
     );
-    lastCharacterTime = syncLineText(
-      refs.playCharacterTimeLine,
-      `Tid på dygnet: ${formatTimeOfDay(playState.timeOfDayHours)}`,
-      lastCharacterTime,
-    );
-    lastCharacterTravel = syncLineText(
-      refs.playCharacterTravelLine,
-      describeTravelLine(world, playState),
-      lastCharacterTravel,
-    );
-    lastInventorySignature = syncInventoryList(
-      refs.playInventoryList,
-      buildInventoryLines(world, playState, hud),
-      lastInventorySignature,
-    );
+    inventoryGrid.render();
+    syncGameOverDialog(playState, isPlay);
+
+    if (playState.gameOver) {
+      hideArrivalCue();
+      hideJourneyEventDialog();
+      resetTravelCueTracking();
+      return;
+    }
 
     if (!isJourney) {
       hideArrivalCue();
@@ -270,6 +279,41 @@ export function createPlaySubViewController({
     lastJourneyEventDialogVisible = false;
     lastJourneyEventDialogMessage = null;
   }
+
+  function syncGameOverDialog(playState, isPlay) {
+    const dialog = refs.playGameOverDialog;
+    const body = refs.playGameOverBody;
+    if (!dialog || !body) {
+      return;
+    }
+
+    const gameOver = playState?.gameOver ?? null;
+    const shouldShow = isPlay && Boolean(gameOver);
+    if (lastGameOverVisible !== shouldShow) {
+      setElementVisible(dialog, shouldShow, "grid");
+      lastGameOverVisible = shouldShow;
+    }
+
+    if (!shouldShow) {
+      lastGameOverMessage = null;
+      return;
+    }
+
+    const message = String(gameOver.message ?? "Du svalt ihjäl.");
+    if (message !== lastGameOverMessage) {
+      body.textContent = message;
+      lastGameOverMessage = message;
+    }
+  }
+
+  function hideGameOverDialog() {
+    if (!refs.playGameOverDialog) {
+      return;
+    }
+    setElementVisible(refs.playGameOverDialog, false, "grid");
+    lastGameOverVisible = false;
+    lastGameOverMessage = null;
+  }
 }
 
 function syncPlayLegendButtons(playMapOptions, renderOptions, refs) {
@@ -323,83 +367,27 @@ function setToggleState(element, active) {
   element.dataset.active = active ? "true" : "false";
 }
 
-function syncLineText(element, nextText, lastText) {
+function syncCharacterHearts(element, playState, lastSignature) {
   if (!element) {
-    return lastText;
-  }
-  const normalizedText = String(nextText ?? "");
-  if (normalizedText !== lastText) {
-    element.textContent = normalizedText;
-    return normalizedText;
-  }
-  return lastText;
-}
-
-function describeTravelLine(world, playState) {
-  const travel = playState?.travel;
-  if (!travel) {
-    return "Status: Vila";
-  }
-  const nodes = world?.features?.nodes ?? [];
-  const targetNode = nodes[travel.targetNodeId];
-  const targetName = getVisibleNodeTitle(playState, targetNode, "okänd plats");
-  const total = Math.max(0.001, Number(travel.totalLength ?? 0));
-  const progress = Math.max(0, Number(travel.progress ?? 0));
-  const percent = Math.max(0, Math.min(100, Math.round((progress / total) * 100)));
-  return `Status: På väg mot ${targetName} (${percent}%)`;
-}
-
-function buildInventoryLines(world, playState, hud) {
-  const travel = playState?.travel;
-  if (!travel) {
-    return [
-      "Inga föremål registrerade ännu.",
-      "Besök platser för att hitta utrustning.",
-    ];
-  }
-  const nodes = world?.features?.nodes ?? [];
-  const targetNode = nodes[travel.targetNodeId];
-  const targetTitle = getVisibleNodeTitle(playState, targetNode, "okänd plats");
-  return [
-    `Resmål: ${targetTitle}`,
-    `Område: ${hud.regionName || "Mellan regioner"}`,
-    "Packning: Basutrustning",
-  ];
-}
-
-function syncInventoryList(listElement, lines, lastSignature) {
-  if (!listElement) {
     return lastSignature;
   }
-  const normalizedLines = Array.isArray(lines) ? lines : [];
-  const signature = normalizedLines.join("|");
+  const maxHealth = normalizeHealth(playState?.maxHealth, 3);
+  const health = Math.min(maxHealth, normalizeHealth(playState?.health, maxHealth));
+  const signature = `${health}/${maxHealth}`;
   if (signature === lastSignature) {
     return lastSignature;
   }
-  listElement.innerHTML = "";
-  for (const line of normalizedLines) {
-    const item = document.createElement("li");
-    item.textContent = line;
-    listElement.appendChild(item);
+  element.innerHTML = "";
+  element.setAttribute("aria-label", `Hälsa: ${health} av ${maxHealth}`);
+  for (let index = 0; index < maxHealth; index += 1) {
+    const heart = document.createElement("span");
+    heart.className = "play-character-heart";
+    heart.dataset.filled = index < health ? "true" : "false";
+    heart.setAttribute("aria-hidden", "true");
+    heart.textContent = "♥";
+    element.appendChild(heart);
   }
   return signature;
-}
-
-function formatTimeOfDay(hours) {
-  const wrapped = Number.isFinite(hours) ? ((hours % 24) + 24) % 24 : 0;
-  const wholeHour = Math.floor(wrapped);
-  const minutes = Math.floor((wrapped - wholeHour) * 60);
-  return `${String(wholeHour).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
-}
-
-function buildCharacterPrimaryLine(hud) {
-  if (hud?.nodeTitle) {
-    return `Plats: ${hud.nodeTitle}`;
-  }
-  if (hud?.regionName) {
-    return `Område: ${hud.regionName}`;
-  }
-  return "Plats: Mellan regioner";
 }
 
 function getVisibleNodeTitle(playState, node, fallbackTitle = "") {
@@ -421,4 +409,12 @@ function buildTravelCueKey(travel) {
     travel.targetNodeId ?? "-",
     (travel.totalLength ?? 0).toFixed(4),
   ].join(":");
+}
+
+function normalizeHealth(value, fallback) {
+  const fallbackValue = Math.max(1, Math.floor(fallback) || 1);
+  if (!Number.isFinite(value)) {
+    return fallbackValue;
+  }
+  return Math.max(0, Math.floor(value));
 }

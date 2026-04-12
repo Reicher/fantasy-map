@@ -1,8 +1,11 @@
 import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
-import { createViewport } from "../render/renderer.js?v=20260411c";
+import { createViewport } from "../render/renderer.js?v=20260412c";
 import { findPlayableNodeAtWorldPoint } from "../game/playQueries.js?v=20260409e";
-import { isNodeDiscovered } from "../game/travel.js?v=20260411a";
-import { advanceTimeOfDayHours } from "../game/timeOfDay.js";
+import {
+  applyHourlyHunger,
+  isNodeDiscovered,
+} from "../game/travel.js?v=20260412f";
+import { advanceTimeOfDayHours, getElapsedTimeOfDayHours } from "../game/timeOfDay.js";
 import { getNodeTitle } from "../node/model.js";
 
 export function createPlayController({
@@ -26,6 +29,7 @@ export function createPlayController({
       state.currentMode !== "play" ||
       !state.currentWorld ||
       !state.playState ||
+      state.playState.gameOver ||
       state.playState.viewMode !== "map"
     ) {
       return;
@@ -117,6 +121,7 @@ export function createPlayController({
       state.currentMode !== "play" ||
       event.button !== 0 ||
       !state.playState ||
+      state.playState.gameOver ||
       state.playState.viewMode !== "map" ||
       state.playState.travel ||
       hasBlockingJourneyEvent(state.playState)
@@ -142,6 +147,7 @@ export function createPlayController({
       state.currentMode !== "play" ||
       event.button !== 0 ||
       !state.playState ||
+      state.playState.gameOver ||
       state.playState.viewMode !== "map" ||
       state.playState.travel ||
       hasBlockingJourneyEvent(state.playState)
@@ -221,6 +227,7 @@ export function createPlayController({
   function ensureAnimation() {
     const shouldAnimate =
       state.currentMode === "play" &&
+      !state.playState?.gameOver &&
       (state.playState?.travel || state.playState?.viewMode === "journey");
     if (state.playAnimationFrame != null || !shouldAnimate) {
       return;
@@ -231,6 +238,7 @@ export function createPlayController({
       state.playAnimationFrame = null;
       const shouldKeepAnimating =
         state.currentMode === "play" &&
+        !state.playState?.gameOver &&
         (state.playState?.travel || state.playState?.viewMode === "journey");
       if (!shouldKeepAnimating) {
         return;
@@ -244,16 +252,19 @@ export function createPlayController({
       const isTraveling = Boolean(state.playState?.travel);
 
       if (isTraveling) {
+        const elapsedTimeOfDayHours = getElapsedTimeOfDayHours(delta);
+        const nextTimeOfDayHours = advanceTimeOfDayHours(
+          state.playState?.timeOfDayHours,
+          delta,
+        );
         state.playState = {
           ...state.playState,
-          timeOfDayHours: advanceTimeOfDayHours(
-            state.playState?.timeOfDayHours,
-            delta,
-          ),
+          timeOfDayHours: nextTimeOfDayHours,
         };
+        state.playState = applyHourlyHunger(state.playState, elapsedTimeOfDayHours);
       }
 
-      if (state.playState?.travel) {
+      if (state.playState?.travel && !state.playState?.gameOver) {
         state.playState = profiler.measure("advance-travel", () =>
           advanceTravel(state.playState, state.currentWorld, delta),
         );
@@ -272,7 +283,8 @@ export function createPlayController({
         lastRenderedAt = timestamp;
       }
 
-      if (state.playState.travel || isJourney) {
+      const isGameOver = Boolean(state.playState?.gameOver);
+      if (!isGameOver && (state.playState.travel || isJourney)) {
         state.playAnimationFrame = requestAnimationFrame(step);
       } else if (!isJourney) {
         renderPlayWorld();

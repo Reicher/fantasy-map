@@ -25,15 +25,21 @@ import {
 import { applyCanvasResolution } from "./ui/canvasResolution.js?v=20260403a";
 import { createPlayProfiler } from "./ui/playProfiler.js?v=20260403a";
 import { updateStats } from "./ui/statsPanel.js";
-import { createEditorSession } from "./ui/editorSession.js?v=20260411b";
+import { createEditorSession } from "./ui/editorSession.js?v=20260412c";
 import { clearHover } from "./ui/hoverPanel.js?v=20260408a";
-import { createPlaySession } from "./ui/playSession.js?v=20260411e";
+import { createPlaySession } from "./ui/playSession.js?v=20260412h";
+import { BUILD_META, formatBuildLabel } from "./buildMeta.js";
 import {
   createTransitionController,
   waitForNextPaintIfActive,
 } from "./ui/viewState.js?v=20260403a";
 
 const EDITOR_SETTINGS_STORAGE_KEY = "fantasy-map.editor.settings.v1";
+const DEFAULT_PLAY_HUD_PANELS = Object.freeze({
+  character: false,
+  inventory: false,
+  settings: false,
+});
 
 const refs = {
   editorShell: document.querySelector("#editor-shell"),
@@ -60,9 +66,7 @@ const refs = {
     "#play-panel-toggle-settings",
   ),
   playLocationLine: document.querySelector("#play-location-line"),
-  playCharacterPrimaryLine: document.querySelector("#play-character-primary"),
-  playCharacterTimeLine: document.querySelector("#play-character-time"),
-  playCharacterTravelLine: document.querySelector("#play-character-travel"),
+  playCharacterHearts: document.querySelector("#play-character-hearts"),
   playInventoryList: document.querySelector("#play-inventory-list"),
   playSwitchModeButton: document.querySelector("#play-switch-mode"),
   playSettingsToggleBiomeLabelsButton: document.querySelector(
@@ -82,6 +86,10 @@ const refs = {
   playJourneyEventDialog: document.querySelector("#play-journey-event-dialog"),
   playJourneyEventBody: document.querySelector("#play-journey-event-body"),
   playJourneyEventOkButton: document.querySelector("#play-journey-event-ok"),
+  playGameOverDialog: document.querySelector("#play-game-over-dialog"),
+  playGameOverBody: document.querySelector("#play-game-over-body"),
+  playGameOverOkButton: document.querySelector("#play-game-over-ok"),
+  buildVersionBadge: document.querySelector("#build-version-badge"),
   tooltip: document.querySelector("#tooltip"),
   statsContainer: document.querySelector("#stats"),
   toggleBiomeLabelsButton: document.querySelector("#toggle-biome-labels"),
@@ -99,6 +107,12 @@ const refs = {
   saveImageButton: document.querySelector("#save-image"),
   enterPlayButtons: Array.from(document.querySelectorAll("[data-enter-play]")),
 };
+
+if (refs.buildVersionBadge) {
+  const buildLabel = formatBuildLabel(BUILD_META);
+  refs.buildVersionBadge.textContent = buildLabel;
+  refs.buildVersionBadge.title = buildLabel;
+}
 
 const initialMode = inferInitialMode();
 
@@ -137,11 +151,7 @@ const state = {
   playAnimationFrame: null,
   lastTravelTick: 0,
   playProfiler: createPlayProfiler(),
-  playHudPanels: {
-    character: false,
-    inventory: false,
-    settings: false,
-  },
+  playHudPanels: createDefaultPlayHudPanels(),
 };
 const generateTransition = createTransitionController();
 
@@ -285,6 +295,12 @@ if (refs.playJourneyEventOkButton) {
   });
 }
 
+if (refs.playGameOverOkButton) {
+  refs.playGameOverOkButton.addEventListener("click", () => {
+    restartPlayAfterGameOver();
+  });
+}
+
 for (const button of [refs.zoom1Button, refs.zoom2Button, refs.zoom3Button]) {
   if (!button) continue;
   button.addEventListener("click", () => {
@@ -346,6 +362,10 @@ window.addEventListener("resize", () => {
 
 window.addEventListener("keydown", (event) => {
   if (state.currentMode !== "play") {
+    return;
+  }
+
+  if (state.playState?.gameOver) {
     return;
   }
 
@@ -474,6 +494,25 @@ function acknowledgePendingJourneyEvent() {
     pendingJourneyEvent: null,
   };
   playSession.updatePlaySubView();
+}
+
+function restartPlayAfterGameOver() {
+  if (!state.currentWorld || !state.playState?.gameOver) {
+    return;
+  }
+
+  playSession.stopAnimation();
+  playSession.resetJourney();
+  state.playHudPanels = createDefaultPlayHudPanels();
+  state.playState = playSession.createInitialPlayState(state.currentWorld);
+  clearHover(refs.playTooltip);
+  playSession.renderPlayWorld();
+}
+
+function createDefaultPlayHudPanels() {
+  return {
+    ...DEFAULT_PLAY_HUD_PANELS,
+  };
 }
 
 function syncViewUi() {

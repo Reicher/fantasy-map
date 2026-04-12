@@ -3,8 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "version:stamp": "node scripts/stamp-build-meta.mjs",
+    "prestart": "npm run version:stamp",
     "start": "python3 -m http.server 4173",
+    "pretest": "npm run version:stamp",
     "test": "node scripts/check-determinism.mjs",
+    "preexamples": "npm run version:stamp",
     "examples": "node scripts/example-worlds.mjs"
   }
 }

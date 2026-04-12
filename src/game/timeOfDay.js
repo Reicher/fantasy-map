@@ -16,8 +16,15 @@ export function advanceTimeOfDayHours(
   hoursPerSecond = MOVING_HOURS_PER_REAL_SECOND,
 ) {
   const normalizedCurrent = normalizeTimeOfDayHours(currentHours);
+  const elapsedHours = getElapsedTimeOfDayHours(deltaMs, hoursPerSecond);
+  return normalizeTimeOfDayHours(normalizedCurrent + elapsedHours);
+}
+
+export function getElapsedTimeOfDayHours(
+  deltaMs,
+  hoursPerSecond = MOVING_HOURS_PER_REAL_SECOND,
+) {
   const safeDeltaMs = Math.max(0, Number(deltaMs) || 0);
   const safeHoursPerSecond = Math.max(0, Number(hoursPerSecond) || 0);
-  const elapsedHours = (safeDeltaMs / 1000) * safeHoursPerSecond;
-  return normalizeTimeOfDayHours(normalizedCurrent + elapsedHours);
+  return (safeDeltaMs / 1000) * safeHoursPerSecond;
 }

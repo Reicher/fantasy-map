@@ -1,9 +1,14 @@
 import { getBiomeDefinitionById } from "../biomes/index.js";
+import {
+  createInitialInventory,
+  consumeInventoryItemsByType,
+} from "./inventory.js?v=20260412d";
 import { dedupePoints } from "../utils.js";
 import { regionAtCell, regionAtPosition } from "./playQueries.js";
 import { DEFAULT_TIME_OF_DAY_HOURS } from "./timeOfDay.js";
 
 const TRAVEL_SPEED = 3.75;
+const DEFAULT_MAX_HEALTH = 3;
 const TRAVEL_BIOME_BANDS = {
   near: 0,
   mid: 5,
@@ -40,10 +45,77 @@ export function createPlayState(world) {
     pressedNodeId: null,
     travel: null,
     pendingJourneyEvent: null,
+    inventory: createInitialInventory(),
+    hungerElapsedHours: 0,
+    maxHealth: DEFAULT_MAX_HEALTH,
+    health: DEFAULT_MAX_HEALTH,
+    gameOver: null,
     discoveredCells,
     discoveredNodeIds,
     fogDirty: true,
   };
+}
+
+export function applyHourlyHunger(playState, elapsedHours) {
+  if (!playState || playState.gameOver) {
+    return playState;
+  }
+
+  const safeElapsedHours = Number.isFinite(elapsedHours) ? Math.max(0, elapsedHours) : 0;
+  if (safeElapsedHours <= 0) {
+    return playState;
+  }
+
+  const previousElapsed = Number.isFinite(playState.hungerElapsedHours)
+    ? Math.max(0, playState.hungerElapsedHours)
+    : 0;
+  const nextElapsed = previousElapsed + safeElapsedHours;
+  const mealsNeeded = Math.max(
+    0,
+    Math.floor(nextElapsed + 1e-9) - Math.floor(previousElapsed + 1e-9),
+  );
+
+  if (mealsNeeded === 0) {
+    return {
+      ...playState,
+      hungerElapsedHours: nextElapsed,
+    };
+  }
+
+  const { inventory, missing } = consumeInventoryItemsByType(
+    playState.inventory,
+    "meat",
+    mealsNeeded,
+  );
+  const maxHealth = normalizeHealthValue(
+    playState.maxHealth,
+    DEFAULT_MAX_HEALTH,
+  );
+  const currentHealth = normalizeHealthValue(playState.health, maxHealth);
+  const nextHealth = Math.max(0, currentHealth - missing);
+
+  const nextState = {
+    ...playState,
+    inventory,
+    hungerElapsedHours: nextElapsed,
+    maxHealth,
+    health: nextHealth,
+  };
+  if (nextHealth <= 0) {
+    return {
+      ...nextState,
+      travel: null,
+      pendingJourneyEvent: null,
+      hoveredNodeId: null,
+      pressedNodeId: null,
+      gameOver: {
+        reason: "starved",
+        message: "Du svalt ihjäl.",
+      },
+    };
+  }
+
+  return nextState;
 }
 
 export function getValidTargetIds(playState) {
@@ -280,6 +352,13 @@ function markNodeDiscovered(discoveredNodeIds, nodeId) {
     return;
   }
   discoveredNodeIds[nodeId] = 1;
+}
+
+function normalizeHealthValue(value, fallback) {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(0, Math.floor(value));
 }
 
 function collectDiscoveredNodeIdSet(playState) {

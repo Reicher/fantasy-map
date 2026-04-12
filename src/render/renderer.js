@@ -51,7 +51,7 @@ export function renderPlayWorldStatic(canvas, world, options = {}) {
     showFrame: false,
     showPlayerMarker: false,
     showNodes: false,
-    showRoads: false,
+    showRoads: true,
     showOceanWaves: true,
     showLakeWaves: true,
     showBiomeBorders: true,
@@ -64,7 +64,7 @@ export function renderPlayWorldStatic(canvas, world, options = {}) {
 export function renderPlayWorldDynamic(canvas, world, options = {}) {
   return renderDynamicOverlays(canvas, world, options, {
     showPlayerMarker: true,
-    showRoads: true,
+    showRoads: false,
     showNodes: true,
     showLabels: true,
     showFogOfWar: true,
@@ -140,6 +140,9 @@ function renderScene(canvas, world, options = {}, scene = {}) {
     drawShorelines(ctx, geometry, viewport);
   }
   drawRivers(ctx, geometry, viewport);
+  if (showRoads) {
+    drawRoads(ctx, geometry, viewport, options.roadOverlay);
+  }
   let mountainGlyphHits = [];
   if (showEnvironmentGlyphs) {
     const forestEntries = collectForestRenderGlyphs(
@@ -175,9 +178,6 @@ function renderScene(canvas, world, options = {}, scene = {}) {
         drawMountainGlyph(ctx, item.glyph);
       }
     }
-  }
-  if (showRoads) {
-    drawRoads(ctx, geometry, viewport, options.roadOverlay);
   }
   if (showPlayerMarker) {
     drawPlayerMarker(ctx, options.playerStart ?? null, viewport);

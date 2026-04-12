@@ -6,18 +6,18 @@ import {
   getVisibleNodeIds,
   getValidTargetIds,
   sampleTravelBiomeBandPoints,
-} from "../game/travel.js?v=20260411a";
+} from "../game/travel.js?v=20260412f";
 import { createJourneyScene } from "../game/journeyScene.js?v=20260411c";
 import {
   renderPlayWorldDynamic,
   renderPlayWorldStatic,
-} from "../render/renderer.js?v=20260411c";
+} from "../render/renderer.js?v=20260412c";
 import { inspectWorldAt } from "../inspector.js?v=20260408b";
 import { createPlayCamera as buildPlayCamera } from "./cameraState.js?v=20260407a";
 import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260408a";
 import { createMapAtlasCacheManager } from "./mapAtlasCache.js?v=20260408h";
-import { createPlayController } from "./playController.js?v=20260409e";
-import { createPlaySubViewController } from "./playSubView.js?v=20260411i";
+import { createPlayController } from "./playController.js?v=20260412e";
+import { createPlaySubViewController } from "./playSubView.js?v=20260412f";
 import {
   createTransitionController,
   waitForNextPaintIfActive,
@@ -31,7 +31,10 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     getCameraState: createPlayCamera,
     renderStaticScene: renderPlayWorldStatic,
     getStaticKey(renderOptions = {}) {
-      return `snow:${renderOptions.showSnow ? 1 : 0}`;
+      return [
+        `snow:${renderOptions.showSnow ? 1 : 0}`,
+        `roads:${buildRoadOverlaySignature(renderOptions.roadOverlay)}`,
+      ].join("|");
     },
   });
 
@@ -287,6 +290,36 @@ function getVisibleRoads(playState, visibleNodeIds) {
   }
 
   return roads;
+}
+
+function buildRoadOverlaySignature(roadOverlay = {}) {
+  const roads = Array.isArray(roadOverlay?.roads) ? roadOverlay.roads : [];
+  if (roads.length === 0) {
+    return "none";
+  }
+
+  return roads
+    .map((road, index) => {
+      const points = Array.isArray(road?.points) ? road.points : [];
+      const first = points[0];
+      const last = points[points.length - 1];
+      const firstKey =
+        first && Number.isFinite(first.x) && Number.isFinite(first.y)
+          ? `${first.x.toFixed(1)},${first.y.toFixed(1)}`
+          : "-";
+      const lastKey =
+        last && Number.isFinite(last.x) && Number.isFinite(last.y)
+          ? `${last.x.toFixed(1)},${last.y.toFixed(1)}`
+          : "-";
+      return [
+        road?.id ?? index,
+        road?.type ?? "road",
+        points.length,
+        firstKey,
+        lastKey,
+      ].join(":");
+    })
+    .join(";");
 }
 
 async function requestLandscapeOrientationLock() {

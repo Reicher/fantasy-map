@@ -24,7 +24,7 @@
       rel="icon"
       href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="%23e6d7b6"/><path d="M6 22 L13 10 L20 22 M12 17 L16 12 L23 22" fill="none" stroke="%23543f27" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
     />
-    <link rel="stylesheet" href="./styles.css?v=20260411f" />
+    <link rel="stylesheet" href="./styles.css?v=20260412e" />
   </head>
   <body>
     <div id="editor-shell" class="app-shell">
@@ -176,6 +176,23 @@
             OK
           </button>
         </section>
+        <section
+          id="play-game-over-dialog"
+          class="play-game-over-dialog"
+          aria-live="assertive"
+          hidden
+        >
+          <p id="play-game-over-body" class="play-game-over-body">
+            Du svalt ihjäl.
+          </p>
+          <button
+            id="play-game-over-ok"
+            type="button"
+            class="ghost-button play-game-over-ok"
+          >
+            OK
+          </button>
+        </section>
         <canvas
           id="play-canvas"
           width="1200"
@@ -196,31 +213,33 @@
               class="play-hud-panel play-hud-panel--character"
               hidden
             >
-              <h3 class="play-hud-panel-title">Character</h3>
-              <p id="play-character-primary" class="play-hud-line"></p>
-              <p
-                id="play-character-time"
-                class="play-hud-line play-hud-line--soft"
-              ></p>
-              <p
-                id="play-character-travel"
-                class="play-hud-line play-hud-line--soft"
-              ></p>
+              <h3 class="play-hud-panel-title">Karaktär</h3>
+              <div
+                id="play-character-hearts"
+                class="play-character-hearts"
+                role="img"
+                aria-label="Hälsa: 3 av 3"
+              ></div>
             </section>
             <section
               id="play-panel-inventory"
               class="play-hud-panel play-hud-panel--inventory"
               hidden
             >
-              <h3 class="play-hud-panel-title">Inventory</h3>
-              <ul id="play-inventory-list" class="play-inventory-list"></ul>
+              <h3 class="play-hud-panel-title">Inventarie</h3>
+              <div
+                id="play-inventory-list"
+                class="play-inventory-grid"
+                role="grid"
+                aria-label="Inventarie"
+              ></div>
             </section>
             <section
               id="play-panel-settings"
               class="play-hud-panel play-hud-panel--settings"
               hidden
             >
-              <h3 class="play-hud-panel-title">Settings</h3>
+              <h3 class="play-hud-panel-title">Inställningar</h3>
               <div class="play-settings-buttons">
                 <button
                   id="play-settings-toggle-biome-labels"
@@ -269,27 +288,29 @@
               type="button"
               class="ghost-button play-main-panel-button"
             >
-              Character
+              Karaktär
             </button>
             <button
               id="play-panel-toggle-inventory"
               type="button"
               class="ghost-button play-main-panel-button"
             >
-              Inventory
+              Inventarie
             </button>
             <button
               id="play-panel-toggle-settings"
               type="button"
               class="ghost-button play-main-panel-button"
             >
-              Settings
+              Inställningar
             </button>
           </div>
         </div>
       </div>
     </section>
 
-    <script type="module" src="./src/app.js?v=20260411j"></script>
+    <div id="build-version-badge" class="build-version-badge" aria-live="polite"></div>
+
+    <script type="module" src="./src/app.js?v=20260412j"></script>
   </body>
 </html>

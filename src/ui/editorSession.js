@@ -9,9 +9,9 @@ import {
 } from "./cameraState.js?v=20260407a";
 import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260408a";
 import { attachEditorController } from "./editorController.js?v=20260409a";
-import { renderEditorWorld } from "../render/renderer.js?v=20260411c";
+import { renderEditorWorld } from "../render/renderer.js?v=20260412c";
 import { createMapAtlasCacheManager } from "./mapAtlasCache.js?v=20260408h";
-import { createPlayState } from "../game/travel.js?v=20260411a";
+import { createPlayState } from "../game/travel.js?v=20260412f";
 import { findNodeAtWorldPoint } from "../game/playQueries.js?v=20260409e";
 
 export function createEditorSession({ refs, state, syncViewUi }) {
