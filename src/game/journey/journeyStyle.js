@@ -15,6 +15,19 @@ import { drawNodeMarkerGlyph } from "../../render/nodeGlyph.js?v=20260411a";
 
 const SNOW_GROUND_RGB = WORLD_RGB.snow;
 const JOURNEY_SIGNPOST_IMAGE = createJourneySignpostImage();
+const JOURNEY_PLAYER_ANIMATION_SRC = new URL(
+  "../../assets/journey/horse.png",
+  import.meta.url,
+).href;
+const JOURNEY_PLAYER_ANIMATION_IMAGE = createJourneyPlayerAnimationImage();
+const JOURNEY_PLAYER_SPRITESHEET_FRAME_COUNT = 8;
+const JOURNEY_PLAYER_ANIMATION_FRAME_MS = 90;
+const JOURNEY_PLAYER_SPRITESHEET = {
+  frames: null,
+  groundAnchorFrac: 1,
+};
+const JOURNEY_PLAYER_VISUAL_HEIGHT_PX = 112;
+const JOURNEY_PLAYER_VERTICAL_OFFSET_PX = 6;
 const JOURNEY_SIGNPOST_MIN_HEIGHT_PX = 104;
 const JOURNEY_SIGNPOST_VERTICAL_OFFSET_PX = 18;
 const JOURNEY_NODE_MIN_HEIGHT_BY_MARKER = {
@@ -474,6 +487,87 @@ function createJourneySignpostImage() {
   return image;
 }
 
+function createJourneyPlayerAnimationImage() {
+  if (typeof Image !== "function") return null;
+  const image = new Image();
+  image.decoding = "async";
+  image.addEventListener("load", () => {
+    JOURNEY_PLAYER_SPRITESHEET.frames = null;
+    JOURNEY_PLAYER_SPRITESHEET.groundAnchorFrac = 1;
+    getJourneyPlayerSpritesheetFrames();
+  });
+  image.src = JOURNEY_PLAYER_ANIMATION_SRC;
+  return image;
+}
+
+function getJourneyPlayerSpritesheetFrames() {
+  if (JOURNEY_PLAYER_SPRITESHEET.frames?.length) {
+    return JOURNEY_PLAYER_SPRITESHEET.frames;
+  }
+  const image = JOURNEY_PLAYER_ANIMATION_IMAGE;
+  if (
+    !image ||
+    !image.complete ||
+    image.naturalWidth <= 0 ||
+    image.naturalHeight <= 0 ||
+    typeof document === "undefined"
+  ) {
+    return null;
+  }
+
+  const frames = buildJourneyPlayerFramesFromSpritesheet(
+    image,
+    JOURNEY_PLAYER_SPRITESHEET_FRAME_COUNT,
+  );
+  if (!frames?.length) {
+    return null;
+  }
+
+  JOURNEY_PLAYER_SPRITESHEET.frames = frames;
+  updatePlayerGroundAnchorFromCanvas(frames[0]);
+  return frames;
+}
+
+function buildJourneyPlayerFramesFromSpritesheet(sheetImage, frameCount) {
+  if (typeof document === "undefined") return null;
+  const sourceW = sheetImage.naturalWidth;
+  const sourceH = sheetImage.naturalHeight;
+  const safeFrameCount = Math.max(1, Math.floor(frameCount));
+  if (sourceW <= 0 || sourceH <= 0) return null;
+
+  const baseFrameW = Math.floor(sourceW / safeFrameCount);
+  if (baseFrameW <= 0) return null;
+
+  const frames = [];
+  for (let frameIndex = 0; frameIndex < safeFrameCount; frameIndex += 1) {
+    const sx = frameIndex * baseFrameW;
+    const sw =
+      frameIndex === safeFrameCount - 1
+        ? Math.max(1, sourceW - sx)
+        : baseFrameW;
+    if (sw <= 0) continue;
+    const canvas = document.createElement("canvas");
+    canvas.width = sw;
+    canvas.height = sourceH;
+    const frameCtx = canvas.getContext("2d");
+    if (!frameCtx) continue;
+    frameCtx.drawImage(sheetImage, sx, 0, sw, sourceH, 0, 0, sw, sourceH);
+    frames.push(canvas);
+  }
+  return frames.length ? frames : null;
+}
+
+function getJourneyPlayerMovingFrame(nowMs) {
+  const frames = getJourneyPlayerSpritesheetFrames();
+  if (!frames?.length) {
+    return null;
+  }
+  const frameIndex =
+    Math.floor(Math.max(0, nowMs) / JOURNEY_PLAYER_ANIMATION_FRAME_MS) %
+    frames.length;
+  return frames[frameIndex] ?? frames[0];
+}
+
 function createJourneySpritesheet(src) {
   if (typeof Image !== "function") return null;
   const image = new Image();
@@ -801,11 +895,65 @@ function resolveJourneyNodeVariantIndex(marker, variantSeed, variantCount) {
 }
 
 // ---------------------------------------------------------------------------
-// Player figure (canvas-drawn silhouette walking figure)
+// Player figure
 // ---------------------------------------------------------------------------
 
-export function drawPlayerFigure(ctx, cx, groundY, frameIndex) {
-  const alt = (frameIndex ?? 0) % 2 === 1;
+export function drawPlayerFigure(ctx, cx, groundY, isMoving = false) {
+  const frames = getJourneyPlayerSpritesheetFrames();
+  const idleFrame = frames?.[0] ?? null;
+  const sprite = isMoving
+    ? getJourneyPlayerMovingFrame(performance.now()) ?? idleFrame
+    : idleFrame;
+  if (sprite) {
+    const sourceW = Math.max(1, sprite.naturalWidth ?? sprite.width ?? 1);
+    const sourceH = Math.max(1, sprite.naturalHeight ?? sprite.height ?? 1);
+    const targetHeight = JOURNEY_PLAYER_VISUAL_HEIGHT_PX;
+    const targetWidth = targetHeight * (sourceW / sourceH);
+    const groundedY =
+      (Number.isFinite(groundY) ? groundY : 0) - JOURNEY_PLAYER_VERTICAL_OFFSET_PX;
+    const groundAnchorFrac = clamp(
+      Number(JOURNEY_PLAYER_SPRITESHEET.groundAnchorFrac),
+      0.55,
+      1,
+      1,
+    );
+    const drawLeft = Math.round(cx - targetWidth * 0.5);
+    const drawTop = Math.round(groundedY - targetHeight * groundAnchorFrac);
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(
+      sprite,
+      drawLeft,
+      drawTop,
+      Math.round(targetWidth),
+      Math.round(targetHeight),
+    );
+    ctx.restore();
+    return;
+  }
+
+  drawFallbackPlayerFigure(ctx, cx, groundY, isMoving);
+}
+
+function updatePlayerGroundAnchorFromCanvas(canvas) {
+  if (!canvas || typeof canvas.getContext !== "function") return;
+  const frameCtx = canvas.getContext("2d");
+  if (!frameCtx) return;
+  try {
+    const imageData = frameCtx.getImageData(0, 0, canvas.width, canvas.height);
+    JOURNEY_PLAYER_SPRITESHEET.groundAnchorFrac = computeSpriteGroundAnchorFrac(
+      imageData,
+      canvas.height,
+    );
+  } catch {
+    JOURNEY_PLAYER_SPRITESHEET.groundAnchorFrac = 1;
+  }
+}
+
+function drawFallbackPlayerFigure(ctx, cx, groundY, isMoving = false) {
+  const alt = isMoving && Math.floor(performance.now() / 220) % 2 === 1;
   ctx.save();
   ctx.fillStyle = "#16110b";
 

@@ -4,7 +4,7 @@ import {
   buildSilhouetteTopEdge,
   sampleSilhouetteAtX,
   rgbToCss,
-} from "./journeyStyle.js?v=20260411a";
+} from "./journeyStyle.js?v=20260412d";
 
 // ---------------------------------------------------------------------------
 // Fixed offsets for parallel sampling lines (world-space units).
@@ -25,6 +25,11 @@ const PLAYER_X_FRAC = 0.22;
 
 // Transition blend zone in pixels
 const BLEND_ZONE_PX = 48;
+const WATER_BIOME_KEYS = new Set(["ocean", "lake"]);
+const WATER_SHORE_TAPER_PX_BY_LAYER = Object.freeze({
+  mid: 34,
+  far: 46,
+});
 const TREE_BLOCKED_BIOMES = new Set(["ocean", "lake"]);
 const TREE_ALLOWED_BIOMES = new Set([
   "forest",
@@ -612,6 +617,8 @@ function appendLayerSegs(target, pixelSegs, layerDepth, speedScale = 1.0) {
 
   if (layerDepth === "foreground") {
     applyForegroundSuppression(target);
+  } else if (layerDepth !== "ground") {
+    applyWaterShorelineGeometryTaper(target, layerDepth);
   }
 }
 
@@ -1418,9 +1425,87 @@ function buildLayerSegments(pixelSegments, layerDepth) {
 
   if (layerDepth !== "ground" && layerDepth !== "foreground") {
     segs = injectBlendSeams(segs, layerDepth);
+    applyWaterShorelineGeometryTaper(segs, layerDepth);
   }
 
   return segs;
+}
+
+function applyWaterShorelineGeometryTaper(segments, layerDepth) {
+  if (!segments?.length) return;
+
+  const taperPx = Math.max(
+    0,
+    Number(WATER_SHORE_TAPER_PX_BY_LAYER[layerDepth] ?? 0),
+  );
+  if (taperPx <= 1) return;
+
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    if (!isLandSilhouetteSegment(segment)) continue;
+
+    const leftWater = isWaterSilhouetteNeighbor(segments[index - 1]);
+    const rightWater = isWaterSilhouetteNeighbor(segments[index + 1]);
+    if (!leftWater && !rightWater) continue;
+
+    const samples = segment.topEdgeSamples;
+    const sampleCount = samples.length;
+    const fadeCount = Math.max(
+      2,
+      Math.min(
+        sampleCount - 1,
+        Math.round(Math.min(taperPx, Math.max(2, segment.stripWidth * 0.6))),
+      ),
+    );
+    if (fadeCount <= 1) continue;
+
+    for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex += 1) {
+      let sinkWeight = 0;
+
+      if (leftWater && sampleIndex < fadeCount) {
+        const t = sampleIndex / (fadeCount - 1);
+        sinkWeight = Math.max(sinkWeight, (1 - t) * (1 - t));
+      }
+
+      if (rightWater && sampleIndex >= sampleCount - fadeCount) {
+        const distanceFromRight = sampleCount - 1 - sampleIndex;
+        const t = distanceFromRight / (fadeCount - 1);
+        sinkWeight = Math.max(sinkWeight, (1 - t) * (1 - t));
+      }
+
+      if (sinkWeight <= 0) continue;
+
+      // Re-sample from the biome profile to avoid cumulative drift if this is
+      // re-applied after strip extension.
+      const baseY = sampleSilhouetteAtX(
+        segment.biomeKey,
+        segment.stripX + sampleIndex,
+        layerDepth,
+      );
+      samples[sampleIndex] = lerp(baseY, 1, sinkWeight);
+    }
+  }
+}
+
+function isLandSilhouetteSegment(segment) {
+  if (!segment || segment.isBlend || !segment.topEdgeSamples?.length) {
+    return false;
+  }
+  return !isWaterBiomeKey(segment.biomeKey);
+}
+
+function isWaterSilhouetteNeighbor(segment) {
+  if (!segment) return false;
+  if (segment.isBlend) {
+    return (
+      isWaterBiomeKey(segment.biomeKeyA) || isWaterBiomeKey(segment.biomeKeyB)
+    );
+  }
+  return isWaterBiomeKey(segment.biomeKey);
+}
+
+function isWaterBiomeKey(biomeKey) {
+  return WATER_BIOME_KEYS.has(biomeKey);
 }
 
 function applyForegroundSuppression(segments) {

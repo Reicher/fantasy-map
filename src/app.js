@@ -168,10 +168,16 @@ const playSession = createPlaySession({
 });
 
 const persistedParams = loadPersistedEditorParams();
-const initialParams = persistedParams ?? {
-  ...DEFAULT_PARAMS,
-  seed: randomSeed(),
-};
+const initialParams =
+  initialMode === "play"
+    ? {
+        ...(persistedParams ?? DEFAULT_PARAMS),
+        seed: randomSeed(),
+      }
+    : persistedParams ?? {
+        ...DEFAULT_PARAMS,
+        seed: randomSeed(),
+      };
 renderControlsFromSchema(refs.form, { initialTab: "karta" });
 hydrateForm(initialParams);
 bindRangeLabels();

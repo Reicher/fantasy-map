@@ -16,8 +16,8 @@
 import {
   buildJourneyStrip,
   extendStripWithTravel,
-} from "./journey/journeyStrip.js?v=20260411a";
-import { drawPlayerFigure } from "./journey/journeyStyle.js?v=20260411a";
+} from "./journey/journeyStrip.js?v=20260412b";
+import { drawPlayerFigure } from "./journey/journeyStyle.js?v=20260412d";
 import {
   drawDebugOverlay,
   drawForegroundCanopyTrees,
@@ -46,9 +46,6 @@ const PLAYER_X_FRAC = 0.22;
 // Should sit slightly below the ground top edge.
 const PLAYER_FEET_Y_FRAC = 0.83;
 
-// Walk animation frame toggle interval
-const WALK_FRAME_MS = 220;
-
 /**
  * @param {{ canvas: HTMLCanvasElement, getWorld?: () => object | null }} options
  */
@@ -61,8 +58,6 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     idleTravel: null,
     lastShowSnow: true,
     lastScrollX: 0,
-    walkFrame: 0,
-    lastWalkToggle: 0,
     cachedW: 0,
     cachedH: 0,
     idleKey: null,
@@ -74,7 +69,12 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     },
   };
 
-  return { update, reset, getDebugSnapshot, getPresentationSnapshot };
+  return {
+    update,
+    reset,
+    getDebugSnapshot,
+    getPresentationSnapshot,
+  };
 
   function update(playState, options = {}) {
     if (!canvas) return;
@@ -154,8 +154,6 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     state.idleTravel = null;
     state.lastShowSnow = true;
     state.lastScrollX = 0;
-    state.walkFrame = 0;
-    state.lastWalkToggle = 0;
     state.cachedW = 0;
     state.cachedH = 0;
     state.idleKey = null;
@@ -217,7 +215,13 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       if (state.lastTravel) {
         scrollX = strip.destMarkerStripX + playerX - markerAnchorX;
       } else if (state.idleTravel) {
-        scrollX = strip.startMarkerStripX + playerX - markerAnchorX;
+        // Idle preview should frame the local surroundings around the current
+        // position, not the synthetic route's start edge (which can be water).
+        scrollX =
+          strip.startMarkerStripX +
+          strip.routePx * 0.5 +
+          playerX -
+          markerAnchorX;
       } else {
         scrollX =
           strip.startMarkerStripX +
@@ -226,12 +230,6 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
           markerAnchorX;
       }
       state.lastScrollX = scrollX;
-    }
-
-    const now = performance.now();
-    if (isTraveling && now - state.lastWalkToggle > WALK_FRAME_MS) {
-      state.walkFrame ^= 1;
-      state.lastWalkToggle = now;
     }
 
     ctx.clearRect(0, 0, viewW, viewH);
@@ -300,12 +298,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       destMarkerCanvasX: markerSnapshot.destMarkerCanvasX,
     };
 
-    drawPlayerFigure(
-      ctx,
-      playerX,
-      playerFeetY,
-      isTraveling ? state.walkFrame : 0,
-    );
+    drawPlayerFigure(ctx, playerX, playerFeetY, isTraveling);
 
     drawForegroundCanopyTrees(ctx, strip, scrollX, playerX, viewW, viewH);
     drawNightVeil(ctx, viewW, viewH, skyState);
