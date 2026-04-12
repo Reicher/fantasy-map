@@ -34,6 +34,7 @@ export function drawGroundLayer(ctx, strip, scrollX, playerX, viewW) {
   const layerH = bottomY - topY;
 
   for (const segment of strip.layerSegments.ground) {
+    if (isWaterBiome(segment.biomeKey)) continue;
     const canvasX = segment.stripX - layerStripLeft;
     if (canvasX + segment.stripWidth < 0 || canvasX > viewW) continue;
     ctx.fillStyle = segment.color;
@@ -52,6 +53,7 @@ export function drawGroundLayer(ctx, strip, scrollX, playerX, viewW) {
     const a = segments[index];
     const b = segments[index + 1];
     if (!a.colorRgb || !b.colorRgb || a.biomeKey === b.biomeKey) continue;
+    if (isWaterBiome(a.biomeKey) || isWaterBiome(b.biomeKey)) continue;
     if (isWaterLandGroundBoundary(a.biomeKey, b.biomeKey)) continue;
     const seamCanvasX = a.stripX + a.stripWidth - layerStripLeft;
     if (seamCanvasX + halfBlend < 0 || seamCanvasX - halfBlend > viewW) continue;
@@ -81,6 +83,10 @@ function isWaterLandGroundBoundary(aBiomeKey, bBiomeKey) {
   return aIsWater !== bIsWater;
 }
 
+function isWaterBiome(biomeKey) {
+  return WATER_BIOMES.has(biomeKey);
+}
+
 export function drawSilhouetteLayer(
   ctx,
   strip,
@@ -102,6 +108,7 @@ export function drawSilhouetteLayer(
   const layerH = bottomY - topY;
 
   for (const segment of segments) {
+    if (isWaterSilhouetteSegment(segment)) continue;
     const samples = segment.topEdgeSamples;
     if (!samples) continue;
     const canvasX = segment.stripX - layerStripLeft;
@@ -173,6 +180,19 @@ export function drawSilhouetteLayer(
   }
 }
 
+function isWaterSilhouetteSegment(segment) {
+  if (!segment) {
+    return false;
+  }
+  if (segment.isBlend) {
+    return (
+      isWaterBiome(segment.biomeKeyA) ||
+      isWaterBiome(segment.biomeKeyB)
+    );
+  }
+  return isWaterBiome(segment.biomeKey);
+}
+
 export function drawGroundDetails(ctx, strip, scrollX, playerX, viewW) {
   const details = strip.groundDetails;
   if (!details?.length) return;
@@ -185,6 +205,7 @@ export function drawGroundDetails(ctx, strip, scrollX, playerX, viewW) {
   const layerStripLeft = scrollX * PARALLAX_SPEED.ground - playerX;
 
   for (const detail of details) {
+    if (isWaterBiome(detail.biomeKey)) continue;
     const canvasX = detail.stripX - layerStripLeft;
     if (canvasX < -24 || canvasX > viewW + 24) continue;
     const verticalFrac = clamp01(

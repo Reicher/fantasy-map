@@ -72,6 +72,13 @@ export function drawOceanHorizon(ctx, viewW, viewH, skyState) {
   ctx.fillStyle = ocean;
   ctx.fillRect(0, top, viewW, h);
 
+  // Keep a static ocean base all the way to the bottom so hidden ground-water
+  // segments don't reveal the canvas background color.
+  if (bottom < viewH) {
+    ctx.fillStyle = rgbCssFromArray(floorOcean);
+    ctx.fillRect(0, bottom, viewW, viewH - bottom);
+  }
+
   const bandCount = 6;
   for (let bandIndex = 0; bandIndex < bandCount; bandIndex += 1) {
     const bandT = (bandIndex + 1) / (bandCount + 1);

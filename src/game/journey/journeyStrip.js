@@ -724,6 +724,7 @@ function buildGroundDetails(groundSegments, strip = null) {
 
   for (const segment of groundSegments) {
     if (!segment || segment.isBlend) continue;
+    if (TREE_BLOCKED_BIOMES.has(segment.biomeKey)) continue;
     if (!segment.biomeKey || segment.stripWidth < 20) continue;
 
     const rng = createSeededRng(
@@ -1354,6 +1355,8 @@ function injectBlendSeams(segments, layerDepth) {
       result.push({
         biomeKey: null,
         isBlend: true,
+        biomeKeyA: seg.biomeKey,
+        biomeKeyB: next.biomeKey,
         colorA: seg.colorRgb,
         colorB: next.colorRgb,
         color: null,
