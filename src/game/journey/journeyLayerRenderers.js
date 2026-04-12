@@ -17,6 +17,7 @@ const SETTLEMENT_UPWARD_OFFSET_PX = 30;
 const ABANDONED_UPWARD_OFFSET_PX = 13;
 const SIGNPOST_VISUAL_HEIGHT_PX = 104;
 const SIGNPOST_UPWARD_OFFSET_PX = 18;
+const WATER_BIOMES = new Set(["ocean", "lake"]);
 
 const LAYER_HAZE = {
   far: 0.42,
@@ -51,6 +52,7 @@ export function drawGroundLayer(ctx, strip, scrollX, playerX, viewW) {
     const a = segments[index];
     const b = segments[index + 1];
     if (!a.colorRgb || !b.colorRgb || a.biomeKey === b.biomeKey) continue;
+    if (isWaterLandGroundBoundary(a.biomeKey, b.biomeKey)) continue;
     const seamCanvasX = a.stripX + a.stripWidth - layerStripLeft;
     if (seamCanvasX + halfBlend < 0 || seamCanvasX - halfBlend > viewW) continue;
     const [ar, ag, ab] = a.colorRgb;
@@ -71,6 +73,12 @@ export function drawGroundLayer(ctx, strip, scrollX, playerX, viewW) {
       layerH,
     );
   }
+}
+
+function isWaterLandGroundBoundary(aBiomeKey, bBiomeKey) {
+  const aIsWater = WATER_BIOMES.has(aBiomeKey);
+  const bIsWater = WATER_BIOMES.has(bBiomeKey);
+  return aIsWater !== bIsWater;
 }
 
 export function drawSilhouetteLayer(

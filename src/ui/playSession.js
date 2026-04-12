@@ -76,7 +76,7 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     return state.currentMode === "play"
       ? {
           ...playState,
-          viewMode: "map",
+          viewMode: "journey",
         }
       : playState;
   }
@@ -182,7 +182,7 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     if (state.playState) {
       state.playState = {
         ...state.playState,
-        viewMode: "map",
+        viewMode: "journey",
         hoveredNodeId: null,
         pressedNodeId: null,
       };

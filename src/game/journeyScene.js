@@ -58,6 +58,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     strip: null,
     travelKey: null,
     lastTravel: null,
+    idleTravel: null,
     lastShowSnow: true,
     lastScrollX: 0,
     walkFrame: 0,
@@ -92,6 +93,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
         ? createIdlePreviewTravel(worldSnapshot, playState)
         : null;
     const idleKey = idlePreviewTravel?.__journeyIdleKey ?? null;
+    state.idleTravel = idlePreviewTravel ?? null;
 
     if (nextKey !== null && nextKey !== state.travelKey) {
       if (state.strip === null) {
@@ -104,6 +106,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
         });
       }
       state.lastTravel = playState.travel;
+      state.idleTravel = null;
       state.travelKey = nextKey;
       state.idleKey = null;
       state.lastShowSnow = showSnow;
@@ -148,6 +151,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     state.strip = null;
     state.travelKey = null;
     state.lastTravel = null;
+    state.idleTravel = null;
     state.lastShowSnow = true;
     state.lastScrollX = 0;
     state.walkFrame = 0;
@@ -189,6 +193,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     world = null,
   ) {
     const strip = state.strip;
+    const markerTravel = playState?.travel ?? state.lastTravel ?? state.idleTravel;
     const playerX = Math.round(viewW * PLAYER_X_FRAC);
     const playerFeetY = Math.round(viewH * PLAYER_FEET_Y_FRAC);
     const markerAnchorX = viewW / 2;
@@ -211,6 +216,8 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     } else if (strip) {
       if (state.lastTravel) {
         scrollX = strip.destMarkerStripX + playerX - markerAnchorX;
+      } else if (state.idleTravel) {
+        scrollX = strip.startMarkerStripX + playerX - markerAnchorX;
       } else {
         scrollX =
           strip.startMarkerStripX +
@@ -282,7 +289,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       groundTopY,
       playerFeetY,
       viewH,
-      activeTravel: playState?.travel ?? state.lastTravel,
+      activeTravel: markerTravel,
       world,
     });
 
