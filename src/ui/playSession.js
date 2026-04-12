@@ -2,6 +2,8 @@ import {
   advanceTravel,
   beginTravel,
   createPlayState,
+  getDiscoveredNodeIds,
+  getVisibleNodeIds,
   getValidTargetIds,
   sampleTravelBiomeBandPoints,
 } from "../game/travel.js?v=20260411a";
@@ -91,19 +93,25 @@ export function createPlaySession({ refs, state, syncModeUi }) {
           state.playState,
           state.currentWorld,
         );
-        const visibleNodeIds = getVisibleNodeIds(
-          state.currentWorld,
-          state.playState,
-          validNodeIds,
+        const discoveredNodeIds = getDiscoveredNodeIds(state.playState);
+        const discoveredNodeIdSet = new Set(discoveredNodeIds);
+        const visibleNodeIds = getVisibleNodeIds(state.playState);
+        const unknownNodeIds = visibleNodeIds.filter(
+          (nodeId) => !discoveredNodeIdSet.has(nodeId),
         );
+        const visibleRoads = getVisibleRoads(state.playState, visibleNodeIds);
         const renderOptions = {
           showSnow: state.renderOptions.showSnow,
           showBiomeLabels: state.playMapOptions.showBiomeLabels,
           showNodeLabels: state.playMapOptions.showNodeLabels,
           visibleNodeIds,
+          nodeLabelVisibleNodeIds: discoveredNodeIds,
           discoveredCells: state.playState.discoveredCells,
           cameraState: createPlayCamera(),
           playerStart: state.playState.position,
+          roadOverlay: {
+            roads: visibleRoads,
+          },
           fogOfWar: {
             enabled: true,
             playState: state.playState,
@@ -112,6 +120,8 @@ export function createPlaySession({ refs, state, syncModeUi }) {
           nodeOverlay: {
             validNodeIds,
             visibleNodeIds,
+            unknownNodeIds,
+            nodeLabelVisibleNodeIds: discoveredNodeIds,
             onlyValid: true,
             hoveredNodeId: state.playState.hoveredNodeId,
             pressedNodeId: state.playState.pressedNodeId,
@@ -221,39 +231,62 @@ export function createPlaySession({ refs, state, syncModeUi }) {
   function createPlayCamera() {
     return buildPlayCamera(state.currentWorld, state.playState, 2);
   }
+}
 
-  function getVisibleNodeIds(world, playState, validNodeIds) {
-    const visibleIds = new Set(validNodeIds);
-    const currentId = playState?.currentNodeId;
-    if (currentId != null) {
-      visibleIds.add(currentId);
+function getVisibleRoads(playState, visibleNodeIds) {
+  if (!playState?.graph || !visibleNodeIds?.length) {
+    return [];
+  }
+
+  const visible = new Set(visibleNodeIds);
+  const seenEdges = new Set();
+  const roads = [];
+
+  for (const fromNodeId of visible) {
+    const neighbors = playState.graph.get(fromNodeId);
+    if (!neighbors) {
+      continue;
     }
 
-    const discoveredCells = playState?.discoveredCells;
-    if (!world || !discoveredCells) {
-      return Array.from(visibleIds);
-    }
-
-    const nodes = world.features?.nodes ?? [];
-    for (const node of nodes) {
-      if (!node || !Number.isFinite(node.x) || !Number.isFinite(node.y)) {
+    for (const [toNodeId, path] of neighbors.entries()) {
+      if (!visible.has(toNodeId)) {
         continue;
       }
-      const x = Math.max(
-        0,
-        Math.min(world.terrain.width - 1, Math.floor(node.x)),
-      );
-      const y = Math.max(
-        0,
-        Math.min(world.terrain.height - 1, Math.floor(node.y)),
-      );
-      if (discoveredCells[y * world.terrain.width + x] && node.id != null) {
-        visibleIds.add(node.id);
-      }
-    }
 
-    return Array.from(visibleIds);
+      const key =
+        fromNodeId < toNodeId
+          ? `${fromNodeId}_${toNodeId}`
+          : `${toNodeId}_${fromNodeId}`;
+      if (seenEdges.has(key)) {
+        continue;
+      }
+      seenEdges.add(key);
+
+      const points = (path?.points ?? [])
+        .filter(
+          (point) =>
+            point &&
+            Number.isFinite(point.x) &&
+            Number.isFinite(point.y),
+        )
+        .map((point) => ({
+          x: point.x + 0.5,
+          y: point.y + 0.5,
+        }));
+
+      if (points.length < 2) {
+        continue;
+      }
+
+      roads.push({
+        id: roads.length,
+        type: path?.routeType ?? "road",
+        points,
+      });
+    }
   }
+
+  return roads;
 }
 
 async function requestLandscapeOrientationLock() {

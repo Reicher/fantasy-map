@@ -22,6 +22,7 @@ export function createPlayState(world) {
   const discoveredCells = new Uint8Array(
     world.terrain.width * world.terrain.height,
   );
+  const discoveredNodeIds = createDiscoveredNodeFlags(world, currentNodeId);
   revealAroundPosition(
     world,
     discoveredCells,
@@ -38,7 +39,9 @@ export function createPlayState(world) {
     hoveredNodeId: null,
     pressedNodeId: null,
     travel: null,
+    pendingJourneyEvent: null,
     discoveredCells,
+    discoveredNodeIds,
     fogDirty: true,
   };
 }
@@ -106,6 +109,7 @@ export function advanceTravel(playState, world, deltaMs) {
   const discoveredCells =
     playState.discoveredCells ??
     new Uint8Array(world.terrain.width * world.terrain.height);
+  const discoveredNodeIds = ensureDiscoveredNodeFlags(playState, world);
   const revealed = revealAroundPosition(world, discoveredCells, sample.point);
 
   if (nextProgress >= playState.travel.totalLength - 0.0001) {
@@ -118,6 +122,7 @@ export function advanceTravel(playState, world, deltaMs) {
       discoveredCells,
       finalPosition,
     );
+    markNodeDiscovered(discoveredNodeIds, playState.travel.targetNodeId);
     return {
       ...playState,
       currentNodeId: playState.travel.targetNodeId,
@@ -127,7 +132,9 @@ export function advanceTravel(playState, world, deltaMs) {
           ? (regionAtCell(world, targetNode.cell)?.id ?? lastRegionId)
           : lastRegionId,
       travel: null,
+      pendingJourneyEvent: createNodeArrivalEvent(playState.travel.targetNodeId),
       discoveredCells,
+      discoveredNodeIds,
       fogDirty: playState.fogDirty || revealed || finalReveal,
     };
   }
@@ -137,11 +144,68 @@ export function advanceTravel(playState, world, deltaMs) {
     position: sample.point,
     lastRegionId,
     discoveredCells,
+    discoveredNodeIds,
     fogDirty: playState.fogDirty || revealed,
     travel: {
       ...playState.travel,
       progress: nextProgress,
     },
+  };
+}
+
+export function isNodeDiscovered(playState, nodeId) {
+  if (nodeId == null || nodeId < 0) {
+    return false;
+  }
+
+  const discoveredNodeIds = playState?.discoveredNodeIds;
+  if (
+    discoveredNodeIds &&
+    nodeId < discoveredNodeIds.length &&
+    discoveredNodeIds[nodeId]
+  ) {
+    return true;
+  }
+
+  return playState?.currentNodeId === nodeId;
+}
+
+export function getDiscoveredNodeIds(playState) {
+  return [...collectDiscoveredNodeIdSet(playState)].sort((a, b) => a - b);
+}
+
+export function getVisibleNodeIds(playState) {
+  if (!playState) {
+    return [];
+  }
+
+  const discoveredNodeIds = collectDiscoveredNodeIdSet(playState);
+  const visibleNodeIds = new Set(discoveredNodeIds);
+  for (const nodeId of discoveredNodeIds) {
+    const neighbors = playState.graph?.get(nodeId);
+    if (!neighbors) {
+      continue;
+    }
+    for (const neighborId of neighbors.keys()) {
+      if (neighborId != null) {
+        visibleNodeIds.add(neighborId);
+      }
+    }
+  }
+
+  if (playState.currentNodeId != null) {
+    visibleNodeIds.add(playState.currentNodeId);
+  }
+
+  return [...visibleNodeIds].sort((a, b) => a - b);
+}
+
+function createNodeArrivalEvent(nodeId) {
+  return {
+    type: "node-arrival",
+    nodeId: nodeId == null ? null : nodeId,
+    message: "Nu är du här.",
+    requiresAcknowledgement: true,
   };
 }
 
@@ -177,6 +241,62 @@ function createTravel(
     midDistantBiomeSegments: biomeBandSegments.mid.segments,
     farDistantBiomeSegments: biomeBandSegments.far.segments,
   };
+}
+
+function createDiscoveredNodeFlags(world, initiallyDiscoveredNodeId = null) {
+  const discoveredNodeIds = new Uint8Array(world?.features?.nodes?.length ?? 0);
+  markNodeDiscovered(discoveredNodeIds, initiallyDiscoveredNodeId);
+  return discoveredNodeIds;
+}
+
+function ensureDiscoveredNodeFlags(playState, world) {
+  const nodeCount = world?.features?.nodes?.length ?? 0;
+  const currentNodeId = playState?.currentNodeId ?? null;
+  const existing = playState?.discoveredNodeIds;
+
+  if (existing && existing.length === nodeCount) {
+    markNodeDiscovered(existing, currentNodeId);
+    return existing;
+  }
+
+  const discoveredNodeIds = new Uint8Array(nodeCount);
+  if (existing?.length) {
+    const copyLength = Math.min(existing.length, discoveredNodeIds.length);
+    for (let index = 0; index < copyLength; index += 1) {
+      discoveredNodeIds[index] = existing[index];
+    }
+  }
+  markNodeDiscovered(discoveredNodeIds, currentNodeId);
+  return discoveredNodeIds;
+}
+
+function markNodeDiscovered(discoveredNodeIds, nodeId) {
+  if (
+    !discoveredNodeIds ||
+    nodeId == null ||
+    nodeId < 0 ||
+    nodeId >= discoveredNodeIds.length
+  ) {
+    return;
+  }
+  discoveredNodeIds[nodeId] = 1;
+}
+
+function collectDiscoveredNodeIdSet(playState) {
+  const discoveredNodeIds = new Set();
+  const marks = playState?.discoveredNodeIds;
+  if (marks?.length) {
+    for (let nodeId = 0; nodeId < marks.length; nodeId += 1) {
+      if (marks[nodeId]) {
+        discoveredNodeIds.add(nodeId);
+      }
+    }
+  }
+
+  if (playState?.currentNodeId != null) {
+    discoveredNodeIds.add(playState.currentNodeId);
+  }
+  return discoveredNodeIds;
 }
 
 function buildOffsetTravelBiomeSegments(

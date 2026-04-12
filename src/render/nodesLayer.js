@@ -9,6 +9,7 @@ export function drawNodes(ctx, nodes, viewport, options = {}) {
       options.validNodeIds ??
       [],
   );
+  const unknownIds = new Set(options.unknownNodeIds ?? []);
   const hoveredId = options.hoveredNodeId ?? null;
   const pressedId = options.pressedNodeId ?? null;
   const onlyValid = options.onlyValid === true;
@@ -28,7 +29,8 @@ export function drawNodes(ctx, nodes, viewport, options = {}) {
       drawNodeTargetHalo(ctx, point.x, point.y, symbolScale, hovered, pressed);
     }
 
-    drawNodeMarkerGlyph(ctx, point.x, point.y, node.marker, {
+    const marker = unknownIds.has(node.id) ? "unknown" : node.marker;
+    drawNodeMarkerGlyph(ctx, point.x, point.y, marker, {
       scale: symbolScale,
       highlighted,
       hovered,

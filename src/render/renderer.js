@@ -51,6 +51,7 @@ export function renderPlayWorldStatic(canvas, world, options = {}) {
     showFrame: false,
     showPlayerMarker: false,
     showNodes: false,
+    showRoads: false,
     showOceanWaves: true,
     showLakeWaves: true,
     showBiomeBorders: true,
@@ -63,6 +64,7 @@ export function renderPlayWorldStatic(canvas, world, options = {}) {
 export function renderPlayWorldDynamic(canvas, world, options = {}) {
   return renderDynamicOverlays(canvas, world, options, {
     showPlayerMarker: true,
+    showRoads: true,
     showNodes: true,
     showLabels: true,
     showFogOfWar: true,
@@ -86,6 +88,7 @@ function renderScene(canvas, world, options = {}, scene = {}) {
     showFrame = true,
     showPlayerMarker = true,
     showNodes = true,
+    showRoads = true,
     showOceanWaves = true,
     showLakeWaves = true,
     showBiomeBorders = true,
@@ -173,7 +176,12 @@ function renderScene(canvas, world, options = {}, scene = {}) {
       }
     }
   }
-  drawRoads(ctx, geometry, viewport);
+  if (showRoads) {
+    drawRoads(ctx, geometry, viewport, options.roadOverlay);
+  }
+  if (showPlayerMarker) {
+    drawPlayerMarker(ctx, options.playerStart ?? null, viewport);
+  }
   if (showNodes) {
     drawNodes(
       ctx,
@@ -184,9 +192,6 @@ function renderScene(canvas, world, options = {}, scene = {}) {
   }
   if (showFogOfWar && options.fogOfWar?.enabled) {
     drawFogOfWar(ctx, world, viewport, options.fogOfWar);
-  }
-  if (showPlayerMarker) {
-    drawPlayerMarker(ctx, options.playerStart ?? null, viewport);
   }
   if (showLabels) {
     drawLabels(ctx, world, viewport, options);
@@ -207,6 +212,7 @@ function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
   const ctx = canvas.getContext("2d");
   const viewport =
     options.viewport ?? createViewport(world, options.cameraState);
+  const geometry = world.geometry;
   const nodes = world.features?.nodes ?? [];
   const renderWidth = options.renderWidth ?? RENDER_WIDTH;
   const renderHeight = options.renderHeight ?? RENDER_HEIGHT;
@@ -214,6 +220,7 @@ function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
   const scaleY = canvas.height / renderHeight;
   const {
     showPlayerMarker = true,
+    showRoads = false,
     showNodes = true,
     showLabels = false,
     showFogOfWar = false,
@@ -245,6 +252,12 @@ function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
     viewport.innerHeight,
   );
   ctx.clip();
+  if (showRoads) {
+    drawRoads(ctx, geometry, viewport, options.roadOverlay);
+  }
+  if (showPlayerMarker) {
+    drawPlayerMarker(ctx, options.playerStart ?? null, viewport);
+  }
   if (showNodes) {
     drawNodes(
       ctx,
@@ -257,9 +270,6 @@ function renderDynamicOverlays(canvas, world, options = {}, scene = {}) {
     drawLabels(ctx, world, viewport, options);
   }
   ctx.restore();
-  if (showPlayerMarker) {
-    drawPlayerMarker(ctx, options.playerStart ?? null, viewport);
-  }
   if (options.travelDebug?.enabled) {
     drawTravelDebugOverlay(ctx, viewport, options.travelDebug);
   }

@@ -1,4 +1,5 @@
 import { describePlayHud } from "../game/playViewText.js?v=20260409f";
+import { isNodeDiscovered } from "../game/travel.js?v=20260411a";
 import { getNodeTitle } from "../node/model.js";
 import { setElementVisible } from "./viewState.js?v=20260403a";
 
@@ -16,6 +17,8 @@ export function createPlaySubViewController({
   let lastCharacterTime = null;
   let lastCharacterTravel = null;
   let lastInventorySignature = null;
+  let lastJourneyEventDialogVisible = null;
+  let lastJourneyEventDialogMessage = null;
   let activeTravelCueKey = null;
   let activeTravelTargetNodeId = null;
   let lastDestMarkerCanvasX = null;
@@ -35,11 +38,14 @@ export function createPlaySubViewController({
     lastCharacterTime = null;
     lastCharacterTravel = null;
     lastInventorySignature = null;
+    lastJourneyEventDialogVisible = null;
+    lastJourneyEventDialogMessage = null;
     activeTravelCueKey = null;
     activeTravelTargetNodeId = null;
     lastDestMarkerCanvasX = null;
     shownArrivalCueKeys.clear();
     hideArrivalCue();
+    hideJourneyEventDialog();
   }
 
   function update(world, playState) {
@@ -69,6 +75,7 @@ export function createPlaySubViewController({
 
     if (!isPlay || !world || !playState) {
       hideArrivalCue();
+      hideJourneyEventDialog();
       resetTravelCueTracking();
       return;
     }
@@ -101,6 +108,7 @@ export function createPlaySubViewController({
 
     if (!isJourney) {
       hideArrivalCue();
+      hideJourneyEventDialog();
       return;
     }
 
@@ -117,6 +125,7 @@ export function createPlaySubViewController({
         ? journeyScene.getPresentationSnapshot()
         : {};
     maybeTriggerArrivalCue(world, playState, presentation);
+    syncJourneyEventDialog(playState, isJourney);
     profiler.setSnapshot(journeyScene.getDebugSnapshot());
   }
 
@@ -144,7 +153,9 @@ export function createPlaySubViewController({
         (lastDestMarkerCanvasX == null || lastDestMarkerCanvasX > viewW);
 
       if (enteredViewport) {
-        triggerArrivalCue(world, targetNodeId, cueKey);
+        triggerArrivalCue(world, playState, targetNodeId, cueKey, {
+          revealActualTitle: true,
+        });
       }
 
       if (destCanvasX != null) {
@@ -154,18 +165,34 @@ export function createPlaySubViewController({
     }
 
     if (activeTravelCueKey && !shownArrivalCueKeys.has(activeTravelCueKey)) {
-      triggerArrivalCue(world, activeTravelTargetNodeId, activeTravelCueKey);
+      triggerArrivalCue(
+        world,
+        playState,
+        activeTravelTargetNodeId,
+        activeTravelCueKey,
+        {
+          revealActualTitle: true,
+        },
+      );
     }
     resetTravelCueTracking();
   }
 
-  function triggerArrivalCue(world, targetNodeId, cueKey) {
+  function triggerArrivalCue(
+    world,
+    playState,
+    targetNodeId,
+    cueKey,
+    options = {},
+  ) {
     if (cueKey && shownArrivalCueKeys.has(cueKey)) {
       return;
     }
     const nodes = world?.features?.nodes;
     const node = targetNodeId == null ? null : nodes?.[targetNodeId];
-    const title = node ? getNodeTitle(node) : "";
+    const title = options.revealActualTitle
+      ? getNodeTitle(node) || "Okänd plats"
+      : getVisibleNodeTitle(playState, node, "Okänd plats");
     if (!title) {
       return;
     }
@@ -207,6 +234,41 @@ export function createPlaySubViewController({
     }
     refs.playArrivalCue.classList.remove("play-arrival-cue--animate");
     refs.playArrivalCueText.textContent = "";
+  }
+
+  function syncJourneyEventDialog(playState, isJourney) {
+    const dialog = refs.playJourneyEventDialog;
+    const body = refs.playJourneyEventBody;
+    if (!dialog || !body) {
+      return;
+    }
+
+    const event = playState?.pendingJourneyEvent ?? null;
+    const shouldShow = isJourney && Boolean(event);
+    if (lastJourneyEventDialogVisible !== shouldShow) {
+      setElementVisible(dialog, shouldShow, "block");
+      lastJourneyEventDialogVisible = shouldShow;
+    }
+
+    if (!shouldShow) {
+      lastJourneyEventDialogMessage = null;
+      return;
+    }
+
+    const message = String(event.message ?? "Nu är du här.");
+    if (message !== lastJourneyEventDialogMessage) {
+      body.textContent = message;
+      lastJourneyEventDialogMessage = message;
+    }
+  }
+
+  function hideJourneyEventDialog() {
+    if (!refs.playJourneyEventDialog) {
+      return;
+    }
+    setElementVisible(refs.playJourneyEventDialog, false, "block");
+    lastJourneyEventDialogVisible = false;
+    lastJourneyEventDialogMessage = null;
   }
 }
 
@@ -280,7 +342,7 @@ function describeTravelLine(world, playState) {
   }
   const nodes = world?.features?.nodes ?? [];
   const targetNode = nodes[travel.targetNodeId];
-  const targetName = targetNode ? getNodeTitle(targetNode) : "okänd plats";
+  const targetName = getVisibleNodeTitle(playState, targetNode, "okänd plats");
   const total = Math.max(0.001, Number(travel.totalLength ?? 0));
   const progress = Math.max(0, Number(travel.progress ?? 0));
   const percent = Math.max(0, Math.min(100, Math.round((progress / total) * 100)));
@@ -297,7 +359,7 @@ function buildInventoryLines(world, playState, hud) {
   }
   const nodes = world?.features?.nodes ?? [];
   const targetNode = nodes[travel.targetNodeId];
-  const targetTitle = targetNode ? getNodeTitle(targetNode) : "okänd plats";
+  const targetTitle = getVisibleNodeTitle(playState, targetNode, "okänd plats");
   return [
     `Resmål: ${targetTitle}`,
     `Område: ${hud.regionName || "Mellan regioner"}`,
@@ -338,6 +400,16 @@ function buildCharacterPrimaryLine(hud) {
     return `Område: ${hud.regionName}`;
   }
   return "Plats: Mellan regioner";
+}
+
+function getVisibleNodeTitle(playState, node, fallbackTitle = "") {
+  if (!node) {
+    return fallbackTitle;
+  }
+  if (!isNodeDiscovered(playState, node.id)) {
+    return fallbackTitle;
+  }
+  return getNodeTitle(node) || fallbackTitle;
 }
 
 function buildTravelCueKey(travel) {

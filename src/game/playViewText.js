@@ -1,4 +1,5 @@
 import { regionAtCell, regionAtPosition } from "./playQueries.js";
+import { isNodeDiscovered } from "./travel.js?v=20260411a";
 import { getNodeTitle } from "../node/model.js";
 
 export function describePlayHud(world, playState) {
@@ -21,7 +22,10 @@ export function describePlayHud(world, playState) {
     return {
       locationLine: regionName,
       regionName,
-      nodeTitle: toNode ? getNodeTitle(toNode) : null,
+      nodeTitle:
+        toNode && isNodeDiscovered(playState, toNode.id)
+          ? getNodeTitle(toNode)
+          : "Okänd plats",
     };
   }
 
@@ -31,7 +35,10 @@ export function describePlayHud(world, playState) {
     ? regionAtCell(world, currentNode.cell)
     : regionAtPosition(world, playState.position);
   const regionName = formatHudRegionLine(region);
-  const nodeTitle = currentNode ? getNodeTitle(currentNode) : null;
+  const nodeTitle =
+    currentNode && isNodeDiscovered(playState, currentNode.id)
+      ? getNodeTitle(currentNode)
+      : null;
 
   return {
     locationLine: nodeTitle ? `${nodeTitle} - ${regionName}` : regionName,

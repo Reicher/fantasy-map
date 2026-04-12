@@ -641,6 +641,44 @@ canvas[data-dragging="true"] {
   opacity: 0;
 }
 
+.play-journey-event-dialog {
+  position: absolute;
+  top: 50%;
+  left: 75%;
+  transform: translate(-50%, -50%);
+  z-index: 14;
+  width: min(48vw, 560px);
+  max-width: calc(100% - 24px);
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px;
+  border-radius: 18px;
+  border: 1px solid rgba(198, 224, 236, 0.42);
+  background:
+    linear-gradient(180deg, rgba(8, 17, 26, 0.86), rgba(8, 14, 21, 0.74));
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(7px) saturate(1.15);
+  pointer-events: auto;
+}
+
+.play-journey-event-body {
+  margin: 0;
+  color: rgba(243, 250, 255, 0.94);
+  font-size: 1.12rem;
+  line-height: 1.4;
+}
+
+.play-journey-event-ok {
+  min-height: 44px;
+  justify-self: end;
+  padding: 9px 18px;
+  background: rgba(234, 248, 255, 0.14);
+  border-color: rgba(214, 236, 246, 0.24);
+  color: rgba(241, 251, 255, 0.95);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
+  font-size: 0.9rem;
+}
+
 .play-arrival-cue span {
   position: relative;
   text-align: center;
@@ -900,6 +938,20 @@ canvas[data-dragging="true"] {
     font-size: 0.76rem;
   }
 
+  .play-journey-event-dialog {
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(88vw, 500px);
+    padding: 14px 14px;
+    gap: 10px;
+    border-radius: 12px;
+  }
+
+  .play-journey-event-body {
+    font-size: 0.98rem;
+  }
+
   .play-arrival-cue span {
     font-size: clamp(1.2rem, 5vw, 1.8rem);
     padding: 6px 11px;
@@ -923,6 +975,7 @@ canvas[data-dragging="true"] {
   #play-view #play-loading,
   #play-view #play-canvas,
   #play-view .play-journey-panel,
+  #play-view .play-journey-event-dialog,
   #play-view .play-arrival-cue,
   #play-view .play-bottom-hud {
     display: none !important;

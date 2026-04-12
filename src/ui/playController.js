@@ -1,6 +1,7 @@
 import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
 import { createViewport } from "../render/renderer.js?v=20260411c";
 import { findPlayableNodeAtWorldPoint } from "../game/playQueries.js?v=20260409e";
+import { isNodeDiscovered } from "../game/travel.js?v=20260411a";
 import { advanceTimeOfDayHours } from "../game/timeOfDay.js";
 import { getNodeTitle } from "../node/model.js";
 
@@ -35,7 +36,8 @@ export function createPlayController({
     const canvasY = ((event.clientY - rect.top) / rect.height) * RENDER_HEIGHT;
     const viewport = createViewport(state.currentWorld, createPlayCamera());
     const worldPoint = viewport.canvasToWorld(canvasX, canvasY);
-    const hoveredNodeId = state.playState.travel
+    const hoveredNodeId =
+      state.playState.travel || hasBlockingJourneyEvent(state.playState)
       ? null
       : findPlayableNodeAtEvent(event);
 
@@ -43,9 +45,12 @@ export function createPlayController({
       const nodes = state.currentWorld.features?.nodes ?? [];
       const node = nodes[hoveredNodeId];
       if (node) {
+        const title = isNodeDiscovered(state.playState, hoveredNodeId)
+          ? getNodeTitle(node)
+          : "Okänd plats";
         showHoverHit(
           {
-            title: getNodeTitle(node),
+            title,
           },
           tooltip,
           event.clientX,
@@ -113,7 +118,8 @@ export function createPlayController({
       event.button !== 0 ||
       !state.playState ||
       state.playState.viewMode !== "map" ||
-      state.playState.travel
+      state.playState.travel ||
+      hasBlockingJourneyEvent(state.playState)
     ) {
       return;
     }
@@ -137,7 +143,8 @@ export function createPlayController({
       event.button !== 0 ||
       !state.playState ||
       state.playState.viewMode !== "map" ||
-      state.playState.travel
+      state.playState.travel ||
+      hasBlockingJourneyEvent(state.playState)
     ) {
       return;
     }
@@ -283,4 +290,8 @@ export function createPlayController({
     }
     lastRenderedAt = 0;
   }
+}
+
+function hasBlockingJourneyEvent(playState) {
+  return Boolean(playState?.pendingJourneyEvent?.requiresAcknowledgement);
 }

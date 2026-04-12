@@ -13,7 +13,8 @@ export function drawNodeMarkerGlyph(
     iconLift = null,
   } = {},
 ) {
-  const normalizedMarker = normalizeNodeMarker(marker);
+  const normalizedMarker =
+    marker === "unknown" ? "unknown" : normalizeNodeMarker(marker);
   const expanded = hovered || pressed;
   const glyphScale = (expanded ? 1.14 : 1.02) * Math.max(0.55, scale);
   const iconY = y - (iconLift ?? 7.1 * glyphScale);
@@ -41,6 +42,9 @@ function drawNodeIcon(ctx, marker, x, y, scale, state) {
   ctx.shadowOffsetY = Math.max(0.15, 0.28 * iconScale);
 
   switch (marker) {
+    case "unknown":
+      drawUnknownIcon(ctx, x, y, iconScale);
+      break;
     case "abandoned":
       drawAbandonedIcon(ctx, x, y, iconScale);
       break;
@@ -123,4 +127,20 @@ function drawSignpostIcon(ctx, x, y, scale) {
   ctx.beginPath();
   ctx.arc(x, y - 0.2 * scale, Math.max(0.44, 0.55 * scale), 0, Math.PI * 2);
   ctx.fill();
+}
+
+function drawUnknownIcon(ctx, x, y, scale) {
+  const bubbleRadius = 3.95 * scale;
+  ctx.beginPath();
+  ctx.arc(x, y - 0.1 * scale, bubbleRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.save();
+  ctx.fillStyle = "rgba(12, 10, 10, 0.96)";
+  ctx.font = `700 ${Math.max(4.5, 5.55 * scale)}px "Trebuchet MS", sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("?", x, y - 0.2 * scale);
+  ctx.restore();
 }

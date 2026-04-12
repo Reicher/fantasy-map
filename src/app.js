@@ -79,6 +79,9 @@ const refs = {
   ),
   playArrivalCue: document.querySelector("#play-arrival-cue"),
   playArrivalCueText: document.querySelector("#play-arrival-cue-text"),
+  playJourneyEventDialog: document.querySelector("#play-journey-event-dialog"),
+  playJourneyEventBody: document.querySelector("#play-journey-event-body"),
+  playJourneyEventOkButton: document.querySelector("#play-journey-event-ok"),
   tooltip: document.querySelector("#tooltip"),
   statsContainer: document.querySelector("#stats"),
   toggleBiomeLabelsButton: document.querySelector("#toggle-biome-labels"),
@@ -276,6 +279,12 @@ if (refs.playSwitchModeButton) {
   });
 }
 
+if (refs.playJourneyEventOkButton) {
+  refs.playJourneyEventOkButton.addEventListener("click", () => {
+    acknowledgePendingJourneyEvent();
+  });
+}
+
 for (const button of [refs.zoom1Button, refs.zoom2Button, refs.zoom3Button]) {
   if (!button) continue;
   button.addEventListener("click", () => {
@@ -452,6 +461,17 @@ function togglePlayHudPanel(panelName) {
   state.playHudPanels = {
     ...state.playHudPanels,
     [panelName]: !state.playHudPanels[panelName],
+  };
+  playSession.updatePlaySubView();
+}
+
+function acknowledgePendingJourneyEvent() {
+  if (!state.playState?.pendingJourneyEvent) {
+    return;
+  }
+  state.playState = {
+    ...state.playState,
+    pendingJourneyEvent: null,
   };
   playSession.updatePlaySubView();
 }

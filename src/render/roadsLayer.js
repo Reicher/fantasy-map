@@ -1,5 +1,5 @@
-export function drawRoads(ctx, geometry, viewport) {
-  const roads = geometry?.roads ?? [];
+export function drawRoads(ctx, geometry, viewport, options = {}) {
+  const roads = resolveRoads(geometry, options);
   if (roads.length === 0) {
     return;
   }
@@ -144,4 +144,12 @@ function roadNoise(roadIndex, pointIndex) {
 
 function getRoadZoomScale(viewport) {
   return Math.max(1, Math.min(4.2, viewport?.zoom ?? 1));
+}
+
+function resolveRoads(geometry, options) {
+  const explicitRoads = options?.roads;
+  if (Array.isArray(explicitRoads)) {
+    return explicitRoads;
+  }
+  return geometry?.roads ?? [];
 }

@@ -14,6 +14,10 @@ export function drawLabels(ctx, world, viewport, options = {}) {
   const placedBoxes = [];
   const regionLabelSettings = getRegionLabelSettings(viewport);
   const visibleNodeIds = resolveVisibleNodeIdsForLabels(options);
+  const nodeLabelVisibleNodeIds = resolveNodeLabelVisibleIdsForLabels(
+    options,
+    visibleNodeIds,
+  );
   const opasettlement = 0.9;
 
   ctx.save();
@@ -56,7 +60,13 @@ export function drawLabels(ctx, world, viewport, options = {}) {
   }
 
   if (showLabels) {
-    drawNodeLabels(ctx, world, viewport, placedBoxes, visibleNodeIds);
+    drawNodeLabels(
+      ctx,
+      world,
+      viewport,
+      placedBoxes,
+      nodeLabelVisibleNodeIds,
+    );
   }
 
   ctx.restore();
@@ -91,7 +101,7 @@ function reserveNodeCollisionBoxesForMapNames(
     if (allowedIds && !allowedIds.has(node.id)) {
       continue;
     }
-    if (!isWorldPointDiscovered(world, discoveredCells, node)) {
+    if (!allowedIds && !isWorldPointDiscovered(world, discoveredCells, node)) {
       continue;
     }
 
@@ -127,6 +137,15 @@ function resolveVisibleNodeIdsForLabels(options = {}) {
   return (
     options.nodeOverlay?.visibleNodeIds ??
     options.visibleNodeIds ??
+    null
+  );
+}
+
+function resolveNodeLabelVisibleIdsForLabels(options = {}, fallbackVisibleIds) {
+  return (
+    options.nodeOverlay?.nodeLabelVisibleNodeIds ??
+    options.nodeLabelVisibleNodeIds ??
+    fallbackVisibleIds ??
     null
   );
 }
