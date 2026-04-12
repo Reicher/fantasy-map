@@ -57,7 +57,6 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     refs,
     state,
     journeyScene,
-    clearHover,
     profiler: state.playProfiler,
   });
 
@@ -173,6 +172,7 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     if (!state.currentWorld || !state.playState) {
       return;
     }
+    void requestLandscapeOrientationLock();
 
     const transitionId = playModeTransition.begin();
     state.currentMode = "play";
@@ -219,11 +219,7 @@ export function createPlaySession({ refs, state, syncModeUi }) {
   }
 
   function createPlayCamera() {
-    return buildPlayCamera(
-      state.currentWorld,
-      state.playState,
-      state.playZoom ?? 1,
-    );
+    return buildPlayCamera(state.currentWorld, state.playState, 2);
   }
 
   function getVisibleNodeIds(world, playState, validNodeIds) {
@@ -257,5 +253,17 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     }
 
     return Array.from(visibleIds);
+  }
+}
+
+async function requestLandscapeOrientationLock() {
+  const orientation = window.screen?.orientation;
+  if (!orientation || typeof orientation.lock !== "function") {
+    return;
+  }
+  try {
+    await orientation.lock("landscape");
+  } catch {
+    // Ignore unsupported/denied orientation lock attempts.
   }
 }

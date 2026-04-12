@@ -148,56 +148,12 @@
       <div class="play-frame">
         <div id="play-loading" class="play-loading" hidden>Skapar spel...</div>
         <div id="play-tooltip" class="tooltip" hidden></div>
-        <div id="play-map-legend" class="play-map-legend" hidden>
-          <div class="play-map-legend-title">Karta</div>
-          <div class="play-map-legend-buttons">
-            <button
-              id="play-toggle-biome-labels"
-              type="button"
-              class="ghost-button toggle-button"
-            >
-              Kartnamn
-            </button>
-            <button
-              id="play-toggle-node-labels"
-              type="button"
-              class="ghost-button toggle-button"
-            >
-              Nodnamn
-            </button>
-            <button
-              id="play-toggle-hover"
-              type="button"
-              class="ghost-button toggle-button"
-            >
-              Hoverinfo
-            </button>
-          </div>
-          <div class="play-map-legend-zoom">
-            <button
-              id="play-zoom-1"
-              type="button"
-              class="ghost-button toggle-button"
-              data-zoom="1"
-            >
-              ×1
-            </button>
-            <button
-              id="play-zoom-2"
-              type="button"
-              class="ghost-button toggle-button"
-              data-zoom="2"
-            >
-              ×2
-            </button>
-            <button
-              id="play-zoom-3"
-              type="button"
-              class="ghost-button toggle-button"
-              data-zoom="3"
-            >
-              ×3
-            </button>
+        <div class="play-rotate-lock" aria-live="polite">
+          <div class="play-rotate-lock-card">
+            <p class="play-rotate-lock-title">Spelläget kräver landskap</p>
+            <p class="play-rotate-lock-copy">
+              Rotera mobilen till liggande läge för att fortsätta spela.
+            </p>
           </div>
         </div>
         <div id="play-arrival-cue" class="play-arrival-cue" aria-live="polite">

@@ -46,7 +46,6 @@ const refs = {
   playCanvas: document.querySelector("#play-canvas"),
   playJourneyPanel: document.querySelector("#play-journey-panel"),
   playJourneyCanvas: document.querySelector("#play-journey-canvas"),
-  playMapLegend: document.querySelector("#play-map-legend"),
   playBottomHud: document.querySelector("#play-bottom-hud"),
   playPanelCharacter: document.querySelector("#play-panel-character"),
   playPanelInventory: document.querySelector("#play-panel-inventory"),
@@ -80,13 +79,6 @@ const refs = {
   ),
   playArrivalCue: document.querySelector("#play-arrival-cue"),
   playArrivalCueText: document.querySelector("#play-arrival-cue-text"),
-  playToggleBiomeLabelsButton: document.querySelector(
-    "#play-toggle-biome-labels",
-  ),
-  playToggleNodeLabelsButton: document.querySelector(
-    "#play-toggle-node-labels",
-  ),
-  playToggleHoverButton: document.querySelector("#play-toggle-hover"),
   tooltip: document.querySelector("#tooltip"),
   statsContainer: document.querySelector("#stats"),
   toggleBiomeLabelsButton: document.querySelector("#toggle-biome-labels"),
@@ -99,9 +91,6 @@ const refs = {
   zoom1Button: document.querySelector("#zoom-1"),
   zoom2Button: document.querySelector("#zoom-2"),
   zoom3Button: document.querySelector("#zoom-3"),
-  playZoom1Button: document.querySelector("#play-zoom-1"),
-  playZoom2Button: document.querySelector("#play-zoom-2"),
-  playZoom3Button: document.querySelector("#play-zoom-3"),
   randomSeedButton: document.querySelector("#random-seed"),
   resetButton: document.querySelector("#reset"),
   saveImageButton: document.querySelector("#save-image"),
@@ -139,7 +128,6 @@ const state = {
     showHoverInspector: true,
     debugTravelSampling: false,
   },
-  playZoom: 2,
   cameraState: { zoom: 1, centerX: 150, centerY: 110 },
   dragState: null,
   pendingInteractiveRender: false,
@@ -235,15 +223,6 @@ const togglePlayHoverInspector = () => {
   playSession.updatePlaySubView();
 };
 
-if (refs.playToggleBiomeLabelsButton) {
-  refs.playToggleBiomeLabelsButton.addEventListener("click", togglePlayBiomeLabels);
-}
-if (refs.playToggleNodeLabelsButton) {
-  refs.playToggleNodeLabelsButton.addEventListener("click", togglePlayNodeLabels);
-}
-if (refs.playToggleHoverButton) {
-  refs.playToggleHoverButton.addEventListener("click", togglePlayHoverInspector);
-}
 if (refs.playSettingsToggleBiomeLabelsButton) {
   refs.playSettingsToggleBiomeLabelsButton.addEventListener(
     "click",
@@ -327,19 +306,6 @@ if (refs.resetViewButton) {
   });
 }
 
-for (const button of [
-  refs.playZoom1Button,
-  refs.playZoom2Button,
-  refs.playZoom3Button,
-]) {
-  if (!button) continue;
-  button.addEventListener("click", () => {
-    state.playZoom = Number(button.dataset.zoom);
-    syncPlayZoomButtons();
-    playSession.renderPlayWorld();
-  });
-}
-
 refs.saveImageButton.addEventListener("click", () => {
   const url = refs.canvas.toDataURL("image/png");
   const link = document.createElement("a");
@@ -389,7 +355,7 @@ window.addEventListener("keydown", (event) => {
   }
 
   if (event.key === "d" || event.key === "D") {
-    if (!state.playState || state.currentMode !== "play") {
+    if (!state.playState) {
       return;
     }
     event.preventDefault();
@@ -471,19 +437,6 @@ function syncLabelButtons() {
   });
 }
 
-function syncPlayZoomButtons() {
-  for (const button of [
-    refs.playZoom1Button,
-    refs.playZoom2Button,
-    refs.playZoom3Button,
-  ]) {
-    if (!button) continue;
-    button.dataset.active = String(
-      Math.abs(Number(button.dataset.zoom) - state.playZoom) < 0.001,
-    );
-  }
-}
-
 function syncModeUi() {
   applyModeUi({
     refs,
@@ -515,7 +468,6 @@ function syncViewUi() {
 }
 
 syncLabelButtons();
-syncPlayZoomButtons();
 syncModeUi();
 syncViewUi();
 bootApp();

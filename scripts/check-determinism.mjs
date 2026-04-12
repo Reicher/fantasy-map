@@ -1,4 +1,5 @@
 import { generateWorld } from "../src/generator/worldGenerator.js";
+import { normalizeBiomeKeyName } from "../src/biomes/index.js";
 
 const params = {
   seed: "determinism-probe",
@@ -21,12 +22,19 @@ const different = summarize(
 
 const identical = JSON.stringify(first) === JSON.stringify(second);
 const changed = JSON.stringify(first) !== JSON.stringify(different);
+const biomeNormalizationStable =
+  normalizeBiomeKeyName("  forest ") === "forest" &&
+  normalizeBiomeKeyName("not-a-biome") === null;
 
 console.log("Deterministic same-seed:", identical ? "PASS" : "FAIL");
 console.log("Distinct other seed:", changed ? "PASS" : "FAIL");
+console.log(
+  "Biome normalization fallback:",
+  biomeNormalizationStable ? "PASS" : "FAIL",
+);
 console.log(JSON.stringify({ first, different }, null, 2));
 
-if (!identical || !changed) {
+if (!identical || !changed || !biomeNormalizationStable) {
   process.exit(1);
 }
 

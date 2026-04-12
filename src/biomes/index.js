@@ -22,10 +22,6 @@ const BIOME_KEY_NAME_BY_ID = Object.freeze(
   Object.fromEntries(BIOME_DEFINITIONS.map((definition) => [definition.id, definition.key])),
 );
 
-const BIOME_ID_BY_KEY_NAME = Object.freeze(
-  Object.fromEntries(BIOME_DEFINITIONS.map((definition) => [definition.key, definition.id])),
-);
-
 export const BIOME_INFO = Object.freeze(
   Object.fromEntries(
     BIOME_DEFINITIONS.map((definition) => [
@@ -58,14 +54,6 @@ export function getBiomeDefinitionByKey(key) {
   return BIOME_DEFINITION_BY_KEY[key] ?? BIOME_DEFINITION_BY_KEY[PLAINS_KEY];
 }
 
-export function getBiomeKeyNameById(id) {
-  return BIOME_KEY_NAME_BY_ID[id] ?? PLAINS_KEY;
-}
-
-export function getBiomeIdByKeyName(key) {
-  return BIOME_ID_BY_KEY_NAME[key] ?? PLAINS_ID;
-}
-
 export function normalizeBiomeKeyName(value) {
   if (typeof value === "number") {
     return BIOME_KEY_NAME_BY_ID[value] ?? null;
@@ -75,7 +63,7 @@ export function normalizeBiomeKeyName(value) {
     if (!normalized) {
       return null;
     }
-    return BIOME_DEFINITION_BY_KEY[normalized] ? normalized : normalized;
+    return BIOME_DEFINITION_BY_KEY[normalized] ? normalized : null;
   }
   return null;
 }

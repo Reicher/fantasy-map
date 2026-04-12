@@ -6,11 +6,9 @@ export function createPlaySubViewController({
   refs,
   state,
   journeyScene,
-  clearHover,
   profiler,
 }) {
   let lastJourneyVisible = null;
-  let lastMapLegendVisible = null;
   let lastBottomHudVisible = null;
   let lastLocationLine = null;
   let lastModeButtonLabel = null;
@@ -30,7 +28,6 @@ export function createPlaySubViewController({
 
   function reset() {
     lastJourneyVisible = null;
-    lastMapLegendVisible = null;
     lastBottomHudVisible = null;
     lastLocationLine = null;
     lastModeButtonLabel = null;
@@ -48,21 +45,12 @@ export function createPlaySubViewController({
   function update(world, playState) {
     const isPlay = state.currentMode === "play";
     const isJourney = isPlay && playState?.viewMode === "journey";
-    const showMapLegend = false;
     const showBottomHud = isPlay && Boolean(playState);
 
     if (lastJourneyVisible !== isJourney) {
       setElementVisible(refs.playCanvas, !isJourney, "block");
       setElementVisible(refs.playJourneyPanel, isJourney, "flex");
       lastJourneyVisible = isJourney;
-    }
-
-    if (lastMapLegendVisible !== showMapLegend) {
-      setElementVisible(refs.playMapLegend, showMapLegend, "flex");
-      lastMapLegendVisible = showMapLegend;
-      if (!showMapLegend) {
-        clearHover(refs.playTooltip);
-      }
     }
 
     if (lastBottomHudVisible !== showBottomHud) {
@@ -223,9 +211,6 @@ export function createPlaySubViewController({
 }
 
 function syncPlayLegendButtons(playMapOptions, renderOptions, refs) {
-  setToggleState(refs.playToggleBiomeLabelsButton, playMapOptions.showBiomeLabels);
-  setToggleState(refs.playToggleNodeLabelsButton, playMapOptions.showNodeLabels);
-  setToggleState(refs.playToggleHoverButton, playMapOptions.showHoverInspector);
   setToggleState(
     refs.playSettingsToggleBiomeLabelsButton,
     playMapOptions.showBiomeLabels,
