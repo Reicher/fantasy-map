@@ -29,7 +29,7 @@ import {
   drawLakeWaves,
   drawOceanWaves,
   drawRivers,
-} from "./waterLayer.js?v=20260403a";
+} from "./waterLayer.js?v=20260411b";
 
 export { createViewport } from "./viewport.js?v=20260331l";
 

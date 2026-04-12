@@ -1,4 +1,4 @@
-import { drawNodeMarkerGlyph } from "./nodeGlyph.js?v=20260409a";
+import { drawNodeMarkerGlyph } from "./nodeGlyph.js?v=20260411a";
 
 const MAP_NODE_ICON_LIFT = 3.3;
 

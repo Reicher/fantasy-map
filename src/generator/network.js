@@ -1,7 +1,7 @@
 import { coordsOf } from "../utils.js";
 
 const JUNCTION_NODE_MERGE_RADIUS = 0;
-const JUNCTION_CLUSTER_RADIUS = 0;
+const JUNCTION_CLUSTER_RADIUS = 5.2;
 
 export function buildWorldNetwork(world) {
   return buildRoadNetwork({

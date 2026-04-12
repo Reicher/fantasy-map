@@ -139,7 +139,11 @@ const SETTLEMENT_SUFFIX_ROOTS = new Set([
   "köping",
 ]);
 
-const NODE_NAME_MARKERS = new Set(["settlement", "abandoned", "signpost"]);
+const NODE_NAME_MARKERS = new Set([
+  "settlement",
+  "abandoned",
+  "signpost",
+]);
 
 const FAMILY_NAMES = [
   "Andersson",

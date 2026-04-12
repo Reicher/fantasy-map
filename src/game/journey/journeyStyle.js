@@ -11,7 +11,7 @@ import {
   hexToRgb,
   mixRgb,
 } from "../../colorSystem.js";
-import { drawNodeMarkerGlyph } from "../../render/nodeGlyph.js?v=20260409a";
+import { drawNodeMarkerGlyph } from "../../render/nodeGlyph.js?v=20260411a";
 
 const SNOW_GROUND_RGB = WORLD_RGB.snow;
 const JOURNEY_SIGNPOST_IMAGE = createJourneySignpostImage();

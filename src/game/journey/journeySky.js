@@ -29,6 +29,7 @@ export function drawSky(ctx, viewW, viewH, skyState) {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, viewW, viewH);
 
+  drawStars(ctx, viewW, skyState);
   drawSun(ctx, skyState);
   drawMoon(ctx, skyState);
 }
@@ -41,10 +42,26 @@ export function drawOceanHorizon(ctx, viewW, viewH, skyState) {
   const daylight = skyState.daylight;
   const night = skyState.night;
   const twilight = skyState.twilight;
-  const nearHorizon = lerpRgb(horizon, [183, 208, 230], daylight * 0.5);
-  const midOcean = lerpRgb([55, 86, 125], [96, 152, 188], daylight);
-  const deepOcean = lerpRgb([38, 62, 96], [63, 114, 155], daylight);
-  const floorOcean = lerpRgb([28, 46, 76], [50, 100, 144], daylight);
+  const nearHorizon = lerpRgb(
+    lerpRgb(horizon, [116, 146, 190], night * 0.42),
+    [175, 211, 224],
+    daylight * 0.56 + twilight * 0.24,
+  );
+  const midOcean = lerpRgb(
+    [18, 50, 92],
+    [70, 152, 176],
+    daylight * 0.9 + twilight * 0.14,
+  );
+  const deepOcean = lerpRgb(
+    [12, 31, 70],
+    [44, 108, 148],
+    daylight * 0.84 + twilight * 0.13,
+  );
+  const floorOcean = lerpRgb(
+    [8, 20, 52],
+    [23, 84, 130],
+    daylight * 0.78 + twilight * 0.11,
+  );
 
   const ocean = ctx.createLinearGradient(0, top, 0, bottom);
   ocean.addColorStop(0.0, rgbCssFromArray(horizon));
@@ -54,6 +71,24 @@ export function drawOceanHorizon(ctx, viewW, viewH, skyState) {
   ocean.addColorStop(1.0, rgbCssFromArray(floorOcean));
   ctx.fillStyle = ocean;
   ctx.fillRect(0, top, viewW, h);
+
+  const bandCount = 6;
+  for (let bandIndex = 0; bandIndex < bandCount; bandIndex += 1) {
+    const bandT = (bandIndex + 1) / (bandCount + 1);
+    const y = top + h * (0.12 + bandT * 0.72);
+    const amplitude = (4 + bandIndex * 0.8) * (0.65 + daylight * 0.48);
+    const waveLength = Math.max(120, viewW * (0.16 + bandIndex * 0.06));
+    const alpha = (0.04 + daylight * 0.06 + twilight * 0.04) * (1 - bandT * 0.42);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    for (let x = 0; x <= viewW + 8; x += 8) {
+      const wave = Math.sin((x / waveLength) * TAU + bandIndex * 0.8 + skyState.hour * 0.11);
+      ctx.lineTo(x, y + wave * amplitude);
+    }
+    ctx.strokeStyle = `rgba(214, 238, 246, ${alpha})`;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+  }
 
   const glareY = top + Math.round(h * 0.1);
   const glare = ctx.createLinearGradient(0, glareY - 1, 0, glareY + 3);
@@ -149,6 +184,53 @@ export function createSkyState(timeOfDayHours, viewW, viewH) {
   };
 }
 
+function drawStars(ctx, viewW, skyState) {
+  const starAlpha = clamp01(skyState.night * 1.08 + skyState.twilight * 0.18 - 0.06);
+  if (starAlpha <= 0.01) {
+    return;
+  }
+
+  const skyTop = Math.max(48, skyState.horizonY * 0.9);
+  const starCount = Math.max(38, Math.round((viewW * skyTop) / 14000));
+  for (let index = 0; index < starCount; index += 1) {
+    const x = hash01(index * 17.31 + viewW * 0.023) * viewW;
+    const y = Math.pow(hash01(index * 43.81 + 0.217), 1.52) * skyTop;
+    const size = 0.55 + hash01(index * 97.12 + 0.71) * 1.75;
+    const twinkle =
+      0.48 +
+      0.52 *
+        Math.sin(
+          ((skyState.hour / 24) * TAU + index * 0.62) *
+            (0.88 + hash01(index * 29.44 + 1.2) * 0.35),
+        );
+    const alpha =
+      clamp01(0.2 + hash01(index * 58.44 + 0.1) * 0.86) *
+      starAlpha *
+      (0.64 + twinkle * 0.36);
+    if (alpha <= 0.012) {
+      continue;
+    }
+
+    const warmMix = hash01(index * 12.3 + 0.29);
+    const coreRgb = lerpRgb([206, 221, 255], [255, 242, 206], warmMix * 0.4);
+    ctx.fillStyle = `rgba(${coreRgb[0]}, ${coreRgb[1]}, ${coreRgb[2]}, ${alpha})`;
+    ctx.beginPath();
+    ctx.arc(x, y, size, 0, TAU);
+    ctx.fill();
+
+    if (size > 1.35) {
+      ctx.strokeStyle = `rgba(232, 241, 255, ${alpha * 0.5})`;
+      ctx.lineWidth = 0.75;
+      ctx.beginPath();
+      ctx.moveTo(x - size * 1.7, y);
+      ctx.lineTo(x + size * 1.7, y);
+      ctx.moveTo(x, y - size * 1.7);
+      ctx.lineTo(x, y + size * 1.7);
+      ctx.stroke();
+    }
+  }
+}
+
 function drawSun(ctx, skyState) {
   const sun = skyState.sun;
   if (sun.visible <= 0.001) return;
@@ -176,6 +258,11 @@ function drawSun(ctx, skyState) {
   ctx.beginPath();
   ctx.arc(sun.x, sun.y, sun.radius, 0, TAU);
   ctx.fill();
+}
+
+function hash01(seed) {
+  const raw = Math.sin(seed * 12.9898 + 78.233) * 43758.5453123;
+  return raw - Math.floor(raw);
 }
 
 function drawMoon(ctx, skyState) {

@@ -20,7 +20,6 @@ export const DEFAULT_PARAMS = {
   moistureBias: 50,
   inlandPreference: 50,
   settlementRandomness: 20,
-  signpostFrequency: 50,
   abandonedFrequency: 50,
   nodeMinDistance: 5,
 };
@@ -61,43 +60,33 @@ const PARAM_LABELS = {
             : "Regnigt",
   inlandPreference: (value) =>
     value < 20
-      ? "Kustbefolkat"
+      ? "Tydligt kustnära"
       : value < 40
-        ? "Kustbetonat"
+        ? "Mest kust"
         : value < 60
           ? "Blandat"
           : value < 80
-            ? "Blandat inland"
-            : "Inlandskt",
+            ? "Mest inland"
+            : "Tydligt inland",
   settlementRandomness: (value) =>
     value < 15
-      ? "Nästan inga avvikare"
+      ? "Förutsägbart"
       : value < 35
-        ? "Få avvikare"
+        ? "Lätt variation"
         : value < 60
           ? "Blandat"
           : value < 85
-            ? "Många avvikare"
-            : "Mycket slump",
-  signpostFrequency: (value) =>
-    value < 15
-      ? "Få vägposter"
-      : value < 35
-        ? "Ganska få"
-        : value < 65
-          ? "Normalt"
-          : value < 85
-            ? "Många"
-            : "Täta vägposter",
+            ? "Hög variation"
+            : "Mycket variation",
   abandonedFrequency: (value) =>
     value < 15
-      ? "Nästan inga övergivna"
+      ? "Nästan inga"
       : value < 35
-        ? "Få övergivna"
-        : value < 65
-          ? "Normalt"
+        ? "Få"
+      : value < 65
+          ? "Medel"
           : value < 85
-            ? "Många övergivna"
+            ? "Många"
             : "Väldigt många",
   nodeMinDistance: (value) => `${value.toFixed(1)} celler`,
 };
@@ -112,7 +101,13 @@ export const PARAM_SCHEMA = {
     max: 100,
     step: 1,
     formatLabel: PARAM_LABELS.mapSize,
-    ui: { label: "Kartstorlek", tab: "karta", order: 10 },
+    ui: {
+      label: "Kontinentstorlek",
+      tab: "karta",
+      section: "Terrängform",
+      order: 10,
+      hint: "Styr skalan på landmassor och avstånd.",
+    },
   },
   mountainousness: {
     type: "number",
@@ -120,7 +115,13 @@ export const PARAM_SCHEMA = {
     max: 100,
     step: 1,
     formatLabel: PARAM_LABELS.mountainousness,
-    ui: { label: "Bergighet", tab: "karta", order: 20 },
+    ui: {
+      label: "Bergighet",
+      tab: "karta",
+      section: "Terrängform",
+      order: 20,
+      hint: "Mer berg ger svårare passager och tydligare höjdskillnader.",
+    },
   },
   edgeDetail: {
     type: "number",
@@ -128,7 +129,13 @@ export const PARAM_SCHEMA = {
     max: 520,
     step: 1,
     formatLabel: PARAM_LABELS.edgeDetail,
-    ui: { label: "Kantdjup", tab: "karta", order: 30 },
+    ui: {
+      label: "Simuleringsupplösning",
+      tab: "avancerat",
+      section: "Världsteknik",
+      order: 35,
+      hint: "Högre värde ger mer detalj men kostar prestanda.",
+    },
   },
   minBiomeSize: {
     type: "number",
@@ -136,7 +143,13 @@ export const PARAM_SCHEMA = {
     max: 20,
     step: 1,
     formatLabel: PARAM_LABELS.minBiomeSize,
-    ui: { label: "Minsta biom", tab: "karta", order: 40 },
+    ui: {
+      label: "Min biomyta",
+      tab: "karta",
+      section: "Biomstruktur",
+      order: 10,
+      hint: "Höj för färre små fläckar mellan biomer.",
+    },
   },
   coastComplexity: {
     type: "number",
@@ -144,7 +157,13 @@ export const PARAM_SCHEMA = {
     max: 100,
     step: 1,
     formatLabel: PARAM_LABELS.coastComplexity,
-    ui: { label: "Kustkomplexitet", tab: "karta", order: 50 },
+    ui: {
+      label: "Kustdetalj",
+      tab: "karta",
+      section: "Terrängform",
+      order: 30,
+      hint: "Påverkar hur kantig eller sönderbruten kusten blir.",
+    },
   },
   riverAmount: {
     type: "number",
@@ -152,7 +171,13 @@ export const PARAM_SCHEMA = {
     max: 100,
     step: 1,
     formatLabel: PARAM_LABELS.riverAmount,
-    ui: { label: "Flodmängd", tab: "vatten", order: 10 },
+    ui: {
+      label: "Flodnät",
+      tab: "vatten",
+      section: "Hydrologi",
+      order: 10,
+      hint: "Mängd aktiva flodsystem i världen.",
+    },
   },
   lakeAmount: {
     type: "number",
@@ -160,7 +185,13 @@ export const PARAM_SCHEMA = {
     max: 100,
     step: 1,
     formatLabel: PARAM_LABELS.lakeAmount,
-    ui: { label: "Sjöantal", tab: "vatten", order: 20 },
+    ui: {
+      label: "Sjöantal",
+      tab: "vatten",
+      section: "Hydrologi",
+      order: 20,
+      hint: "Hur många sjöar som försöker genereras.",
+    },
   },
   lakeSize: {
     type: "number",
@@ -168,7 +199,13 @@ export const PARAM_SCHEMA = {
     max: 100,
     step: 1,
     formatLabel: PARAM_LABELS.lakeSize,
-    ui: { label: "Sjöstorlek", tab: "vatten", order: 30 },
+    ui: {
+      label: "Sjöstorlek",
+      tab: "vatten",
+      section: "Hydrologi",
+      order: 30,
+      hint: "Påverkar sjöarnas genomsnittliga utbredning.",
+    },
   },
   settlementDensity: {
     type: "number",
@@ -176,7 +213,13 @@ export const PARAM_SCHEMA = {
     max: 100,
     step: 1,
     formatLabel: PARAM_LABELS.settlementDensity,
-    ui: { label: "Nodtäthet", tab: "noder", order: 10 },
+    ui: {
+      label: "Bosättningstäthet",
+      tab: "noder",
+      section: "Bosättningar",
+      order: 10,
+      hint: "Grundnivå för hur tätt bosättningar placeras.",
+    },
   },
   settlementRandomness: {
     type: "number",
@@ -184,7 +227,13 @@ export const PARAM_SCHEMA = {
     max: 100,
     step: 1,
     formatLabel: PARAM_LABELS.settlementRandomness,
-    ui: { label: "Bosättningsslump", tab: "noder", order: 15 },
+    ui: {
+      label: "Bosättningsspridning",
+      tab: "noder",
+      section: "Bosättningar",
+      order: 20,
+      hint: "Högre värde ger mer oväntade placeringar.",
+    },
   },
   renderScale: {
     type: "number",
@@ -192,7 +241,13 @@ export const PARAM_SCHEMA = {
     max: 250,
     step: 1,
     formatLabel: PARAM_LABELS.renderScale,
-    ui: { label: "Render-skala", tab: "avancerat", order: 10 },
+    ui: {
+      label: "Renderupplösning",
+      tab: "avancerat",
+      section: "Prestanda",
+      order: 10,
+      hint: "Högre värde ger skarpare bild men kostar prestanda.",
+    },
   },
   fogVisionRadius: {
     type: "number",
@@ -200,7 +255,13 @@ export const PARAM_SCHEMA = {
     max: 40,
     step: 1,
     formatLabel: PARAM_LABELS.fogVisionRadius,
-    ui: { label: "Sikt (fog)", tab: "avancerat", order: 20 },
+    ui: {
+      label: "Siktradie (spel)",
+      tab: "avancerat",
+      section: "Spelkänsla",
+      order: 10,
+      hint: "Hur många celler som avtäcks runt spelaren.",
+    },
   },
   temperatureBias: {
     type: "number",
@@ -208,7 +269,13 @@ export const PARAM_SCHEMA = {
     max: 100,
     step: 1,
     formatLabel: PARAM_LABELS.temperatureBias,
-    ui: { label: "Temperatur", tab: "avancerat", order: 30 },
+    ui: {
+      label: "Temperatur",
+      tab: "karta",
+      section: "Klimat",
+      order: 10,
+      hint: "Skiftar världen mot kallare eller varmare klimat.",
+    },
   },
   moistureBias: {
     type: "number",
@@ -216,7 +283,13 @@ export const PARAM_SCHEMA = {
     max: 100,
     step: 1,
     formatLabel: PARAM_LABELS.moistureBias,
-    ui: { label: "Fuktighet", tab: "avancerat", order: 40 },
+    ui: {
+      label: "Fuktighet",
+      tab: "karta",
+      section: "Klimat",
+      order: 20,
+      hint: "Skiftar världen mot torrare eller fuktigare biomer.",
+    },
   },
   inlandPreference: {
     type: "number",
@@ -224,15 +297,13 @@ export const PARAM_SCHEMA = {
     max: 100,
     step: 1,
     formatLabel: PARAM_LABELS.inlandPreference,
-    ui: { label: "Inlandspreferens", tab: "avancerat", order: 50 },
-  },
-  signpostFrequency: {
-    type: "number",
-    min: 0,
-    max: 100,
-    step: 1,
-    formatLabel: PARAM_LABELS.signpostFrequency,
-    ui: { label: "Vägpostfrekvens", tab: "noder", order: 20 },
+    ui: {
+      label: "Kust/inland-fokus",
+      tab: "noder",
+      section: "Bosättningar",
+      order: 30,
+      hint: "Vänster = fler kustnära platser, höger = mer inland.",
+    },
   },
   abandonedFrequency: {
     type: "number",
@@ -240,7 +311,13 @@ export const PARAM_SCHEMA = {
     max: 100,
     step: 1,
     formatLabel: PARAM_LABELS.abandonedFrequency,
-    ui: { label: "Övergivna platser", tab: "noder", order: 30 },
+    ui: {
+      label: "Övergivna platser",
+      tab: "noder",
+      section: "Nodtyper",
+      order: 20,
+      hint: "Fler övergivna platser längs vägarna.",
+    },
   },
   nodeMinDistance: {
     type: "number",
@@ -248,7 +325,13 @@ export const PARAM_SCHEMA = {
     max: 14,
     step: 0.5,
     formatLabel: PARAM_LABELS.nodeMinDistance,
-    ui: { label: "Min nodavstånd", tab: "noder", order: 25 },
+    ui: {
+      label: "Min avstånd mellan platser",
+      tab: "noder",
+      section: "Nodtyper",
+      order: 15,
+      hint: "Öka för jämnare spridning och färre kluster.",
+    },
   },
 };
 

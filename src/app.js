@@ -2,11 +2,11 @@ import {
   DEFAULT_PARAMS,
   RENDER_HEIGHT,
   RENDER_WIDTH,
-} from "./config.js?v=20260411a";
+} from "./config.js?v=20260411d";
 import {
   generateWorld,
   normalizeParams,
-} from "./generator/worldGenerator.js?v=20260411b";
+} from "./generator/worldGenerator.js?v=20260411j";
 import {
   bindRangeLabels,
   getFormValues,
@@ -15,7 +15,7 @@ import {
   renderControlsFromSchema,
   setSeedValue,
   updateLabels,
-} from "./ui/controls.js?v=20260411a";
+} from "./ui/controls.js?v=20260411d";
 import {
   inferInitialMode,
   syncLabelButtons as applyLabelButtonState,
@@ -27,7 +27,7 @@ import { createPlayProfiler } from "./ui/playProfiler.js?v=20260403a";
 import { updateStats } from "./ui/statsPanel.js";
 import { createEditorSession } from "./ui/editorSession.js?v=20260411b";
 import { clearHover } from "./ui/hoverPanel.js?v=20260408a";
-import { createPlaySession } from "./ui/playSession.js?v=20260411b";
+import { createPlaySession } from "./ui/playSession.js?v=20260411e";
 import {
   createTransitionController,
   waitForNextPaintIfActive,
@@ -48,8 +48,36 @@ const refs = {
   playJourneyCanvas: document.querySelector("#play-journey-canvas"),
   playMapLegend: document.querySelector("#play-map-legend"),
   playBottomHud: document.querySelector("#play-bottom-hud"),
+  playPanelCharacter: document.querySelector("#play-panel-character"),
+  playPanelInventory: document.querySelector("#play-panel-inventory"),
+  playPanelSettings: document.querySelector("#play-panel-settings"),
+  playPanelToggleCharacterButton: document.querySelector(
+    "#play-panel-toggle-character",
+  ),
+  playPanelToggleInventoryButton: document.querySelector(
+    "#play-panel-toggle-inventory",
+  ),
+  playPanelToggleSettingsButton: document.querySelector(
+    "#play-panel-toggle-settings",
+  ),
   playLocationLine: document.querySelector("#play-location-line"),
+  playCharacterPrimaryLine: document.querySelector("#play-character-primary"),
+  playCharacterTimeLine: document.querySelector("#play-character-time"),
+  playCharacterTravelLine: document.querySelector("#play-character-travel"),
+  playInventoryList: document.querySelector("#play-inventory-list"),
   playSwitchModeButton: document.querySelector("#play-switch-mode"),
+  playSettingsToggleBiomeLabelsButton: document.querySelector(
+    "#play-settings-toggle-biome-labels",
+  ),
+  playSettingsToggleNodeLabelsButton: document.querySelector(
+    "#play-settings-toggle-node-labels",
+  ),
+  playSettingsToggleHoverButton: document.querySelector(
+    "#play-settings-toggle-hover",
+  ),
+  playSettingsToggleSnowButton: document.querySelector(
+    "#play-settings-toggle-snow",
+  ),
   playArrivalCue: document.querySelector("#play-arrival-cue"),
   playArrivalCueText: document.querySelector("#play-arrival-cue-text"),
   playToggleBiomeLabelsButton: document.querySelector(
@@ -118,6 +146,11 @@ const state = {
   playAnimationFrame: null,
   lastTravelTick: 0,
   playProfiler: createPlayProfiler(),
+  playHudPanels: {
+    character: false,
+    inventory: false,
+    settings: false,
+  },
 };
 const generateTransition = createTransitionController();
 
@@ -183,24 +216,75 @@ refs.toggleSnowButton.addEventListener("click", () => {
   playSession.renderPlayWorld();
 });
 
-refs.playToggleBiomeLabelsButton.addEventListener("click", () => {
+const togglePlayBiomeLabels = () => {
   state.playMapOptions.showBiomeLabels = !state.playMapOptions.showBiomeLabels;
   playSession.renderPlayWorld();
-});
+};
 
-refs.playToggleNodeLabelsButton.addEventListener("click", () => {
+const togglePlayNodeLabels = () => {
   state.playMapOptions.showNodeLabels = !state.playMapOptions.showNodeLabels;
   playSession.renderPlayWorld();
-});
+};
 
-refs.playToggleHoverButton.addEventListener("click", () => {
+const togglePlayHoverInspector = () => {
   state.playMapOptions.showHoverInspector =
     !state.playMapOptions.showHoverInspector;
   if (!state.playMapOptions.showHoverInspector) {
     clearHover(refs.playTooltip);
   }
   playSession.updatePlaySubView();
-});
+};
+
+if (refs.playToggleBiomeLabelsButton) {
+  refs.playToggleBiomeLabelsButton.addEventListener("click", togglePlayBiomeLabels);
+}
+if (refs.playToggleNodeLabelsButton) {
+  refs.playToggleNodeLabelsButton.addEventListener("click", togglePlayNodeLabels);
+}
+if (refs.playToggleHoverButton) {
+  refs.playToggleHoverButton.addEventListener("click", togglePlayHoverInspector);
+}
+if (refs.playSettingsToggleBiomeLabelsButton) {
+  refs.playSettingsToggleBiomeLabelsButton.addEventListener(
+    "click",
+    togglePlayBiomeLabels,
+  );
+}
+if (refs.playSettingsToggleNodeLabelsButton) {
+  refs.playSettingsToggleNodeLabelsButton.addEventListener(
+    "click",
+    togglePlayNodeLabels,
+  );
+}
+if (refs.playSettingsToggleHoverButton) {
+  refs.playSettingsToggleHoverButton.addEventListener(
+    "click",
+    togglePlayHoverInspector,
+  );
+}
+if (refs.playSettingsToggleSnowButton) {
+  refs.playSettingsToggleSnowButton.addEventListener("click", () => {
+    state.renderOptions.showSnow = !state.renderOptions.showSnow;
+    syncLabelButtons();
+    playSession.renderPlayWorld();
+  });
+}
+
+if (refs.playPanelToggleCharacterButton) {
+  refs.playPanelToggleCharacterButton.addEventListener("click", () => {
+    togglePlayHudPanel("character");
+  });
+}
+if (refs.playPanelToggleInventoryButton) {
+  refs.playPanelToggleInventoryButton.addEventListener("click", () => {
+    togglePlayHudPanel("inventory");
+  });
+}
+if (refs.playPanelToggleSettingsButton) {
+  refs.playPanelToggleSettingsButton.addEventListener("click", () => {
+    togglePlayHudPanel("settings");
+  });
+}
 
 if (refs.playSwitchModeButton) {
   refs.playSwitchModeButton.addEventListener("click", () => {
@@ -312,6 +396,24 @@ window.addEventListener("keydown", (event) => {
     state.playMapOptions.debugTravelSampling =
       !state.playMapOptions.debugTravelSampling;
     playSession.renderPlayWorld();
+    return;
+  }
+
+  if (event.key === "c" || event.key === "C") {
+    event.preventDefault();
+    togglePlayHudPanel("character");
+    return;
+  }
+
+  if (event.key === "i" || event.key === "I") {
+    event.preventDefault();
+    togglePlayHudPanel("inventory");
+    return;
+  }
+
+  if (event.key === "s" || event.key === "S") {
+    event.preventDefault();
+    togglePlayHudPanel("settings");
   }
 });
 
@@ -388,6 +490,17 @@ function syncModeUi() {
     state,
     updatePlaySubView: playSession.updatePlaySubView,
   });
+}
+
+function togglePlayHudPanel(panelName) {
+  if (!state.playHudPanels || !(panelName in state.playHudPanels)) {
+    return;
+  }
+  state.playHudPanels = {
+    ...state.playHudPanels,
+    [panelName]: !state.playHudPanels[panelName],
+  };
+  playSession.updatePlaySubView();
 }
 
 function syncViewUi() {

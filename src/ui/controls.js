@@ -2,15 +2,14 @@ import {
   NUMERIC_PARAM_KEYS,
   PARAM_KEYS,
   PARAM_SCHEMA,
-} from "../config.js?v=20260411a";
+} from "../config.js?v=20260411d";
 
-const TAB_ORDER = ["karta", "vatten", "noder", "vagar", "avancerat"];
+const TAB_ORDER = ["karta", "vatten", "noder", "avancerat"];
 const TAB_LABELS = {
-  karta: "Karta",
+  karta: "Landskap",
   vatten: "Vatten",
-  noder: "Noder",
-  vagar: "Vägar",
-  avancerat: "Avancerat",
+  noder: "Platser",
+  avancerat: "Spel & Teknik",
 };
 
 export function renderControlsFromSchema(form, options = {}) {
@@ -51,13 +50,7 @@ export function renderControlsFromSchema(form, options = {}) {
         `<button class="tab-btn" data-tab="${tab}" type="button">${TAB_LABELS[tab] ?? tab}</button>`,
     ),
     "</nav>",
-    ...tabs.map((tab) => {
-      const fields = entriesByTab
-        .get(tab)
-        .map(({ key, schema }) => buildRangeField(key, schema))
-        .join("");
-      return `<div class="tab-panel" data-tab-panel="${tab}" hidden>${fields}</div>`;
-    }),
+    ...tabs.map((tab) => buildTabPanel(tab, entriesByTab.get(tab))),
   ].join("");
 
   const initialTab = tabs.includes(options.initialTab) ? options.initialTab : tabs[0];
@@ -152,11 +145,15 @@ export function randomSeed() {
 function buildRangeField(key, schema) {
   const label = schema.ui?.label ?? key;
   const step = schema.step ?? 1;
+  const hint = schema.ui?.hint
+    ? `<div class="field-hint">${schema.ui.hint}</div>`
+    : "";
   return `<div class="field">
     <div class="field-header">
       <span class="field-label">${label}</span>
       <span id="${key}-value" class="field-value"></span>
     </div>
+    ${hint}
     <input
       id="${key}"
       name="${key}"
@@ -166,6 +163,33 @@ function buildRangeField(key, schema) {
       step="${step}"
     />
   </div>`;
+}
+
+function buildTabPanel(tab, entries = []) {
+  const sections = new Map();
+  for (const entry of entries) {
+    const section = entry.schema.ui?.section ?? "";
+    if (!sections.has(section)) {
+      sections.set(section, []);
+    }
+    sections.get(section).push(entry);
+  }
+
+  const sectionHtml = Array.from(sections.entries())
+    .map(([section, sectionEntries], index) => {
+      const heading =
+        section && section.trim()
+          ? `<h3 class="form-section-heading">${section}</h3>`
+          : "";
+      const fields = sectionEntries
+        .map(({ key, schema }) => buildRangeField(key, schema))
+        .join("");
+      const extraClass = index === 0 ? " form-section--first" : "";
+      return `<section class="form-section${extraClass}">${heading}${fields}</section>`;
+    })
+    .join("");
+
+  return `<div class="tab-panel" data-tab-panel="${tab}" hidden>${sectionHtml}</div>`;
 }
 
 function setActiveTab(root, activeTab) {

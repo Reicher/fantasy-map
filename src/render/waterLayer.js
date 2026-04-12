@@ -2,6 +2,11 @@ import { BIOME_KEYS } from "../config.js";
 import { isFrozenLake } from "../generator/models/surfaceModel.js?v=20260402b";
 import { clamp, coordsOf } from "../utils.js";
 import { hashSeed, nextHash } from "./hash.js";
+
+const OCEAN_WAVE_THRESHOLD = 0.845;
+const LAKE_WAVE_THRESHOLD = 0.81;
+const WAVE_PEAK_MARGIN = 0.014;
+
 export function drawRivers(ctx, geometry, viewport) {
   const rivers = geometry?.rivers ?? [];
   ctx.lineCap = "round";
@@ -208,6 +213,7 @@ function distanceBetween(a, b) {
 
 export function drawLakeWaves(ctx, hydrology, climate, terrain, geometry, viewport, width) {
   const lakeGeometryById = new Map((geometry.lakes ?? []).map((lake) => [lake.id, lake]));
+  const lakeIdByCell = hydrology?.lakeIdByCell ?? null;
 
   for (const lake of hydrology.lakes) {
     if (lake.cells.length < 3) {
@@ -223,26 +229,41 @@ export function drawLakeWaves(ctx, hydrology, climate, terrain, geometry, viewpo
       continue;
     }
 
-    let state = hashSeed(`lake:${lake.id}:${lake.cells.length}`);
     ctx.save();
     ctx.lineWidth = 1.2;
     ctx.lineCap = "round";
 
     for (const cell of lake.cells) {
-      state = nextHash(state);
-      if ((state % 1000) / 1000 > 0.042) {
+      const [x, y] = coordsOf(cell, width);
+      const waveScore = sampleWaveField("lake", x, y);
+      if (waveScore < LAKE_WAVE_THRESHOLD) {
+        continue;
+      }
+      if (
+        !isWaveLocalPeak("lake", x, y, waveScore, (nx, ny) =>
+          isSameLakeCell(nx, ny, width, terrain.height, lake.id, lakeIdByCell),
+        )
+      ) {
         continue;
       }
 
-      const [x, y] = coordsOf(cell, width);
-      const point = viewport.worldToCanvas(x, y);
+      let state = hashSeed(`lake-wave:${lake.id}:${x},${y}`);
       state = nextHash(state);
-      const length = 10 + ((state % 1000) / 1000) * Math.max(9, viewport.scaleX * 1.45);
+      const worldJitterX = ((state % 1000) / 1000 - 0.5) * 0.82;
       state = nextHash(state);
-      const amplitude = 1.4 + ((state % 1000) / 1000) * 2.8;
-      ctx.strokeStyle = "rgba(235, 229, 214, 0.38)";
+      const worldJitterY = ((state % 1000) / 1000 - 0.5) * 0.68;
+      const point = viewport.worldToCanvas(x + worldJitterX, y + worldJitterY);
+      state = nextHash(state);
+      const length = 8 + ((state % 1000) / 1000) * Math.max(8, viewport.scaleX * 1.84);
+      state = nextHash(state);
+      const amplitude = 0.95 + ((state % 1000) / 1000) * 2.2;
+      state = nextHash(state);
+      const lightAlpha = 0.3 + ((state % 1000) / 1000) * 0.14;
+      state = nextHash(state);
+      const darkAlpha = 0.38 + ((state % 1000) / 1000) * 0.16;
+      ctx.strokeStyle = `rgba(236, 232, 220, ${lightAlpha})`;
       drawLakeWaveMark(ctx, point.x, point.y + 0.6, length, amplitude);
-      ctx.strokeStyle = "rgba(70, 92, 100, 0.48)";
+      ctx.strokeStyle = `rgba(60, 84, 95, ${darkAlpha})`;
       drawLakeWaveMark(ctx, point.x, point.y, length, amplitude);
     }
 
@@ -251,42 +272,71 @@ export function drawLakeWaves(ctx, hydrology, climate, terrain, geometry, viewpo
 }
 
 export function drawOceanWaves(ctx, terrain, climate, geometry, viewport) {
-  const spacing = 4;
-  const startX = Math.floor((viewport.leftWorld - 2) / spacing) * spacing;
-  const endX = Math.ceil((viewport.leftWorld + viewport.visibleWidth + 2) / spacing) * spacing;
-  const startY = Math.floor((viewport.topWorld - 2) / spacing) * spacing;
-  const endY = Math.ceil((viewport.topWorld + viewport.visibleHeight + 2) / spacing) * spacing;
+  const startX = Math.floor(viewport.leftWorld - 2);
+  const endX = Math.ceil(viewport.leftWorld + viewport.visibleWidth + 2);
+  const startY = Math.floor(viewport.topWorld - 2);
+  const endY = Math.ceil(viewport.topWorld + viewport.visibleHeight + 2);
 
   ctx.save();
   ctx.lineWidth = 1.2;
   ctx.lineCap = "round";
 
-  for (let y = startY; y <= endY; y += spacing) {
-    for (let x = startX; x <= endX; x += spacing) {
+  for (let y = startY; y <= endY; y += 1) {
+    for (let x = startX; x <= endX; x += 1) {
       if (!isOceanWaveAnchor(x, y, terrain, climate)) {
+        continue;
+      }
+
+      const waveScore = sampleWaveField("ocean", x, y);
+      const coastBoost = isNearLandCell(x, y, terrain.width, terrain.height, terrain)
+        ? 0.03
+        : 0;
+      if (waveScore < OCEAN_WAVE_THRESHOLD - coastBoost) {
+        continue;
+      }
+      if (
+        !isWaveLocalPeak("ocean", x, y, waveScore, (nx, ny) =>
+          isOceanWaveAnchor(nx, ny, terrain, climate),
+        )
+      ) {
         continue;
       }
 
       let state = hashSeed(`ocean-wave:${x},${y}`);
       state = nextHash(state);
-      if ((state % 1000) / 1000 > 0.038) {
-        continue;
+      const worldJitterX = ((state % 1000) / 1000 - 0.5) * 0.92;
+      state = nextHash(state);
+      const worldJitterY = ((state % 1000) / 1000 - 0.5) * 0.78;
+      const point = viewport.worldToCanvas(x + worldJitterX, y + worldJitterY);
+      state = nextHash(state);
+      const length = 8 + ((state % 1000) / 1000) * Math.max(7, viewport.scaleX * 1.22);
+      state = nextHash(state);
+      const amplitude = 0.92 + ((state % 1000) / 1000) * 1.7;
+      state = nextHash(state);
+      const lightAlpha = 0.29 + ((state % 1000) / 1000) * 0.13;
+      state = nextHash(state);
+      const darkAlpha = 0.35 + ((state % 1000) / 1000) * 0.14;
+
+      ctx.strokeStyle = `rgba(236, 233, 222, ${lightAlpha})`;
+      drawLakeWaveMark(ctx, point.x, point.y + 0.7, length, amplitude);
+      ctx.strokeStyle = `rgba(52, 73, 86, ${darkAlpha})`;
+      drawLakeWaveMark(ctx, point.x, point.y, length, amplitude);
+
+      state = nextHash(state);
+      if ((state % 1000) / 1000 < 0.16) {
+        state = nextHash(state);
+        const smallOffsetX = ((state % 1000) / 1000 - 0.5) * viewport.scaleX * 0.9;
+        state = nextHash(state);
+        const smallOffsetY = ((state % 1000) / 1000 - 0.5) * viewport.scaleY * 0.8;
+        ctx.strokeStyle = "rgba(240, 237, 228, 0.22)";
+        drawLakeWaveMark(
+          ctx,
+          point.x + smallOffsetX,
+          point.y + smallOffsetY + 0.45,
+          length * 0.62,
+          amplitude * 0.62,
+        );
       }
-
-      const point = viewport.worldToCanvas(x, y);
-      state = nextHash(state);
-      const jitterX = ((state % 1000) / 1000 - 0.5) * viewport.scaleX * spacing * 0.22;
-      state = nextHash(state);
-      const jitterY = ((state % 1000) / 1000 - 0.5) * viewport.scaleY * spacing * 0.18;
-      state = nextHash(state);
-      const length = 11 + ((state % 1000) / 1000) * Math.max(7, viewport.scaleX * 0.95);
-      state = nextHash(state);
-      const amplitude = 1.2 + ((state % 1000) / 1000) * 1.8;
-
-      ctx.strokeStyle = "rgba(234, 229, 214, 0.36)";
-      drawLakeWaveMark(ctx, point.x + jitterX, point.y + jitterY + 0.7, length, amplitude);
-      ctx.strokeStyle = "rgba(65, 83, 90, 0.46)";
-      drawLakeWaveMark(ctx, point.x + jitterX, point.y + jitterY, length, amplitude);
     }
   }
 
@@ -302,6 +352,70 @@ function isOceanWaveAnchor(x, y, terrain, climate) {
 
   const cell = sampleY * terrain.width + sampleX;
   return terrain.isLand[cell] !== 1 && climate.biome[cell] !== BIOME_KEYS.LAKE;
+}
+
+function isNearLandCell(x, y, width, height, terrain) {
+  for (let oy = -1; oy <= 1; oy += 1) {
+    for (let ox = -1; ox <= 1; ox += 1) {
+      if (ox === 0 && oy === 0) {
+        continue;
+      }
+      const nx = x + ox;
+      const ny = y + oy;
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+        continue;
+      }
+      const neighbor = ny * width + nx;
+      if (terrain.isLand[neighbor] === 1) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function isSameLakeCell(x, y, width, height, lakeId, lakeIdByCell) {
+  if (!lakeIdByCell || x < 0 || y < 0 || x >= width || y >= height) {
+    return false;
+  }
+  return lakeIdByCell[y * width + x] === lakeId;
+}
+
+function isWaveLocalPeak(kind, x, y, centerScore, validNeighbor = () => true) {
+  for (let oy = -1; oy <= 1; oy += 1) {
+    for (let ox = -1; ox <= 1; ox += 1) {
+      if (ox === 0 && oy === 0) {
+        continue;
+      }
+      const nx = x + ox;
+      const ny = y + oy;
+      if (!validNeighbor(nx, ny)) {
+        continue;
+      }
+      const neighborScore = sampleWaveField(kind, nx, ny);
+      if (neighborScore > centerScore - WAVE_PEAK_MARGIN) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+function sampleWaveField(kind, x, y) {
+  const warpX = Math.sin((x + 3.2) * 0.71 + (y - 1.7) * 0.29) * 0.85;
+  const warpY = Math.cos((y + 4.8) * 0.67 - (x + 0.9) * 0.23) * 0.85;
+  const sampleX = x + warpX;
+  const sampleY = y + warpY;
+  let state = hashSeed(
+    `${kind}-wave-field:${Math.round(sampleX * 100)},${Math.round(sampleY * 100)}`,
+  );
+  state = nextHash(state);
+  const a = (state % 1000) / 1000;
+  state = nextHash(state);
+  const b = (state % 1000) / 1000;
+  state = nextHash(state);
+  const c = (state % 1000) / 1000;
+  return clamp(a * 0.56 + b * 0.29 + c * 0.15, 0, 1);
 }
 
 function drawLakeWaveMark(ctx, x, y, length, amplitude) {

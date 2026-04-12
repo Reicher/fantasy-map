@@ -2,9 +2,8 @@ import { createRng } from "../random.js";
 import { clamp, sliderFactor } from "../utils.js";
 import {
   buildSettlementCandidates,
-  ensureInlandSettlements,
   selectSettlements,
-} from "./models/settlementModel.js?v=20260411d";
+} from "./models/settlementModel.js?v=20260411f";
 
 export function generateSettlements(world, names) {
   const { params, terrain, climate, hydrology } = world;
@@ -46,16 +45,8 @@ export function generateSettlements(world, names) {
     desiredCount,
     minSpacing,
     randomness: params.settlementRandomness,
+    inlandPreference: params.inlandPreference,
     rng,
-  });
-  ensureInlandSettlements({
-    width,
-    rng,
-    candidates,
-    settlements,
-    desiredCount,
-    minSpacing,
-    density,
   });
 
   settlements.forEach((settlement, index) => {
