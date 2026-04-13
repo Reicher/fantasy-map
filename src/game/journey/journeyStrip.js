@@ -32,6 +32,10 @@ const NODE_LAND_WINDOW_BACK_PX = 24;
 const NODE_LAND_WINDOW_FORWARD_PX = 108;
 const PLAYER_LAND_WINDOW_BACK_PX = 84;
 const PLAYER_LAND_WINDOW_FORWARD_PX = 92;
+// Keep a generous shoreline buffer near node/player anchors so the horse
+// silhouette never appears half-submerged when arriving from sea routes.
+const NODE_MIN_LAND_CLEARANCE_PX = 148;
+const PLAYER_MIN_LAND_CLEARANCE_PX = 164;
 const WATER_SHORE_TAPER_PX_BY_LAYER = Object.freeze({
   mid: 30,
   far: 40,
@@ -1458,34 +1462,50 @@ function enforceDepartureLandWindow(
     isSnow: Boolean(preferredGround?.isSnow),
   };
 
-  let nextSegments = segments;
   const patchTargets = resolveDeparturePatchTargets(
     departureX,
     departurePlayerOffsetPx,
   );
+  const targetsToPatch = [];
+
   for (const target of patchTargets) {
     const patchX = target.x;
-    const index = findSegmentIndexAtX(nextSegments, patchX);
+    const index = findSegmentIndexAtX(segments, patchX);
     if (index < 0) {
       continue;
     }
 
-    const current = nextSegments[index];
-    if (!current || !WATER_BIOME_KEYS.has(current.biomeKey)) {
+    const current = segments[index];
+    if (
+      !current ||
+      !shouldPatchDepartureTarget(current, patchX, target.kind)
+    ) {
       continue;
     }
+    targetsToPatch.push(target);
+  }
 
+  if (!targetsToPatch.length) {
+    return segments;
+  }
+
+  let windowStart = Number.POSITIVE_INFINITY;
+  let windowEnd = Number.NEGATIVE_INFINITY;
+  for (const target of targetsToPatch) {
+    const patchX = target.x;
     const { backPx, forwardPx } = getDeparturePatchWindowPx(target.kind);
-    const windowStart = patchX - backPx;
-    const windowEnd = patchX + forwardPx;
-    nextSegments = replaceBiomeInWindow(
-      nextSegments,
+    const minClearance = getDepartureMinimumLandClearancePx(target.kind);
+    windowStart = Math.min(
       windowStart,
+      patchX - Math.max(backPx, minClearance),
+    );
+    windowEnd = Math.max(
       windowEnd,
-      patch,
+      patchX + Math.max(forwardPx, minClearance),
     );
   }
-  return nextSegments;
+
+  return replaceBiomeInWindow(segments, windowStart, windowEnd, patch);
 }
 
 function getDeparturePatchWindowPx(targetKind) {
@@ -1499,6 +1519,33 @@ function getDeparturePatchWindowPx(targetKind) {
     backPx: NODE_LAND_WINDOW_BACK_PX,
     forwardPx: NODE_LAND_WINDOW_FORWARD_PX,
   };
+}
+
+function getDepartureMinimumLandClearancePx(targetKind) {
+  return targetKind === "player"
+    ? PLAYER_MIN_LAND_CLEARANCE_PX
+    : NODE_MIN_LAND_CLEARANCE_PX;
+}
+
+function shouldPatchDepartureTarget(segment, patchX, targetKind) {
+  if (!segment || !Number.isFinite(patchX)) {
+    return false;
+  }
+  if (WATER_BIOME_KEYS.has(segment.biomeKey)) {
+    return true;
+  }
+  const minClearance = getDepartureMinimumLandClearancePx(targetKind);
+  if (!(minClearance > 0)) {
+    return false;
+  }
+  const segStart = Number(segment.stripX);
+  const segEnd = segStart + Number(segment.stripWidth);
+  if (!Number.isFinite(segStart) || !Number.isFinite(segEnd)) {
+    return false;
+  }
+  const leftClearance = patchX - segStart;
+  const rightClearance = segEnd - patchX;
+  return leftClearance < minClearance || rightClearance < minClearance;
 }
 
 function resolveDeparturePatchTargets(departureX, departurePlayerOffsetPx) {

@@ -98,13 +98,20 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     const idleKey = idlePreviewTravel?.__journeyIdleKey ?? null;
     state.idleTravel = idlePreviewTravel ?? null;
 
+    // Extending from an idle-preview strip can leak its local coastline noise
+    // into the first real journey leg, so only extend a confirmed travel chain.
+    const canExtendFromExistingStrip = canExtendTravelStrip(
+      state,
+      playState?.travel,
+    );
+
     if (nextKey !== null && nextKey !== state.travelKey) {
-      if (state.strip === null) {
-        state.strip = buildJourneyStrip(playState.travel, viewW, viewH, {
+      if (canExtendFromExistingStrip) {
+        extendStripWithTravel(state.strip, playState.travel, viewW, viewH, {
           showSnow,
         });
       } else {
-        extendStripWithTravel(state.strip, playState.travel, viewW, viewH, {
+        state.strip = buildJourneyStrip(playState.travel, viewW, viewH, {
           showSnow,
         });
       }
@@ -367,4 +374,36 @@ function findGroundSegmentAtStripX(segments, stripX) {
 
 function isWaterBiomeKey(biomeKey) {
   return biomeKey === "ocean" || biomeKey === "lake";
+}
+
+function canExtendTravelStrip(state, nextTravel) {
+  if (!state?.strip || !nextTravel || state.idleKey != null) {
+    return false;
+  }
+  if (!state.lastTravel || state.travelKey == null) {
+    return false;
+  }
+  const previousTargetNodeId = state.lastTravel.targetNodeId;
+  const nextStartNodeId = nextTravel.startNodeId;
+  if (previousTargetNodeId == null || nextStartNodeId == null) {
+    return false;
+  }
+  if (previousTargetNodeId !== nextStartNodeId) {
+    return false;
+  }
+
+  // Rebuild when crossing between sea and land route types to avoid seam
+  // artifacts during coastline transitions (especially sea-route landings).
+  if (
+    isSeaRouteType(state.lastTravel.routeType) !==
+    isSeaRouteType(nextTravel.routeType)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function isSeaRouteType(routeType) {
+  return routeType === "sea-route";
 }

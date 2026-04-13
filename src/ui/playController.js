@@ -42,8 +42,7 @@ export function createPlayController({
 
     if (
       mapPanState &&
-      event.pointerId === mapPanState.pointerId &&
-      !state.playState.travel
+      event.pointerId === mapPanState.pointerId
     ) {
       const totalDeltaX = event.clientX - mapPanState.startClientX;
       const totalDeltaY = event.clientY - mapPanState.startClientY;
@@ -161,13 +160,14 @@ export function createPlayController({
       event.button !== 0 ||
       !state.playState ||
       state.playState.gameOver ||
-      state.playState.viewMode !== "map" ||
-      state.playState.travel
+      state.playState.viewMode !== "map"
     ) {
       return;
     }
 
-    const pressedNodeId = findPlayableNodeAtEvent(event);
+    const pressedNodeId = state.playState.travel
+      ? null
+      : findPlayableNodeAtEvent(event);
     mapPanState = {
       pointerId: event.pointerId,
       startClientX: event.clientX,
@@ -211,8 +211,7 @@ export function createPlayController({
       event.button !== 0 ||
       !state.playState ||
       state.playState.gameOver ||
-      state.playState.viewMode !== "map" ||
-      state.playState.travel
+      state.playState.viewMode !== "map"
     ) {
       return;
     }
@@ -240,7 +239,9 @@ export function createPlayController({
       return;
     }
 
-    const targetNodeId = findPlayableNodeAtEvent(event);
+    const targetNodeId = state.playState.travel
+      ? null
+      : findPlayableNodeAtEvent(event);
     const shouldTravel =
       targetNodeId != null && targetNodeId === state.playState.pressedNodeId;
     state.playState = {

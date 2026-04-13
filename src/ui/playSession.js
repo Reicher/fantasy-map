@@ -179,6 +179,18 @@ export function createPlaySession({ refs, state, syncModeUi }) {
       return;
     }
 
+    if (mode === "map" && state.currentWorld) {
+      const previousCamera =
+        state.playMapCamera ?? buildPlayCamera(state.currentWorld, state.playState, 2);
+      const targetX = Number(state.playState?.position?.x);
+      const targetY = Number(state.playState?.position?.y);
+      state.playMapCamera = clampEditorCamera(state.currentWorld, {
+        ...previousCamera,
+        centerX: Number.isFinite(targetX) ? targetX : previousCamera.centerX,
+        centerY: Number.isFinite(targetY) ? targetY : previousCamera.centerY,
+      });
+    }
+
     state.playState = {
       ...state.playState,
       viewMode: mode,
