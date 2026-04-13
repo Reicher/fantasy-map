@@ -16,8 +16,8 @@
 import {
   buildJourneyStrip,
   extendStripWithTravel,
-} from "./journey/journeyStrip.js?v=20260413c";
-import { drawPlayerFigure } from "./journey/journeyStyle.js?v=20260412d";
+} from "./journey/journeyStrip.js?v=20260413d";
+import { drawPlayerFigure } from "./journey/journeyStyle.js?v=20260413e";
 import {
   drawDebugOverlay,
   drawForegroundCanopyTrees,
@@ -28,7 +28,7 @@ import {
   drawNodeMarkers,
   drawSilhouetteLayer,
   drawTreeDecorationsForLayer,
-} from "./journey/journeyLayerRenderers.js?v=20260413g";
+} from "./journey/journeyLayerRenderers.js?v=20260413h";
 import {
   createSkyState,
   drawNightVeil,
@@ -264,7 +264,9 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     const groundTopY = strip.layers.ground.topY;
 
     drawSilhouetteLayer(ctx, strip, "far", scrollX, playerX, viewW, skyHazeRgb);
+    drawTreeDecorationsForLayer(ctx, strip, "far", scrollX, playerX, viewW);
     drawSilhouetteLayer(ctx, strip, "mid", scrollX, playerX, viewW, skyHazeRgb);
+    drawTreeDecorationsForLayer(ctx, strip, "mid", scrollX, playerX, viewW);
     drawSilhouetteLayer(
       ctx,
       strip,

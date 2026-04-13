@@ -28,6 +28,38 @@ const LAYER_HAZE = {
   near1: 0,
   foreground: 0,
 };
+const TREE_DECOR_RENDER_CONFIG = Object.freeze({
+  far: Object.freeze({
+    cullPaddingPx: 64,
+    defaultRootOffsetFrac: 0.08,
+    preferFallback: true,
+    alpha: 0.74,
+  }),
+  mid: Object.freeze({
+    cullPaddingPx: 78,
+    defaultRootOffsetFrac: 0.1,
+    preferFallback: true,
+    alpha: 0.82,
+  }),
+  near2: Object.freeze({
+    cullPaddingPx: 96,
+    defaultRootOffsetFrac: 0.1,
+    preferFallback: false,
+    alpha: 1,
+  }),
+  near1: Object.freeze({
+    cullPaddingPx: 104,
+    defaultRootOffsetFrac: 0.16,
+    preferFallback: false,
+    alpha: 1,
+  }),
+});
+const LAYER_TOP_RIM = Object.freeze({
+  far: Object.freeze({ lineWidthPx: 1.1, alpha: 0.36, haze: 0.52, lift: 0.34 }),
+  mid: Object.freeze({ lineWidthPx: 1.15, alpha: 0.41, haze: 0.46, lift: 0.36 }),
+  near2: Object.freeze({ lineWidthPx: 1.22, alpha: 0.44, haze: 0.36, lift: 0.38 }),
+  near1: Object.freeze({ lineWidthPx: 1.28, alpha: 0.48, haze: 0.28, lift: 0.4 }),
+});
 
 export function drawGroundLayer(ctx, strip, scrollX, playerX, viewW) {
   const speed = PARALLAX_SPEED.ground;
@@ -228,6 +260,16 @@ export function drawSilhouetteLayer(
     }
     ctx.fillStyle = fillStyle;
     ctx.fill();
+
+    drawSilhouetteTopRim(
+      ctx,
+      segment,
+      layerName,
+      canvasX,
+      topY,
+      layerH,
+      skyHazeRgb,
+    );
   }
 }
 
@@ -507,6 +549,8 @@ export function drawTreeDecorationsForLayer(
 ) {
   const trees = strip.treeDecorations?.[layerName];
   if (!trees?.length) return;
+  const renderConfig =
+    TREE_DECOR_RENDER_CONFIG[layerName] ?? TREE_DECOR_RENDER_CONFIG.near2;
 
   const speed = PARALLAX_SPEED[layerName] ?? 1.0;
   const layerStripLeft = scrollX * speed - playerX;
@@ -514,28 +558,29 @@ export function drawTreeDecorationsForLayer(
   if (!band) return;
 
   const layerH = band.bottomY - band.topY;
+  const cullPaddingPx = Math.max(0, Number(renderConfig.cullPaddingPx ?? 96));
+  const defaultRootOffsetFrac = clamp01(
+    Number(renderConfig.defaultRootOffsetFrac ?? 0.12),
+  );
+  const treeAlpha = clamp01(Number(renderConfig.alpha ?? 1));
 
   for (const tree of trees) {
     const canvasX = tree.stripX - layerStripLeft;
-    if (canvasX < -96 || canvasX > viewW + 96) continue;
-    if (!tree.topEdgeSamples?.length) continue;
+    if (canvasX < -cullPaddingPx || canvasX > viewW + cullPaddingPx) continue;
 
-    const sampleIndex = Math.max(
-      0,
-      Math.min(
-        tree.topEdgeSamples.length - 1,
-        Math.round(tree.stripX - tree.segmentStripX),
-      ),
-    );
-    const topEdgeY = band.topY + tree.topEdgeSamples[sampleIndex] * layerH;
+    const topEdgeSample = resolveTreeTopEdgeSample(tree);
+    const topEdgeY = band.topY + clamp01(topEdgeSample) * layerH;
     const rootOffsetFrac = clamp01(
       Number.isFinite(tree.rootOffsetFrac)
         ? tree.rootOffsetFrac
-        : layerName === "near2"
-          ? 0.1
-          : 0.16,
+        : defaultRootOffsetFrac,
     );
-    const desiredRootY = topEdgeY + rootOffsetFrac * layerH;
+    const downwardOffsetPx = Math.max(
+      0,
+      Number.isFinite(tree.downwardOffsetPx) ? tree.downwardOffsetPx : 0,
+    );
+    const desiredRootY =
+      topEdgeY + rootOffsetFrac * layerH + downwardOffsetPx;
     const minRootY = band.topY + 1;
     const maxRootY = band.bottomY - 8;
     const treeGroundY = Math.min(maxRootY, Math.max(minRootY, desiredRootY));
@@ -545,8 +590,67 @@ export function drawTreeDecorationsForLayer(
       variantIndex: tree.variantIndex,
       heightPx: tree.heightPx,
       upwardOffsetPx: tree.upwardOffsetPx,
+      preferFallback: Boolean(renderConfig.preferFallback),
+      alpha: treeAlpha,
     });
   }
+}
+
+function resolveTreeTopEdgeSample(tree) {
+  if (Number.isFinite(tree?.topEdgeSample)) {
+    return tree.topEdgeSample;
+  }
+  if (!tree?.topEdgeSamples?.length) {
+    return 1;
+  }
+  const sampleIndex = Math.max(
+    0,
+    Math.min(
+      tree.topEdgeSamples.length - 1,
+      Math.round((tree.stripX ?? 0) - (tree.segmentStripX ?? tree.stripX ?? 0)),
+    ),
+  );
+  return tree.topEdgeSamples[sampleIndex] ?? 1;
+}
+
+function drawSilhouetteTopRim(
+  ctx,
+  segment,
+  layerName,
+  canvasX,
+  topY,
+  layerH,
+  skyHazeRgb,
+) {
+  const config = LAYER_TOP_RIM[layerName];
+  if (!config || !segment?.topEdgeSamples?.length) return;
+
+  const samples = segment.topEdgeSamples;
+  const drawPx = Math.ceil(segment.stripWidth);
+  const colorRgb = resolveSilhouetteSegmentBaseColor(segment);
+  const hazedColor = tintRgbWithSky(colorRgb, config.haze, skyHazeRgb);
+  const rimColor = lerpRgb(hazedColor, [255, 255, 255], config.lift);
+
+  ctx.save();
+  ctx.strokeStyle = `rgba(${Math.round(rimColor[0])}, ${Math.round(rimColor[1])}, ${Math.round(rimColor[2])}, ${config.alpha})`;
+  ctx.lineWidth = config.lineWidthPx;
+  ctx.beginPath();
+  ctx.moveTo(canvasX, topY + samples[0] * layerH);
+  for (let index = 1; index < samples.length && index <= drawPx; index += 1) {
+    ctx.lineTo(canvasX + index, topY + samples[index] * layerH);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function resolveSilhouetteSegmentBaseColor(segment) {
+  if (segment?.colorRgb?.length === 3) {
+    return segment.colorRgb;
+  }
+  if (segment?.isBlend && segment.colorA && segment.colorB) {
+    return lerpRgb(segment.colorA, segment.colorB, 0.5);
+  }
+  return [128, 128, 128];
 }
 
 export function drawDebugOverlay(ctx, strip, scrollX, playerX, viewW, viewH) {

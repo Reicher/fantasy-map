@@ -82,53 +82,93 @@ const DEFAULT_TREE_SPAWN_TUNING = Object.freeze({
   maxCount: Number.POSITIVE_INFINITY,
 });
 const DESERT_TREE_SPAWN_TUNING_BY_LAYER = Object.freeze({
-  ground: Object.freeze({
-    segmentChance: 1,
-    countScale: 0.56,
-    maxCount: 5,
-  }),
-  near1: Object.freeze({
-    segmentChance: 1,
-    countScale: 0.44,
-    maxCount: 4,
-  }),
-  near2: Object.freeze({
+  far: Object.freeze({
     segmentChance: 1,
     countScale: 0.34,
-    maxCount: 3,
+    maxCount: 5,
   }),
-  foreground: Object.freeze({
+  mid: Object.freeze({
     segmentChance: 1,
-    countScale: 0.32,
-    maxCount: 4,
+    countScale: 0.44,
+    maxCount: 6,
   }),
-});
-const PLAINS_TREE_SPAWN_TUNING_BY_LAYER = Object.freeze({
   ground: Object.freeze({
     segmentChance: 1,
-    countScale: 0.76,
-    maxCount: 6,
+    countScale: 0.68,
+    maxCount: 7,
   }),
   near1: Object.freeze({
     segmentChance: 1,
-    countScale: 0.62,
-    maxCount: 5,
+    countScale: 0.56,
+    maxCount: 6,
   }),
   near2: Object.freeze({
-    segmentChance: 1,
-    countScale: 0.52,
-    maxCount: 4,
-  }),
-  foreground: Object.freeze({
     segmentChance: 1,
     countScale: 0.46,
     maxCount: 5,
   }),
+  foreground: Object.freeze({
+    segmentChance: 1,
+    countScale: 0.44,
+    maxCount: 6,
+  }),
+});
+const PLAINS_TREE_SPAWN_TUNING_BY_LAYER = Object.freeze({
+  far: Object.freeze({
+    segmentChance: 1,
+    countScale: 0.48,
+    maxCount: 7,
+  }),
+  mid: Object.freeze({
+    segmentChance: 1,
+    countScale: 0.62,
+    maxCount: 8,
+  }),
+  ground: Object.freeze({
+    segmentChance: 1,
+    countScale: 0.88,
+    maxCount: 8,
+  }),
+  near1: Object.freeze({
+    segmentChance: 1,
+    countScale: 0.74,
+    maxCount: 7,
+  }),
+  near2: Object.freeze({
+    segmentChance: 1,
+    countScale: 0.64,
+    maxCount: 6,
+  }),
+  foreground: Object.freeze({
+    segmentChance: 1,
+    countScale: 0.58,
+    maxCount: 7,
+  }),
 });
 const TREE_LAYER_CONFIG = {
+  far: {
+    minSpacingPx: 24,
+    maxSpacingPx: 40,
+    minHeightPx: 18,
+    maxHeightPx: 28,
+    minUpwardOffsetPx: 0,
+    maxUpwardOffsetPx: 0,
+    minRootOffsetFrac: 0.03,
+    maxRootOffsetFrac: 0.1,
+  },
+  mid: {
+    minSpacingPx: 32,
+    maxSpacingPx: 52,
+    minHeightPx: 26,
+    maxHeightPx: 40,
+    minUpwardOffsetPx: 0,
+    maxUpwardOffsetPx: 1,
+    minRootOffsetFrac: 0.03,
+    maxRootOffsetFrac: 0.12,
+  },
   near2: {
-    minSpacingPx: 72,
-    maxSpacingPx: 124,
+    minSpacingPx: 44,
+    maxSpacingPx: 74,
     minHeightPx: 88,
     maxHeightPx: 126,
     minUpwardOffsetPx: 0,
@@ -137,10 +177,10 @@ const TREE_LAYER_CONFIG = {
     maxRootOffsetFrac: 0.16,
   },
   near1: {
-    minSpacingPx: 60,
-    maxSpacingPx: 102,
-    minHeightPx: 112,
-    maxHeightPx: 154,
+    minSpacingPx: 58,
+    maxSpacingPx: 98,
+    minHeightPx: 120,
+    maxHeightPx: 172,
     minUpwardOffsetPx: 0,
     maxUpwardOffsetPx: 1,
     minRootOffsetFrac: 0.08,
@@ -148,31 +188,36 @@ const TREE_LAYER_CONFIG = {
   },
 };
 const GROUND_TREE_CONFIG = {
-  minSpacingPx: 168,
-  maxSpacingPx: 252,
+  minSpacingPx: 104,
+  maxSpacingPx: 164,
   minHeightPx: 150,
   maxHeightPx: 210,
   edgePaddingPx: 14,
-  maxPerSegment: 6,
+  maxPerSegment: 8,
   minSegmentWidthPx: 84,
   minRootOffsetFrac: 0.06,
   maxRootOffsetFrac: 0.94,
 };
 const FOREGROUND_TREE_CONFIG = {
-  minSpacingPx: 116,
-  maxSpacingPx: 182,
+  minSpacingPx: 74,
+  maxSpacingPx: 118,
   minHeightPx: 238,
   maxHeightPx: 322,
   edgePaddingPx: 12,
   minSegmentWidthPx: 72,
-  maxPerSegment: 7,
+  maxPerSegment: 9,
   minSinkFrac: 0.24,
   maxSinkFrac: 0.42,
 };
+const LAYER_TREE_DENSITY_BOOST = 1.34;
+const GROUND_TREE_DENSITY_BOOST = 1.28;
+const FOREGROUND_TREE_DENSITY_BOOST = 1.26;
 const NODE_DECORATION_EXCLUSION_RADIUS_BY_LAYER = Object.freeze({
   ground: 158,
   groundDetails: 172,
   foreground: 228,
+  far: 72,
+  mid: 86,
   near1: 104,
   near2: 90,
 });
@@ -694,6 +739,8 @@ export const PARALLAX_SPEED = {
 
 function buildTreeDecorations(strip) {
   return {
+    far: buildLayerTreeDecorations(strip.layerSegments.far, "far", strip),
+    mid: buildLayerTreeDecorations(strip.layerSegments.mid, "mid", strip),
     near2: buildLayerTreeDecorations(strip.layerSegments.near2, "near2", strip),
     near1: buildLayerTreeDecorations(strip.layerSegments.near1, "near1", strip),
   };
@@ -728,11 +775,18 @@ function buildGroundTrees(groundSegments, strip = null) {
     const avgSpacing =
       (GROUND_TREE_CONFIG.minSpacingPx + GROUND_TREE_CONFIG.maxSpacingPx) * 0.5;
     const roughCount = Math.round(usableWidth / avgSpacing);
-    const baseCount = Math.max(
+    const rawCount = Math.max(
       1,
       Math.min(
         GROUND_TREE_CONFIG.maxPerSegment,
         roughCount + (rng() < 0.7 ? 1 : 0),
+      ),
+    );
+    const baseCount = Math.max(
+      1,
+      Math.min(
+        GROUND_TREE_CONFIG.maxPerSegment,
+        Math.round(rawCount * GROUND_TREE_DENSITY_BOOST),
       ),
     );
     const count = computeTreeSpawnCountForSegment(
@@ -875,11 +929,18 @@ function buildForegroundTrees(groundSegments, strip = null) {
         FOREGROUND_TREE_CONFIG.maxSpacingPx) *
       0.5;
     const roughCount = Math.round(usableWidth / avgSpacing);
-    const baseCount = Math.max(
+    const rawCount = Math.max(
       1,
       Math.min(
         FOREGROUND_TREE_CONFIG.maxPerSegment,
         roughCount + (rng() < 0.62 ? 1 : 0),
+      ),
+    );
+    const baseCount = Math.max(
+      1,
+      Math.min(
+        FOREGROUND_TREE_CONFIG.maxPerSegment,
+        Math.round(rawCount * FOREGROUND_TREE_DENSITY_BOOST),
       ),
     );
     const count = computeTreeSpawnCountForSegment(
@@ -952,7 +1013,12 @@ function buildLayerTreeDecorations(layerSegments, layerName, strip = null) {
     const usableWidth = Math.max(0, segEnd - segStart);
     if (usableWidth < 4) continue;
     const avgSpacing = (config.minSpacingPx + config.maxSpacingPx) * 0.5;
-    const baseCount = Math.max(1, Math.round(usableWidth / avgSpacing));
+    const roughCount = Math.round(usableWidth / avgSpacing);
+    const boostedCount = Math.max(
+      1,
+      Math.round(roughCount * LAYER_TREE_DENSITY_BOOST),
+    );
+    const baseCount = Math.max(1, boostedCount + (rng() < 0.72 ? 1 : 0));
     const targetCount = computeTreeSpawnCountForSegment(
       baseCount,
       segment.biomeKey,
@@ -975,11 +1041,19 @@ function buildLayerTreeDecorations(layerSegments, layerName, strip = null) {
         segment.isSnow,
         rng(),
       );
+      const sampleIndex = Math.max(
+        0,
+        Math.min(
+          segment.topEdgeSamples.length - 1,
+          Math.round(cursor - segment.stripX),
+        ),
+      );
+      const heightPx = lerp(config.minHeightPx, config.maxHeightPx, rng());
       trees.push({
         stripX: cursor,
         treeFamily: treeVisual.treeFamily,
         variantIndex: treeVisual.variantIndex,
-        heightPx: lerp(config.minHeightPx, config.maxHeightPx, rng()),
+        heightPx,
         upwardOffsetPx: lerp(
           config.minUpwardOffsetPx,
           config.maxUpwardOffsetPx,
@@ -990,8 +1064,8 @@ function buildLayerTreeDecorations(layerSegments, layerName, strip = null) {
           config.maxRootOffsetFrac,
           rng(),
         ),
-        segmentStripX: segment.stripX,
-        topEdgeSamples: segment.topEdgeSamples,
+        downwardOffsetPx: rng() * heightPx,
+        topEdgeSample: segment.topEdgeSamples[sampleIndex] ?? 1,
       });
     }
   }
@@ -1920,6 +1994,8 @@ function createEmptyStrip() {
       far: [],
     },
     treeDecorations: {
+      far: [],
+      mid: [],
       near2: [],
       near1: [],
     },

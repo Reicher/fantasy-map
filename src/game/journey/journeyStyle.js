@@ -83,6 +83,10 @@ const JOURNEY_NEAR_LIGHTEN_FRAC = {
   near1: 0.08,
   near2: 0.16,
 };
+const SILHOUETTE_BIOME_SMOOTHING_BY_BIOME = Object.freeze({
+  forest: 1.34,
+  rainforest: 1.4,
+});
 const journeyNodeVariantsByMarker = new Map();
 const journeyTreeVariantsByFamily = new Map();
 
@@ -171,15 +175,25 @@ function getSilhouetteSpec(biomeKey, layerDepth) {
   const p1 = hash01(`${biomeKey}:${layerDepth}:p1`) * 1000;
   const p2 = hash01(`${biomeKey}:${layerDepth}:p2`) * 600;
   const base = getBiomeBaseSpec(biomeKey);
+  const biomeSmoothing = Math.max(
+    1,
+    Number(SILHOUETTE_BIOME_SMOOTHING_BY_BIOME[biomeKey] ?? 1),
+  );
   // smoothing < 1 → shorter wavelengths + bigger amplitude (more detail)
   // smoothing > 1 → longer wavelengths + smaller amplitude (smoother)
   const smoothing = Math.max(0.55, 1 + depthFactor * 0.26);
+  const totalSmoothing = smoothing * biomeSmoothing;
+  const amplitudeDamping = Math.pow(biomeSmoothing, 0.32);
+  const softenedSharpness = Math.max(
+    0.7,
+    base.sharpness / Math.pow(biomeSmoothing, 0.28),
+  );
   return {
     baseY: base.baseY,
-    amplitude: base.amplitude / smoothing,
-    wavelength1: base.wavelength1 * smoothing,
-    wavelength2: base.wavelength2 * smoothing,
-    sharpness: base.sharpness,
+    amplitude: base.amplitude / (smoothing * amplitudeDamping),
+    wavelength1: base.wavelength1 * totalSmoothing,
+    wavelength2: base.wavelength2 * totalSmoothing,
+    sharpness: softenedSharpness,
     phase1: p1,
     phase2: p2,
   };
@@ -271,19 +285,26 @@ export function drawJourneyTreeOnCanvas(ctx, x, groundY, options = {}) {
   const targetHeight = Math.max(18, Number(options.heightPx ?? 64));
   const upwardOffset = Math.max(0, Number(options.upwardOffsetPx ?? 0));
   const treeFamily = resolveTreeFamily(options.treeFamily);
+  const treeAlpha = clamp(Number(options.alpha ?? 1), 0, 1, 1);
+  const preferFallback = options.preferFallback === true;
   const isSnowTree =
     treeFamily === "pine" && Number(options.variantIndex ?? 0) >= 3;
+  if (preferFallback) {
+    drawFallbackJourneyTree(ctx, x, groundY, targetHeight, upwardOffset, {
+      isSnowTree,
+      treeFamily,
+      alpha: treeAlpha,
+    });
+    return;
+  }
   const variants =
     getJourneyTreeVariants(treeFamily) ?? getJourneyTreeVariants("pine");
   if (!variants?.length) {
-    drawFallbackJourneyTree(
-      ctx,
-      x,
-      groundY,
-      targetHeight,
-      upwardOffset,
+    drawFallbackJourneyTree(ctx, x, groundY, targetHeight, upwardOffset, {
       isSnowTree,
-    );
+      treeFamily,
+      alpha: treeAlpha,
+    });
     return;
   }
 
@@ -294,14 +315,11 @@ export function drawJourneyTreeOnCanvas(ctx, x, groundY, options = {}) {
     ((rawIndex % variants.length) + variants.length) % variants.length;
   const sprite = variants[variantIndex];
   if (!sprite) {
-    drawFallbackJourneyTree(
-      ctx,
-      x,
-      groundY,
-      targetHeight,
-      upwardOffset,
+    drawFallbackJourneyTree(ctx, x, groundY, targetHeight, upwardOffset, {
       isSnowTree,
-    );
+      treeFamily,
+      alpha: treeAlpha,
+    });
     return;
   }
 
@@ -313,6 +331,9 @@ export function drawJourneyTreeOnCanvas(ctx, x, groundY, options = {}) {
   );
 
   ctx.save();
+  if (treeAlpha < 1) {
+    ctx.globalAlpha *= treeAlpha;
+  }
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(
@@ -331,16 +352,77 @@ function drawFallbackJourneyTree(
   groundY,
   targetHeight,
   upwardOffset,
-  isSnowTree,
+  options = {},
 ) {
+  const treeFamily = resolveTreeFamily(options.treeFamily);
+  const isSnowTree = Boolean(options.isSnowTree);
+  const alpha = clamp(Number(options.alpha ?? 1), 0, 1, 1);
   const baseY = Math.round(groundY - upwardOffset);
   const h = Math.round(targetHeight);
   const w = Math.round(h * 0.58);
-  const trunkH = Math.max(8, Math.round(h * 0.2));
+  const trunkH = Math.max(8, Math.round(h * 0.24));
   const crownTop = baseY - h;
   const crownBottom = baseY - trunkH;
 
   ctx.save();
+  if (alpha < 1) {
+    ctx.globalAlpha *= alpha;
+  }
+
+  if (treeFamily === "cactus") {
+    const trunkW = Math.max(3, Math.round(w * 0.22));
+    const armW = Math.max(2, Math.round(trunkW * 0.8));
+    const armH = Math.max(4, Math.round(h * 0.28));
+    const trunkTop = baseY - h;
+    ctx.fillStyle = "#486f3f";
+    ctx.fillRect(Math.round(x - trunkW / 2), trunkTop, trunkW, h);
+    ctx.fillRect(
+      Math.round(x - trunkW / 2 - armW),
+      Math.round(trunkTop + h * 0.34),
+      armW,
+      armH,
+    );
+    ctx.fillRect(
+      Math.round(x + trunkW / 2),
+      Math.round(trunkTop + h * 0.46),
+      armW,
+      armH,
+    );
+    ctx.restore();
+    return;
+  }
+
+  if (treeFamily === "tuft") {
+    ctx.strokeStyle = "rgba(77,106,62,0.88)";
+    ctx.lineWidth = Math.max(1, Math.round(h * 0.055));
+    ctx.beginPath();
+    ctx.moveTo(x - w * 0.22, baseY);
+    ctx.lineTo(x - w * 0.09, baseY - h * 0.62);
+    ctx.moveTo(x, baseY);
+    ctx.lineTo(x, baseY - h);
+    ctx.moveTo(x + w * 0.22, baseY);
+    ctx.lineTo(x + w * 0.1, baseY - h * 0.58);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  if (treeFamily === "dead") {
+    ctx.strokeStyle = "rgba(88,69,49,0.9)";
+    ctx.lineWidth = Math.max(1, Math.round(h * 0.07));
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(x, baseY);
+    ctx.lineTo(x, crownTop + h * 0.18);
+    ctx.moveTo(x, crownTop + h * 0.38);
+    ctx.lineTo(x - w * 0.22, crownTop + h * 0.22);
+    ctx.moveTo(x, crownTop + h * 0.5);
+    ctx.lineTo(x + w * 0.2, crownTop + h * 0.35);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
   ctx.fillStyle = "#5a3a1f";
   ctx.fillRect(
     Math.round(x - w * 0.08),
