@@ -805,7 +805,8 @@ canvas[data-dragging="true"] {
 }
 
 .play-journey-event-dialog--loot {
-  width: min(26vw, 300px);
+  width: fit-content;
+  justify-items: start;
   gap: 6px;
   padding: 9px 10px;
   border-radius: 11px;
@@ -965,6 +966,11 @@ canvas[data-dragging="true"] {
   justify-items: start;
 }
 
+.play-journey-event-dialog--loot .play-inventory-grid--journey-loot {
+  width: 232px;
+  max-width: 232px;
+}
+
 .play-journey-event-take-all {
   min-height: 34px;
   padding: 5px 12px;
@@ -988,18 +994,10 @@ canvas[data-dragging="true"] {
   cursor: default;
 }
 
-.play-inventory-grid--journey-loot {
-  width: min(100%, 232px);
-}
-
-.play-journey-event-dialog--loot .play-inventory-grid--journey-loot {
-  width: min(100%, 176px);
-  gap: 3px;
-}
-
 @media (max-width: 1100px) {
   .play-journey-event-dialog--loot {
-    width: min(86%, 280px);
+    width: fit-content;
+    max-width: min(86%, 280px);
     padding: 8px 9px;
   }
 }
