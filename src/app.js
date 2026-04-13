@@ -27,7 +27,7 @@ import { createPlayProfiler } from "./ui/playProfiler.js?v=20260403a";
 import { updateStats } from "./ui/statsPanel.js";
 import { createEditorSession } from "./ui/editorSession.js?v=20260412d";
 import { clearHover } from "./ui/hoverPanel.js?v=20260408a";
-import { createPlaySession } from "./ui/playSession.js?v=20260412m";
+import { createPlaySession } from "./ui/playSession.js?v=20260413i";
 import { BUILD_META, formatBuildLabel } from "./buildMeta.js";
 import {
   createTransitionController,
@@ -35,11 +35,11 @@ import {
 } from "./ui/viewState.js?v=20260403a";
 
 const EDITOR_SETTINGS_STORAGE_KEY = "fantasy-map.editor.settings.v1";
-const DEFAULT_PLAY_HUD_PANELS = Object.freeze({
-  character: false,
-  inventory: false,
-  settings: false,
-});
+const PLAY_HUD_PANEL_NAMES = Object.freeze([
+  "character",
+  "inventory",
+  "settings",
+]);
 
 const refs = {
   editorShell: document.querySelector("#editor-shell"),
@@ -100,8 +100,14 @@ const refs = {
   ),
   playRestDialog: document.querySelector("#play-rest-dialog"),
   playRestBody: document.querySelector("#play-rest-body"),
+  playHuntOutlook: document.querySelector("#play-hunt-outlook"),
   playRestOptions: document.querySelector("#play-rest-options"),
+  playActionCancelButton: document.querySelector("#play-action-cancel"),
+  playActionResultDialog: document.querySelector("#play-action-result-dialog"),
+  playActionResultBody: document.querySelector("#play-action-result-body"),
+  playActionResultOkButton: document.querySelector("#play-action-result-ok"),
   playRestButtons: Array.from(document.querySelectorAll("[data-rest-hours]")),
+  playHuntButtons: Array.from(document.querySelectorAll("[data-hunt-hours]")),
   playGameOverDialog: document.querySelector("#play-game-over-dialog"),
   playGameOverBody: document.querySelector("#play-game-over-body"),
   playGameOverOkButton: document.querySelector("#play-game-over-ok"),
@@ -167,7 +173,8 @@ const state = {
   playAnimationFrame: null,
   lastTravelTick: 0,
   playProfiler: createPlayProfiler(),
-  playHudPanels: createDefaultPlayHudPanels(),
+  playActivePanel: null,
+  playActionMenuOpen: false,
 };
 const generateTransition = createTransitionController();
 
@@ -316,7 +323,7 @@ if (refs.playToggleTravelButton) {
     if (state.currentMode !== "play" || !state.playState) {
       return;
     }
-    playSession.toggleTravelPause();
+    runPrimaryActionButton();
   });
 }
 
@@ -326,7 +333,45 @@ for (const button of refs.playRestButtons) {
       return;
     }
     const requestedHours = Number(button.dataset.restHours);
-    playSession.startRest(requestedHours);
+    if (!playSession.startRest(requestedHours)) {
+      return;
+    }
+    state.playActivePanel = null;
+    state.playActionMenuOpen = true;
+    playSession.updatePlaySubView();
+  });
+}
+
+for (const button of refs.playHuntButtons) {
+  button.addEventListener("click", () => {
+    if (state.currentMode !== "play" || !state.playState) {
+      return;
+    }
+    const requestedHours = Number(button.dataset.huntHours);
+    if (!playSession.startHunt(requestedHours)) {
+      return;
+    }
+    state.playActivePanel = null;
+    state.playActionMenuOpen = true;
+    playSession.updatePlaySubView();
+  });
+}
+
+if (refs.playActionCancelButton) {
+  refs.playActionCancelButton.addEventListener("click", () => {
+    if (state.currentMode !== "play" || !state.playState) {
+      return;
+    }
+    playSession.cancelTimedAction();
+  });
+}
+
+if (refs.playActionResultOkButton) {
+  refs.playActionResultOkButton.addEventListener("click", () => {
+    if (state.currentMode !== "play" || !state.playState) {
+      return;
+    }
+    playSession.dismissActionResult();
   });
 }
 
@@ -414,8 +459,29 @@ window.addEventListener("keydown", (event) => {
 
   if ((event.key === " " || event.code === "Space") && state.playState?.travel) {
     event.preventDefault();
-    playSession.toggleTravelPause();
+    runPrimaryActionButton();
     return;
+  }
+
+  if (event.key === "Escape") {
+    if (
+      state.playActionMenuOpen &&
+      !state.playState?.travel?.isTravelPaused &&
+      !state.playState?.rest &&
+      !state.playState?.hunt &&
+      !state.playState?.pendingRestChoice
+    ) {
+      event.preventDefault();
+      state.playActionMenuOpen = false;
+      playSession.updatePlaySubView();
+      return;
+    }
+    if (state.playActivePanel) {
+      event.preventDefault();
+      state.playActivePanel = null;
+      playSession.updatePlaySubView();
+      return;
+    }
   }
 
   if (event.key === "p" || event.key === "P") {
@@ -451,6 +517,11 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
     togglePlayHudPanel("settings");
   }
+
+  if (event.key === "a" || event.key === "A") {
+    event.preventDefault();
+    runPrimaryActionButton();
+  }
 });
 
 async function generateAndRender() {
@@ -471,6 +542,8 @@ async function generateAndRender() {
   applyCanvasResolution(refs, params.renderScale);
   state.currentWorld = generateWorld(params);
   state.playState = playSession.createInitialPlayState(state.currentWorld);
+  state.playActivePanel = null;
+  state.playActionMenuOpen = false;
   state.cameraState = editorSession.createDefaultCamera();
   if (state.currentMode === "editor") {
     editorSession.rerenderCurrentWorld();
@@ -516,13 +589,10 @@ function syncModeUi() {
 }
 
 function togglePlayHudPanel(panelName) {
-  if (!state.playHudPanels || !(panelName in state.playHudPanels)) {
+  if (!PLAY_HUD_PANEL_NAMES.includes(panelName)) {
     return;
   }
-  state.playHudPanels = {
-    ...state.playHudPanels,
-    [panelName]: !state.playHudPanels[panelName],
-  };
+  state.playActivePanel = state.playActivePanel === panelName ? null : panelName;
   playSession.updatePlaySubView();
 }
 
@@ -533,16 +603,50 @@ function restartPlayAfterGameOver() {
 
   playSession.stopAnimation();
   playSession.resetJourney();
-  state.playHudPanels = createDefaultPlayHudPanels();
+  state.playActivePanel = null;
+  state.playActionMenuOpen = false;
   state.playState = playSession.createInitialPlayState(state.currentWorld);
   clearHover(refs.playTooltip);
   playSession.renderPlayWorld();
 }
 
-function createDefaultPlayHudPanels() {
-  return {
-    ...DEFAULT_PLAY_HUD_PANELS,
-  };
+function runPrimaryActionButton() {
+  const playState = state.playState;
+  if (!playState || playState.gameOver) {
+    return;
+  }
+
+  if (playState.travel) {
+    if (!playSession.toggleTravelPause()) {
+      return;
+    }
+    const isNowPaused = Boolean(state.playState?.isTravelPaused);
+    state.playActionMenuOpen = isNowPaused;
+    if (isNowPaused) {
+      state.playActivePanel = null;
+    }
+    playSession.updatePlaySubView();
+    return;
+  }
+
+  if (playState.rest || playState.hunt || playState.pendingRestChoice) {
+    if (!state.playActionMenuOpen) {
+      state.playActionMenuOpen = true;
+      state.playActivePanel = null;
+      playSession.updatePlaySubView();
+    }
+    return;
+  }
+
+  if (playState.currentNodeId == null) {
+    return;
+  }
+
+  state.playActionMenuOpen = !state.playActionMenuOpen;
+  if (state.playActionMenuOpen) {
+    state.playActivePanel = null;
+  }
+  playSession.updatePlaySubView();
 }
 
 function syncViewUi() {

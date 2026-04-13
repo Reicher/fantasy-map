@@ -32,11 +32,11 @@ export const forestBiome = {
   },
   journey: {
     silhouette: {
-      baseY: 0.38,
-      amplitude: 0.18,
-      wavelength1: 120,
-      wavelength2: 54,
-      sharpness: 1.7,
+      baseY: 0.32,
+      amplitude: 0.26,
+      wavelength1: 142,
+      wavelength2: 68,
+      sharpness: 1.45,
     },
   },
   generation: {

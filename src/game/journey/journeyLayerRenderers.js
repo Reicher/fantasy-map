@@ -34,27 +34,36 @@ export function drawGroundLayer(ctx, strip, scrollX, playerX, viewW) {
   const layerStripLeft = scrollX * speed - playerX;
   const { topY, bottomY } = strip.layers.ground;
   const layerH = bottomY - topY;
+  const segments = strip.layerSegments.ground;
 
-  for (const segment of strip.layerSegments.ground) {
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
     if (isWaterBiome(segment.biomeKey)) continue;
     const canvasX = segment.stripX - layerStripLeft;
     if (canvasX + segment.stripWidth < 0 || canvasX > viewW) continue;
-    ctx.fillStyle = segment.color;
-    ctx.fillRect(
-      Math.floor(canvasX),
+    drawGroundLandSegment(ctx, {
+      leftX: Math.floor(canvasX),
+      rightX: Math.floor(canvasX) + Math.ceil(segment.stripWidth) + 1,
       topY,
-      Math.ceil(segment.stripWidth) + 1,
-      layerH,
-    );
+      bottomY,
+      color: segment.color,
+      leftWater: isWaterBiome(segments[index - 1]?.biomeKey),
+      rightWater: isWaterBiome(segments[index + 1]?.biomeKey),
+    });
   }
 
-  const segments = strip.layerSegments.ground;
   const blendZonePx = strip.blendZonePx ?? 48;
   const halfBlend = blendZonePx / 2;
   for (let index = 0; index + 1 < segments.length; index += 1) {
     const a = segments[index];
     const b = segments[index + 1];
-    if (!a.colorRgb || !b.colorRgb || a.biomeKey === b.biomeKey) continue;
+    if (!a.colorRgb || !b.colorRgb) continue;
+    if (
+      a.biomeKey === b.biomeKey &&
+      Boolean(a.isSnow) === Boolean(b.isSnow)
+    ) {
+      continue;
+    }
     if (isWaterBiome(a.biomeKey) || isWaterBiome(b.biomeKey)) continue;
     if (isWaterLandGroundBoundary(a.biomeKey, b.biomeKey)) continue;
     const seamCanvasX = a.stripX + a.stripWidth - layerStripLeft;
@@ -87,6 +96,46 @@ function isWaterLandGroundBoundary(aBiomeKey, bBiomeKey) {
 
 function isWaterBiome(biomeKey) {
   return WATER_BIOMES.has(biomeKey);
+}
+
+function drawGroundLandSegment(
+  ctx,
+  { leftX, rightX, topY, bottomY, color, leftWater, rightWater },
+) {
+  const width = Math.max(1, rightX - leftX);
+  const layerH = Math.max(1, bottomY - topY);
+  const centerY = topY + layerH * 0.5;
+  const baseRadius = layerH * 0.5; // Half-circle matches the full ground height.
+  let leftRadius = leftWater ? baseRadius : 0;
+  let rightRadius = rightWater ? baseRadius : 0;
+  const totalRadius = leftRadius + rightRadius;
+  // Safety clamp only when both sides are carved and the segment is too narrow.
+  const maxTotalRadius = width * 0.9;
+  if (leftRadius > 0 && rightRadius > 0 && totalRadius > maxTotalRadius) {
+    const scale = maxTotalRadius / totalRadius;
+    leftRadius *= scale;
+    rightRadius *= scale;
+  }
+
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(leftX, topY);
+  ctx.lineTo(rightX, topY);
+  if (rightRadius > 0.01) {
+    // Water on the right: carve a concave half-circle into the land edge.
+    ctx.arc(rightX, centerY, rightRadius, -Math.PI / 2, Math.PI / 2, true);
+  } else {
+    ctx.lineTo(rightX, bottomY);
+  }
+  ctx.lineTo(leftX, bottomY);
+  if (leftRadius > 0.01) {
+    // Water on the left: mirrored concave half-circle.
+    ctx.arc(leftX, centerY, leftRadius, Math.PI / 2, -Math.PI / 2, true);
+  } else {
+    ctx.lineTo(leftX, topY);
+  }
+  ctx.closePath();
+  ctx.fill();
 }
 
 export function drawSilhouetteLayer(
@@ -367,9 +416,13 @@ export function drawNodeMarkers({
     ? clamp01(travelProgress / travelTotalLength)
     : 1;
   const showDestMarker =
-    !isTraveling || progressRatio >= DEST_MARKER_REVEAL_PROGRESS;
+    (activeTravel?.routeType !== "idle-preview") &&
+    (!isTraveling || progressRatio >= DEST_MARKER_REVEAL_PROGRESS);
+  const travelLagPx = isTraveling
+    ? DEST_MARKER_RENDER_LAG_PX * (1 - progressRatio)
+    : 0;
   const destCanvasX = isTraveling
-    ? baseDestCanvasX + DEST_MARKER_RENDER_LAG_PX
+    ? baseDestCanvasX + travelLagPx
     : baseDestCanvasX;
   const startNodeId = activeTravel?.startNodeId ?? null;
   const destNodeId = activeTravel?.targetNodeId ?? null;
@@ -379,6 +432,27 @@ export function drawNodeMarkers({
   const destMarker = destNode?.marker ?? "settlement";
   const startSignpost = startMarker === "signpost";
   const destSignpost = destMarker === "signpost";
+  const startRenderStripX = startCanvasX + layerStripLeft;
+  const destRenderStripX = destCanvasX + layerStripLeft;
+
+  drawNodeLandSockel(
+    ctx,
+    strip,
+    startRenderStripX,
+    startCanvasX,
+    groundTopY,
+    playerFeetY,
+  );
+  if (showDestMarker) {
+    drawNodeLandSockel(
+      ctx,
+      strip,
+      destRenderStripX,
+      destCanvasX,
+      groundTopY,
+      playerFeetY,
+    );
+  }
 
   drawNodeMarkerOnCanvas(ctx, startCanvasX, markerY, {
     marker: startMarker,
@@ -742,11 +816,13 @@ function drawGroundDetailGlyph(ctx, x, y, detail) {
 
 function findGroundSegmentAtStripX(segments, stripX) {
   if (!segments?.length || !Number.isFinite(stripX)) return null;
-  for (const segment of segments) {
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
     if (!segment || segment.isBlend) continue;
     const start = segment.stripX;
     const end = segment.stripX + segment.stripWidth;
-    if (stripX >= start && stripX <= end) {
+    const isLast = index === segments.length - 1;
+    if (stripX >= start && (stripX < end || (isLast && stripX <= end))) {
       return segment;
     }
   }
@@ -768,4 +844,57 @@ function findNearestLandSegment(segments, stripX) {
     }
   }
   return best;
+}
+
+function drawNodeLandSockel(
+  ctx,
+  strip,
+  markerStripX,
+  markerCanvasX,
+  groundTopY,
+  playerFeetY,
+) {
+  if (!strip?.layerSegments?.ground?.length) return;
+  if (!Number.isFinite(markerStripX) || !Number.isFinite(markerCanvasX)) return;
+
+  const groundSegments = strip.layerSegments.ground;
+  const underfoot = findGroundSegmentAtStripX(groundSegments, markerStripX);
+  if (!underfoot || !isWaterBiome(underfoot.biomeKey)) return;
+
+  const nearbyLand = findNearestLandSegment(groundSegments, markerStripX);
+  const baseRgb = nearbyLand?.colorRgb ?? [152, 132, 102];
+  const litRgb = lerpRgb(baseRgb, [212, 188, 146], 0.28);
+  const shadowRgb = lerpRgb(baseRgb, [78, 64, 48], 0.4);
+
+  const width = 96;
+  const height = Math.max(14, (playerFeetY - groundTopY) * 0.24);
+  const topY = groundTopY + Math.max(6, (playerFeetY - groundTopY) * 0.18);
+
+  ctx.save();
+  ctx.fillStyle = `rgba(${Math.round(shadowRgb[0])}, ${Math.round(shadowRgb[1])}, ${Math.round(shadowRgb[2])}, 0.58)`;
+  ctx.beginPath();
+  ctx.ellipse(
+    markerCanvasX,
+    topY + height * 0.95,
+    width * 0.52,
+    height * 0.58,
+    0,
+    0,
+    Math.PI * 2,
+  );
+  ctx.fill();
+
+  ctx.fillStyle = `rgba(${Math.round(litRgb[0])}, ${Math.round(litRgb[1])}, ${Math.round(litRgb[2])}, 0.7)`;
+  ctx.beginPath();
+  ctx.ellipse(
+    markerCanvasX,
+    topY + height * 0.88,
+    width * 0.42,
+    height * 0.44,
+    0,
+    0,
+    Math.PI * 2,
+  );
+  ctx.fill();
+  ctx.restore();
 }

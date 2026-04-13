@@ -136,22 +136,6 @@ export function drawOceanHorizon(ctx, viewW, viewH, skyState) {
   ctx.fillStyle = glare;
   ctx.fillRect(0, glareY - 1, viewW, 4);
 
-  const shoreY = bottom - 2;
-  const shore = ctx.createLinearGradient(0, shoreY - 4, 0, shoreY + 2);
-  shore.addColorStop(0, "rgba(255,255,255,0)");
-  shore.addColorStop(
-    0.58,
-    `rgba(246, 244, 230, ${
-      0.1 +
-      twilight * 0.12 +
-      daylight * 0.14 +
-      moonlight * 0.11 +
-      dawnWarmth * 0.12
-    })`,
-  );
-  shore.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = shore;
-  ctx.fillRect(0, shoreY - 4, viewW, 8);
 }
 
 export function drawNightVeil(ctx, viewW, viewH, skyState) {

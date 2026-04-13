@@ -1,6 +1,6 @@
 const DEFAULT_COLUMNS = 4;
 const DEFAULT_ROWS = 4;
-const STARTING_MEAT_COUNT = 6;
+const STARTING_MEAT_COUNT = 11;
 const DEFAULT_MAX_STACK_COUNT = 10;
 
 export function createInitialInventory() {

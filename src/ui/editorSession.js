@@ -11,7 +11,7 @@ import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260408a";
 import { attachEditorController } from "./editorController.js?v=20260409a";
 import { renderEditorWorld } from "../render/renderer.js?v=20260412d";
 import { createMapAtlasCacheManager } from "./mapAtlasCache.js?v=20260408h";
-import { createPlayState } from "../game/travel.js?v=20260412i";
+import { createPlayState } from "../game/travel.js?v=20260413a";
 import { findNodeAtWorldPoint } from "../game/playQueries.js?v=20260409e";
 
 export function createEditorSession({ refs, state, syncViewUi }) {

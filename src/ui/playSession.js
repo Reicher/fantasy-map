@@ -1,25 +1,31 @@
 import {
   advanceTravel,
+  beginHunt,
   beginRest,
   beginTravel,
+  cancelRest as cancelRestState,
+  cancelHunt as cancelHuntState,
   createPlayState,
   getDiscoveredNodeIds,
   getVisibleNodeIds,
   getValidTargetIds,
   sampleTravelBiomeBandPoints,
   toggleTravelPause as toggleTravelPauseState,
-} from "../game/travel.js?v=20260412i";
-import { createJourneyScene } from "../game/journeyScene.js?v=20260412o";
+} from "../game/travel.js?v=20260413b";
+import { createJourneyScene } from "../game/journeyScene.js?v=20260413h";
 import {
   renderPlayWorldDynamic,
   renderPlayWorldStatic,
 } from "../render/renderer.js?v=20260412e";
 import { inspectWorldAt } from "../inspector.js?v=20260408b";
-import { createPlayCamera as buildPlayCamera } from "./cameraState.js?v=20260407a";
+import {
+  clampEditorCamera,
+  createPlayCamera as buildPlayCamera,
+} from "./cameraState.js?v=20260407a";
 import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260408a";
 import { createMapAtlasCacheManager } from "./mapAtlasCache.js?v=20260408h";
-import { createPlayController } from "./playController.js?v=20260412g";
-import { createPlaySubViewController } from "./playSubView.js?v=20260412i";
+import { createPlayController } from "./playController.js?v=20260413a";
+import { createPlaySubViewController } from "./playSubView.js?v=20260413a";
 import {
   createTransitionController,
   waitForNextPaintIfActive,
@@ -74,6 +80,10 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     updatePlaySubView,
     toggleTravelPause,
     startRest,
+    startHunt,
+    cancelTimedAction,
+    dismissActionResult,
+    dismissActionDialog,
     enterPlayMode,
     stopAnimation: playController.stopAnimation,
     resetJourney: journeyScene.reset,
@@ -81,6 +91,7 @@ export function createPlaySession({ refs, state, syncModeUi }) {
 
   function createInitialPlayState(world) {
     const playState = createPlayState(world);
+    state.playMapCamera = buildPlayCamera(world, playState, 2);
     return state.currentMode === "play"
       ? {
           ...playState,
@@ -167,12 +178,6 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     if (!state.playState || (mode !== "map" && mode !== "journey")) {
       return;
     }
-    if (
-      mode === "map" &&
-      (state.playState.pendingRestChoice || state.playState.rest)
-    ) {
-      return;
-    }
 
     state.playState = {
       ...state.playState,
@@ -211,6 +216,73 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     }
     state.playState = nextPlayState;
     playController.ensureAnimation();
+    renderPlayWorld();
+    return true;
+  }
+
+  function startHunt(hours) {
+    if (!state.playState || state.playState.gameOver || !state.currentWorld) {
+      return false;
+    }
+    const nextPlayState = beginHunt(state.playState, state.currentWorld, hours);
+    if (nextPlayState === state.playState) {
+      return false;
+    }
+    state.playState = nextPlayState;
+    playController.ensureAnimation();
+    renderPlayWorld();
+    return true;
+  }
+
+  function cancelTimedAction() {
+    if (!state.playState || state.playState.gameOver || !state.currentWorld) {
+      return false;
+    }
+    const nextPlayState = state.playState.hunt
+      ? cancelHuntState(state.playState, state.currentWorld)
+      : state.playState.rest
+        ? cancelRestState(state.playState)
+        : state.playState;
+    if (nextPlayState === state.playState) {
+      return false;
+    }
+    state.playState = nextPlayState;
+    playController.ensureAnimation();
+    renderPlayWorld();
+    return true;
+  }
+
+  function dismissActionDialog() {
+    if (!state.playState || state.playState.gameOver) {
+      return false;
+    }
+    if (state.playState.rest || state.playState.hunt || state.playState.pendingRestChoice) {
+      return false;
+    }
+    if (
+      !state.playState.travel ||
+      !state.playState.isTravelPaused ||
+      state.playState.travelPauseReason !== "manual"
+    ) {
+      return false;
+    }
+    state.playState = toggleTravelPauseState(state.playState);
+    renderPlayWorld();
+    return true;
+  }
+
+  function dismissActionResult() {
+    if (!state.playState || state.playState.gameOver) {
+      return false;
+    }
+    const feedback = state.playState.latestHuntFeedback;
+    if (feedback?.type !== "result") {
+      return false;
+    }
+    state.playState = {
+      ...state.playState,
+      latestHuntFeedback: null,
+    };
     renderPlayWorld();
     return true;
   }
@@ -266,7 +338,11 @@ export function createPlaySession({ refs, state, syncModeUi }) {
   }
 
   function createPlayCamera() {
-    return buildPlayCamera(state.currentWorld, state.playState, 2);
+    const fallbackCamera = buildPlayCamera(state.currentWorld, state.playState, 2);
+    const nextCamera = state.playMapCamera ?? fallbackCamera;
+    const clamped = clampEditorCamera(state.currentWorld, nextCamera);
+    state.playMapCamera = clamped;
+    return clamped;
   }
 }
 

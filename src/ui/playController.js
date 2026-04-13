@@ -3,10 +3,11 @@ import { createViewport } from "../render/renderer.js?v=20260412d";
 import { findPlayableNodeAtWorldPoint } from "../game/playQueries.js?v=20260409e";
 import {
   applyHourlyHunger,
+  advanceHunt,
   applyHourlyTravelStamina,
   advanceRest,
   isNodeDiscovered,
-} from "../game/travel.js?v=20260412i";
+} from "../game/travel.js?v=20260413a";
 import { advanceTimeOfDayHours, getElapsedTimeOfDayHours } from "../game/timeOfDay.js";
 import { getNodeTitle } from "../node/model.js";
 
@@ -25,6 +26,8 @@ export function createPlayController({
   showHoverHit,
 }) {
   let lastRenderedAt = 0;
+  const MAP_PAN_START_THRESHOLD_PX = 6;
+  let mapPanState = null;
 
   playCanvas.addEventListener("pointermove", (event) => {
     if (
@@ -35,6 +38,42 @@ export function createPlayController({
       state.playState.viewMode !== "map"
     ) {
       return;
+    }
+
+    if (
+      mapPanState &&
+      event.pointerId === mapPanState.pointerId &&
+      !state.playState.travel
+    ) {
+      const totalDeltaX = event.clientX - mapPanState.startClientX;
+      const totalDeltaY = event.clientY - mapPanState.startClientY;
+      if (
+        !mapPanState.dragging &&
+        Math.hypot(totalDeltaX, totalDeltaY) >= MAP_PAN_START_THRESHOLD_PX
+      ) {
+        mapPanState.dragging = true;
+        clearHover(tooltip);
+        state.playState = {
+          ...state.playState,
+          hoveredNodeId: null,
+          pressedNodeId: null,
+        };
+      }
+
+      if (mapPanState.dragging) {
+        const stepDeltaX = event.clientX - mapPanState.lastClientX;
+        const stepDeltaY = event.clientY - mapPanState.lastClientY;
+        mapPanState.lastClientX = event.clientX;
+        mapPanState.lastClientY = event.clientY;
+        if (Math.abs(stepDeltaX) > 0.001 || Math.abs(stepDeltaY) > 0.001) {
+          panPlayMapByClientDelta(stepDeltaX, stepDeltaY);
+          renderPlayWorld();
+        }
+        playCanvas.style.cursor = "grabbing";
+        return;
+      }
+      mapPanState.lastClientX = event.clientX;
+      mapPanState.lastClientY = event.clientY;
     }
 
     const rect = playCanvas.getBoundingClientRect();
@@ -129,7 +168,32 @@ export function createPlayController({
     }
 
     const pressedNodeId = findPlayableNodeAtEvent(event);
+    mapPanState = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      lastClientX: event.clientX,
+      lastClientY: event.clientY,
+      dragging: false,
+    };
+    try {
+      playCanvas.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture may fail in some environments; drag still works.
+    }
+
     if (pressedNodeId == null) {
+      if (
+        state.playState.hoveredNodeId != null ||
+        state.playState.pressedNodeId != null
+      ) {
+        state.playState = {
+          ...state.playState,
+          hoveredNodeId: null,
+          pressedNodeId: null,
+        };
+        renderPlayWorld();
+      }
       return;
     }
 
@@ -150,6 +214,29 @@ export function createPlayController({
       state.playState.viewMode !== "map" ||
       state.playState.travel
     ) {
+      return;
+    }
+
+    const isPanPointer = mapPanState && event.pointerId === mapPanState.pointerId;
+    const wasDragging = Boolean(isPanPointer && mapPanState.dragging);
+    if (isPanPointer) {
+      try {
+        playCanvas.releasePointerCapture(event.pointerId);
+      } catch {
+        // Ignore capture-release failures.
+      }
+      mapPanState = null;
+    }
+
+    if (wasDragging) {
+      playCanvas.style.cursor = "default";
+      clearHover(tooltip);
+      state.playState = {
+        ...state.playState,
+        hoveredNodeId: null,
+        pressedNodeId: null,
+      };
+      renderPlayWorld();
       return;
     }
 
@@ -184,6 +271,11 @@ export function createPlayController({
       return;
     }
 
+    if (mapPanState?.dragging) {
+      return;
+    }
+
+    mapPanState = null;
     playCanvas.style.cursor = "default";
     clearHover(tooltip);
     state.playState = {
@@ -192,6 +284,11 @@ export function createPlayController({
       pressedNodeId: null,
     };
     renderPlayWorld();
+  });
+
+  playCanvas.addEventListener("pointercancel", () => {
+    mapPanState = null;
+    playCanvas.style.cursor = "default";
   });
 
   return {
@@ -223,10 +320,13 @@ export function createPlayController({
   }
 
   function ensureAnimation() {
+    const hasTimedAction = Boolean(state.playState?.rest || state.playState?.hunt);
     const shouldAnimate =
       state.currentMode === "play" &&
       !state.playState?.gameOver &&
-      (state.playState?.travel || state.playState?.viewMode === "journey");
+      (state.playState?.travel ||
+        state.playState?.viewMode === "journey" ||
+        hasTimedAction);
     if (state.playAnimationFrame != null || !shouldAnimate) {
       return;
     }
@@ -237,7 +337,10 @@ export function createPlayController({
       const shouldKeepAnimating =
         state.currentMode === "play" &&
         !state.playState?.gameOver &&
-        (state.playState?.travel || state.playState?.viewMode === "journey");
+        (state.playState?.travel ||
+          state.playState?.viewMode === "journey" ||
+          state.playState?.rest ||
+          state.playState?.hunt);
       if (!shouldKeepAnimating) {
         return;
       }
@@ -250,8 +353,9 @@ export function createPlayController({
       const hasTravel = Boolean(state.playState?.travel);
       const isTravelPaused = Boolean(state.playState?.isTravelPaused);
       const isResting = Boolean(state.playState?.rest);
-      const isTraveling = hasTravel && !isTravelPaused && !isResting;
-      const shouldAdvanceWorldTime = isTraveling || isResting;
+      const isHunting = Boolean(state.playState?.hunt);
+      const isTraveling = hasTravel && !isTravelPaused && !isResting && !isHunting;
+      const shouldAdvanceWorldTime = isTraveling || isResting || isHunting;
 
       if (shouldAdvanceWorldTime) {
         const elapsedTimeOfDayHours = getElapsedTimeOfDayHours(delta);
@@ -270,19 +374,28 @@ export function createPlayController({
           journeyElapsedHours: currentJourneyElapsedHours + elapsedTimeOfDayHours,
         };
 
-        if (isTraveling) {
-          state.playState = applyHourlyHunger(
-            state.playState,
-            elapsedTimeOfDayHours,
-          );
+        state.playState = applyHourlyHunger(
+          state.playState,
+          elapsedTimeOfDayHours,
+        );
+
+        if (!state.playState?.gameOver && isTraveling) {
           state.playState = applyHourlyTravelStamina(
             state.playState,
             elapsedTimeOfDayHours,
           );
         }
 
-        if (isResting) {
+        if (!state.playState?.gameOver && isResting) {
           state.playState = advanceRest(state.playState, elapsedTimeOfDayHours);
+        }
+
+        if (!state.playState?.gameOver && isHunting) {
+          state.playState = advanceHunt(
+            state.playState,
+            state.currentWorld,
+            elapsedTimeOfDayHours,
+          );
         }
       }
 
@@ -302,6 +415,7 @@ export function createPlayController({
         traveling: state.playState?.travel ? "yes" : "no",
         paused: state.playState?.isTravelPaused ? "yes" : "no",
         resting: state.playState?.rest ? "yes" : "no",
+        hunting: state.playState?.hunt ? "yes" : "no",
       });
       const shouldRenderMapFrame =
         !isJourney &&
@@ -330,5 +444,31 @@ export function createPlayController({
       state.playAnimationFrame = null;
     }
     lastRenderedAt = 0;
+  }
+
+  function panPlayMapByClientDelta(deltaClientX, deltaClientY) {
+    if (
+      !state.currentWorld ||
+      !Number.isFinite(deltaClientX) ||
+      !Number.isFinite(deltaClientY)
+    ) {
+      return;
+    }
+
+    const rect = playCanvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return;
+    }
+
+    const deltaCanvasX = (deltaClientX / rect.width) * RENDER_WIDTH;
+    const deltaCanvasY = (deltaClientY / rect.height) * RENDER_HEIGHT;
+    const camera = createPlayCamera();
+    const viewport = createViewport(state.currentWorld, camera);
+
+    state.playMapCamera = {
+      ...camera,
+      centerX: camera.centerX - deltaCanvasX / viewport.scaleX,
+      centerY: camera.centerY - deltaCanvasY / viewport.scaleY,
+    };
   }
 }

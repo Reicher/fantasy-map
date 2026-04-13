@@ -1,5 +1,5 @@
 import { regionAtCell, regionAtPosition } from "./playQueries.js";
-import { isNodeDiscovered } from "./travel.js?v=20260412i";
+import { isNodeDiscovered } from "./travel.js?v=20260413a";
 import { getNodeTitle } from "../node/model.js";
 
 export function describePlayHud(world, playState) {

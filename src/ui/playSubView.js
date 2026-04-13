@@ -5,7 +5,10 @@ import {
   transferAllInventoryItems,
   transferInventoryItem,
 } from "../game/inventory.js?v=20260412e";
-import { isNodeDiscovered } from "../game/travel.js?v=20260412i";
+import {
+  describeHuntSituation,
+  isNodeDiscovered,
+} from "../game/travel.js?v=20260413a";
 import { getNodeTitle } from "../node/model.js";
 import { createInventoryGridController } from "./inventoryGrid.js?v=20260412e";
 import { setElementVisible } from "./viewState.js?v=20260403a";
@@ -32,7 +35,13 @@ export function createPlaySubViewController({
   let lastJourneyLootTakeAllEnabled = null;
   let lastRestDialogVisible = null;
   let lastRestDialogMessage = null;
+  let lastHuntOutlookMessage = null;
+  let lastRestBodyVisible = null;
+  let lastHuntOutlookVisible = null;
   let lastRestOptionsVisible = null;
+  let lastHuntCancelVisible = null;
+  let lastActionResultDialogVisible = null;
+  let lastActionResultMessage = null;
   let lastGameOverVisible = null;
   let lastGameOverMessage = null;
   let activeTravelCueKey = null;
@@ -104,7 +113,13 @@ export function createPlaySubViewController({
     lastJourneyLootTakeAllEnabled = null;
     lastRestDialogVisible = null;
     lastRestDialogMessage = null;
+    lastHuntOutlookMessage = null;
+    lastRestBodyVisible = null;
+    lastHuntOutlookVisible = null;
     lastRestOptionsVisible = null;
+    lastHuntCancelVisible = null;
+    lastActionResultDialogVisible = null;
+    lastActionResultMessage = null;
     lastGameOverVisible = null;
     lastGameOverMessage = null;
     activeTravelCueKey = null;
@@ -115,6 +130,7 @@ export function createPlaySubViewController({
     hideArrivalCue();
     hideJourneyEventDialog();
     hideRestDialog();
+    hideActionResultDialog();
     hideGameOverDialog();
     inventoryGrid.reset();
     lootInventoryGrid.reset();
@@ -139,21 +155,23 @@ export function createPlaySubViewController({
     syncPlayLegendButtons(state.playMapOptions, state.renderOptions, refs);
     lastModeButtonLabel = syncBottomHudButtons(
       playState,
-      state.playHudPanels,
+      state.playActivePanel,
       refs,
       lastModeButtonLabel,
     );
     lastTravelToggleSignature = syncTravelToggleButton(
       playState,
+      state.playActionMenuOpen,
       refs.playToggleTravelButton,
       lastTravelToggleSignature,
     );
-    syncHudPanelsVisibility(showBottomHud, state.playHudPanels, refs);
+    syncHudPanelsVisibility(showBottomHud, state.playActivePanel, refs);
 
     if (!isPlay || !world || !playState) {
       hideArrivalCue();
       hideJourneyEventDialog();
       hideRestDialog();
+      hideActionResultDialog();
       hideGameOverDialog();
       resetTravelCueTracking();
       return;
@@ -177,13 +195,15 @@ export function createPlaySubViewController({
       lastCharacterPanelSignature,
     );
     inventoryGrid.render();
-    syncRestDialog(playState, isJourney);
+    syncRestDialog(playState, isPlay, world);
+    syncActionResultDialog(playState, isJourney);
     syncGameOverDialog(playState, isPlay);
 
     if (playState.gameOver) {
       hideArrivalCue();
       hideJourneyEventDialog();
       hideRestDialog();
+      hideActionResultDialog();
       resetTravelCueTracking();
       return;
     }
@@ -191,7 +211,7 @@ export function createPlaySubViewController({
     if (!isJourney) {
       hideArrivalCue();
       hideJourneyEventDialog();
-      hideRestDialog();
+      hideActionResultDialog();
       return;
     }
 
@@ -329,7 +349,7 @@ export function createPlaySubViewController({
     const event = playState?.pendingJourneyEvent ?? null;
     const shouldShow = isJourney && Boolean(event);
     if (lastJourneyEventDialogVisible !== shouldShow) {
-      setElementVisible(dialog, shouldShow, "block");
+      setElementVisible(dialog, shouldShow, "grid");
       lastJourneyEventDialogVisible = shouldShow;
     }
 
@@ -353,8 +373,14 @@ export function createPlaySubViewController({
   }
 
   function syncJourneyLootPanel(showLootPanel, lootInventory) {
+    if (refs.playJourneyEventDialog) {
+      refs.playJourneyEventDialog.classList.toggle(
+        "play-journey-event-dialog--loot",
+        showLootPanel,
+      );
+    }
     if (lastJourneyLootPanelVisible !== showLootPanel) {
-      setElementVisible(refs.playJourneyEventLoot, showLootPanel, "block");
+      setElementVisible(refs.playJourneyEventLoot, showLootPanel, "grid");
       lastJourneyLootPanelVisible = showLootPanel;
     }
 
@@ -377,8 +403,9 @@ export function createPlaySubViewController({
     if (!refs.playJourneyEventDialog) {
       return;
     }
-    setElementVisible(refs.playJourneyEventDialog, false, "block");
-    setElementVisible(refs.playJourneyEventLoot, false, "block");
+    setElementVisible(refs.playJourneyEventDialog, false, "grid");
+    refs.playJourneyEventDialog.classList.remove("play-journey-event-dialog--loot");
+    setElementVisible(refs.playJourneyEventLoot, false, "grid");
     lastJourneyEventDialogVisible = false;
     lastJourneyEventDialogMessage = null;
     lastJourneyLootPanelVisible = false;
@@ -386,7 +413,7 @@ export function createPlaySubViewController({
     clearAutoClearJourneyEventTimer();
   }
 
-  function syncRestDialog(playState, isJourney) {
+  function syncRestDialog(playState, isPlay, world) {
     const dialog = refs.playRestDialog;
     const body = refs.playRestBody;
     if (!dialog || !body) {
@@ -394,46 +421,138 @@ export function createPlaySubViewController({
     }
 
     const restState = playState?.rest ?? null;
+    const huntState = playState?.hunt ?? null;
     const isResting = Boolean(restState);
+    const isHunting = Boolean(huntState);
     const needsRestChoice = Boolean(playState?.pendingRestChoice);
-    const shouldShow = isJourney && (isResting || needsRestChoice);
+    const hasBlockingInteraction = Boolean(playState?.pendingJourneyEvent);
+    const hasActionResult = playState?.latestHuntFeedback?.type === "result";
+    const isActionMenuOpen = Boolean(state.playActionMenuOpen);
+    const inNode = !playState?.travel && playState?.currentNodeId != null;
+    const isPausedTravel = Boolean(playState?.travel && playState?.isTravelPaused);
+    const showIdleMenu = inNode || isPausedTravel;
+    const huntSituation = describeHuntSituation(playState, world);
+    const shouldShow =
+      isPlay &&
+      !hasBlockingInteraction &&
+      !hasActionResult &&
+      (isResting || isHunting || needsRestChoice || (isActionMenuOpen && showIdleMenu));
     if (lastRestDialogVisible !== shouldShow) {
       setElementVisible(dialog, shouldShow, "grid");
       lastRestDialogVisible = shouldShow;
     }
 
     if (!shouldShow) {
+      setElementVisible(body, false, "block");
+      if (refs.playHuntOutlook) {
+        setElementVisible(refs.playHuntOutlook, false, "block");
+      }
       lastRestDialogMessage = null;
+      lastHuntOutlookMessage = null;
+      lastRestBodyVisible = false;
+      lastHuntOutlookVisible = false;
       lastRestOptionsVisible = null;
+      if (refs.playActionCancelButton) {
+        setElementVisible(refs.playActionCancelButton, false, "inline-flex");
+      }
+      lastHuntCancelVisible = false;
       return;
     }
 
-    let message = "Staminan är slut. Välj hur länge du vill vila.";
+    let message = "";
     if (isResting) {
       const totalHours = normalizeRestHours(restState?.hours);
       const elapsedHours = normalizeElapsedHours(restState?.elapsedHours);
       const remainingHours = Math.max(0, totalHours - elapsedHours);
       message = `Vilar... ${formatRestHours(remainingHours)} kvar.`;
+    } else if (isHunting) {
+      const totalHours = normalizeRestHours(huntState?.hours);
+      const elapsedHours = normalizeElapsedHours(huntState?.elapsedHours);
+      const remainingHours = Math.max(0, totalHours - elapsedHours);
+      message = `Jagar... ${formatRestHours(remainingHours)} kvar.`;
+    } else if (needsRestChoice) {
+      message = "Staminan är slut. Du måste vila.";
     }
-    if (message !== lastRestDialogMessage) {
+    const showBody = message.length > 0;
+    if (lastRestBodyVisible !== showBody) {
+      setElementVisible(body, showBody, "block");
+      lastRestBodyVisible = showBody;
+    }
+    if (!showBody) {
+      lastRestDialogMessage = null;
+    } else if (message !== lastRestDialogMessage) {
       body.textContent = message;
       lastRestDialogMessage = message;
     }
 
     const optionsElement = refs.playRestOptions;
-    const showOptions = !isResting;
+    const showOptions = !isResting && !isHunting;
     if (optionsElement && lastRestOptionsVisible !== showOptions) {
-      setElementVisible(optionsElement, showOptions, "flex");
+      setElementVisible(optionsElement, showOptions, "grid");
       lastRestOptionsVisible = showOptions;
     }
+
+    const huntOutlookElement = refs.playHuntOutlook;
+    const showHuntOutlook = showOptions && ((showIdleMenu && isActionMenuOpen) || needsRestChoice);
+    const huntOutlookMessage = showHuntOutlook
+      ? huntSituation.available
+        ? huntSituation.outlook
+        : huntSituation.reason
+      : "";
+    if (huntOutlookElement && lastHuntOutlookVisible !== showHuntOutlook) {
+      setElementVisible(huntOutlookElement, showHuntOutlook, "block");
+      lastHuntOutlookVisible = showHuntOutlook;
+    }
+    if (
+      showHuntOutlook &&
+      huntOutlookElement &&
+      huntOutlookMessage !== lastHuntOutlookMessage
+    ) {
+      huntOutlookElement.textContent = huntOutlookMessage;
+      lastHuntOutlookMessage = huntOutlookMessage;
+    } else if (!showHuntOutlook) {
+      lastHuntOutlookMessage = null;
+    }
+
+    const showRestChoices = showOptions;
+    const showHuntChoices = showOptions;
 
     if (Array.isArray(refs.playRestButtons)) {
       for (const button of refs.playRestButtons) {
         if (!button) {
           continue;
         }
-        button.disabled = isResting;
+        setElementVisible(button, showRestChoices, "inline-flex");
+        button.disabled = isResting || isHunting;
       }
+    }
+    if (Array.isArray(refs.playHuntButtons)) {
+      const disableHuntButtons =
+        isResting ||
+        isHunting ||
+        needsRestChoice ||
+        normalizeStamina(playState?.stamina, 0) <= 0 ||
+        !huntSituation.available;
+      for (const button of refs.playHuntButtons) {
+        if (!button) {
+          continue;
+        }
+        setElementVisible(button, showHuntChoices, "inline-flex");
+        button.disabled = disableHuntButtons;
+      }
+    }
+
+    const showHuntCancel = isHunting || isResting;
+    if (refs.playActionCancelButton) {
+      refs.playActionCancelButton.textContent = isResting ? "Avbryt vila" : "Avbryt jakt";
+    }
+    if (refs.playActionCancelButton && lastHuntCancelVisible !== showHuntCancel) {
+      setElementVisible(
+        refs.playActionCancelButton,
+        showHuntCancel,
+        "inline-flex",
+      );
+      lastHuntCancelVisible = showHuntCancel;
     }
   }
 
@@ -442,19 +561,76 @@ export function createPlaySubViewController({
       return;
     }
     setElementVisible(refs.playRestDialog, false, "grid");
+    if (refs.playRestBody) {
+      setElementVisible(refs.playRestBody, false, "block");
+    }
+    if (refs.playHuntOutlook) {
+      setElementVisible(refs.playHuntOutlook, false, "block");
+    }
     if (refs.playRestOptions) {
-      setElementVisible(refs.playRestOptions, false, "flex");
+      setElementVisible(refs.playRestOptions, false, "grid");
+    }
+    if (refs.playActionCancelButton) {
+      setElementVisible(refs.playActionCancelButton, false, "inline-flex");
     }
     if (Array.isArray(refs.playRestButtons)) {
       for (const button of refs.playRestButtons) {
         if (button) {
+          setElementVisible(button, false, "flex");
+          button.disabled = false;
+        }
+      }
+    }
+    if (Array.isArray(refs.playHuntButtons)) {
+      for (const button of refs.playHuntButtons) {
+        if (button) {
+          setElementVisible(button, false, "flex");
           button.disabled = false;
         }
       }
     }
     lastRestDialogVisible = false;
     lastRestDialogMessage = null;
+    lastHuntOutlookMessage = null;
+    lastRestBodyVisible = false;
+    lastHuntOutlookVisible = false;
     lastRestOptionsVisible = false;
+    lastHuntCancelVisible = false;
+  }
+
+  function syncActionResultDialog(playState, isJourney) {
+    const dialog = refs.playActionResultDialog;
+    const body = refs.playActionResultBody;
+    if (!dialog || !body) {
+      return;
+    }
+    const resultMessage =
+      playState?.latestHuntFeedback?.type === "result"
+        ? String(playState.latestHuntFeedback.text ?? "")
+        : "";
+    const hasBlockingInteraction = Boolean(playState?.pendingJourneyEvent);
+    const shouldShow = isJourney && resultMessage.length > 0 && !hasBlockingInteraction;
+    if (lastActionResultDialogVisible !== shouldShow) {
+      setElementVisible(dialog, shouldShow, "grid");
+      lastActionResultDialogVisible = shouldShow;
+    }
+    if (!shouldShow) {
+      lastActionResultMessage = null;
+      return;
+    }
+    if (resultMessage !== lastActionResultMessage) {
+      body.textContent = resultMessage;
+      lastActionResultMessage = resultMessage;
+    }
+  }
+
+  function hideActionResultDialog() {
+    if (!refs.playActionResultDialog) {
+      return;
+    }
+    setElementVisible(refs.playActionResultDialog, false, "grid");
+    lastActionResultDialogVisible = false;
+    lastActionResultMessage = null;
   }
 
   function syncGameOverDialog(playState, isPlay) {
@@ -649,7 +825,12 @@ function syncPlayLegendButtons(playMapOptions, renderOptions, refs) {
   setToggleState(refs.playSettingsToggleSnowButton, renderOptions.showSnow);
 }
 
-function syncBottomHudButtons(playState, playHudPanels, refs, lastModeButtonLabel) {
+function syncBottomHudButtons(
+  playState,
+  playActivePanel,
+  refs,
+  lastModeButtonLabel,
+) {
   if (!refs.playSwitchModeButton) {
     return lastModeButtonLabel;
   }
@@ -665,19 +846,16 @@ function syncBottomHudButtons(playState, playHudPanels, refs, lastModeButtonLabe
     refs.playPanelToggleSettingsButton,
     "Öppna/stäng inställningar (S)",
   );
-  setToggleState(refs.playPanelToggleCharacterButton, playHudPanels?.character);
-  setToggleState(refs.playPanelToggleInventoryButton, playHudPanels?.inventory);
-  setToggleState(refs.playPanelToggleSettingsButton, playHudPanels?.settings);
+  setToggleState(refs.playPanelToggleCharacterButton, playActivePanel === "character");
+  setToggleState(refs.playPanelToggleInventoryButton, playActivePanel === "inventory");
+  setToggleState(refs.playPanelToggleSettingsButton, playActivePanel === "settings");
   const nextModeLabel = playState?.viewMode === "journey" ? "Karta" : "Resa";
-  const modeLocked = Boolean(playState?.pendingRestChoice || playState?.rest);
-  const tooltipText = modeLocked
-    ? "Vila måste slutföras i resläget"
-    : `Växla till ${nextModeLabel.toLowerCase()}läge (M)`;
+  const tooltipText = `Växla till ${nextModeLabel.toLowerCase()}läge (M)`;
   if (refs.playSwitchModeButton.dataset.tooltip !== tooltipText) {
     refs.playSwitchModeButton.dataset.tooltip = tooltipText;
     refs.playSwitchModeButton.title = tooltipText;
   }
-  refs.playSwitchModeButton.disabled = modeLocked;
+  refs.playSwitchModeButton.disabled = false;
   if (lastModeButtonLabel !== nextModeLabel) {
     refs.playSwitchModeButton.textContent = nextModeLabel;
     return nextModeLabel;
@@ -685,7 +863,7 @@ function syncBottomHudButtons(playState, playHudPanels, refs, lastModeButtonLabe
   return lastModeButtonLabel;
 }
 
-function syncTravelToggleButton(playState, button, lastSignature) {
+function syncTravelToggleButton(playState, playActionMenuOpen, button, lastSignature) {
   if (!button) {
     return lastSignature;
   }
@@ -693,31 +871,53 @@ function syncTravelToggleButton(playState, button, lastSignature) {
   const hasTravel = Boolean(playState?.travel);
   const isPaused = Boolean(playState?.isTravelPaused);
   const isResting = Boolean(playState?.rest);
+  const isHunting = Boolean(playState?.hunt);
+  const inNode = !hasTravel && playState?.currentNodeId != null;
   const canResume =
     hasTravel &&
     isPaused &&
     !isResting &&
+    !isHunting &&
     normalizeStamina(playState?.stamina, 0) > 0;
-  const isDisabled = !hasTravel || isResting || (isPaused && !canResume);
+  let isDisabled = false;
+  let label = "Handlingar";
+  let tooltip = "Öppna/stäng handlingar (A)";
+  let isActive = Boolean(playActionMenuOpen && inNode);
 
-  let label = "Pausa";
-  let tooltip = "Pausa resan";
-  if (!hasTravel) {
-    label = "Pausa";
-    tooltip = "Ingen aktiv resa";
-  } else if (isResting) {
+  if (isResting) {
+    isDisabled = true;
     label = "Vilar...";
     tooltip = "Vilan pågår";
-  } else if (isPaused) {
-    label = "Fortsätt";
-    tooltip = canResume ? "Fortsätt resan" : "Vila krävs innan du kan fortsätta";
+    isActive = true;
+  } else if (isHunting) {
+    isDisabled = true;
+    label = "Jagar...";
+    tooltip = "Jakten pågår";
+    isActive = true;
+  } else if (hasTravel) {
+    if (isPaused) {
+      label = "Fortsätt";
+      tooltip = canResume ? "Fortsätt resan" : "Vila krävs innan du kan fortsätta";
+      isDisabled = !canResume;
+      isActive = true;
+    } else {
+      label = "Pausa";
+      tooltip = "Pausa resan och öppna handlingar";
+      isDisabled = false;
+      isActive = false;
+    }
+  } else if (!inNode) {
+    isDisabled = true;
+    tooltip = "Handlingar är tillgängliga i noder";
   }
 
   const signature = [
     hasTravel ? "travel" : "idle",
     isPaused ? "paused" : "moving",
     isResting ? "resting" : "not-resting",
+    isHunting ? "hunting" : "not-hunting",
     isDisabled ? "disabled" : "enabled",
+    isActive ? "active" : "inactive",
     label,
     tooltip,
   ].join("|");
@@ -729,18 +929,18 @@ function syncTravelToggleButton(playState, button, lastSignature) {
   button.title = tooltip;
   button.dataset.tooltip = tooltip;
   button.disabled = isDisabled;
-  button.dataset.active = hasTravel && isPaused ? "true" : "false";
+  button.dataset.active = isActive ? "true" : "false";
   return signature;
 }
 
-function syncHudPanelsVisibility(showBottomHud, playHudPanels, refs) {
+function syncHudPanelsVisibility(showBottomHud, playActivePanel, refs) {
   const panels = [
-    [refs.playPanelCharacter, playHudPanels?.character],
-    [refs.playPanelInventory, playHudPanels?.inventory],
-    [refs.playPanelSettings, playHudPanels?.settings],
+    [refs.playPanelCharacter, "character"],
+    [refs.playPanelInventory, "inventory"],
+    [refs.playPanelSettings, "settings"],
   ];
-  for (const [panelRef, isOpen] of panels) {
-    setElementVisible(panelRef, showBottomHud && Boolean(isOpen), "block");
+  for (const [panelRef, panelName] of panels) {
+    setElementVisible(panelRef, showBottomHud && playActivePanel === panelName, "block");
   }
 }
 
@@ -840,14 +1040,17 @@ function syncCharacterPanel(refs, playState, lastSignature) {
     maxStamina,
     normalizeStamina(playState?.stamina, maxStamina),
   );
-  const accuracy = normalizeAccuracy(playState?.accuracy, 0);
+  const vapenTraffsakerhet = normalizeWeaponAccuracy(
+    playState?.vapenTraffsakerhet,
+    0,
+  );
   const statusLine = describeTravelStatus(playState);
   const signature = [
     initiative,
     vitality,
     stamina,
     maxStamina,
-    accuracy,
+    vapenTraffsakerhet,
     statusLine,
   ].join("|");
   if (signature === lastSignature) {
@@ -857,7 +1060,7 @@ function syncCharacterPanel(refs, playState, lastSignature) {
   initiativeElement.textContent = `Initiativ: ${initiative}`;
   vitalityElement.textContent = `Vitalitet: ${vitality}`;
   staminaElement.textContent = `Stamina: ${stamina}/${maxStamina}`;
-  accuracyElement.textContent = `Accuracy: ${accuracy}%`;
+  accuracyElement.textContent = `Vapenträffsäkerhet: ${vapenTraffsakerhet}%`;
   statusElement.textContent = `Status: ${statusLine}`;
   return signature;
 }
@@ -907,7 +1110,7 @@ function normalizeStat(value, fallback = 0) {
   return Math.max(0, Math.floor(value));
 }
 
-function normalizeAccuracy(value, fallback = 0) {
+function normalizeWeaponAccuracy(value, fallback = 0) {
   const fallbackValue = Math.max(0, Math.min(100, Math.floor(fallback) || 0));
   if (!Number.isFinite(value)) {
     return fallbackValue;
@@ -916,6 +1119,12 @@ function normalizeAccuracy(value, fallback = 0) {
 }
 
 function describeTravelStatus(playState) {
+  if (playState?.hunt) {
+    const totalHours = normalizeRestHours(playState.hunt.hours);
+    const elapsedHours = normalizeElapsedHours(playState.hunt.elapsedHours);
+    const remainingHours = Math.max(0, totalHours - elapsedHours);
+    return `Jagar (${formatRestHours(remainingHours)} kvar)`;
+  }
   if (playState?.rest) {
     const totalHours = normalizeRestHours(playState.rest.hours);
     const elapsedHours = normalizeElapsedHours(playState.rest.elapsedHours);

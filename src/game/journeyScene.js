@@ -16,7 +16,7 @@
 import {
   buildJourneyStrip,
   extendStripWithTravel,
-} from "./journey/journeyStrip.js?v=20260412c";
+} from "./journey/journeyStrip.js?v=20260413c";
 import { drawPlayerFigure } from "./journey/journeyStyle.js?v=20260412d";
 import {
   drawDebugOverlay,
@@ -28,13 +28,13 @@ import {
   drawNodeMarkers,
   drawSilhouetteLayer,
   drawTreeDecorationsForLayer,
-} from "./journey/journeyLayerRenderers.js?v=20260412b";
+} from "./journey/journeyLayerRenderers.js?v=20260413g";
 import {
   createSkyState,
   drawNightVeil,
   drawOceanHorizon,
   drawSky,
-} from "./journey/journeySky.js";
+} from "./journey/journeySky.js?v=20260413a";
 import {
   createIdlePreviewTravel,
   travelKey,
@@ -197,6 +197,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     const markerTravel = playState?.travel ?? state.lastTravel ?? state.idleTravel;
     const playerX = Math.round(viewW * PLAYER_X_FRAC);
     const playerFeetY = Math.round(viewH * PLAYER_FEET_Y_FRAC);
+    const markerAnchorX = viewW / 2;
     let scrollX = state.lastScrollX;
     if (strip && playState?.travel) {
       const progress = Math.max(
@@ -208,21 +209,27 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       );
       scrollX =
         strip.startMarkerStripX +
-        progress * strip.pxPerWorld;
+        progress * strip.pxPerWorld +
+        playerX -
+        markerAnchorX;
       state.lastScrollX = scrollX;
     } else if (strip) {
       if (state.lastTravel) {
-        scrollX = strip.destMarkerStripX;
+        scrollX = strip.destMarkerStripX + playerX - markerAnchorX;
       } else if (state.idleTravel) {
-        // Idle preview should frame the local surroundings around the current
-        // position, not the synthetic route's start edge (which can be water).
-        scrollX =
+        // Idle preview is anchored at the local node/departure point so the
+        // player consistently stands on land when idle at a node.
+        const idleAnchorScrollX =
           strip.startMarkerStripX +
-          strip.routePx * 0.5;
+          playerX -
+          markerAnchorX;
+        scrollX = snapScrollXToNearestLand(strip, idleAnchorScrollX);
       } else {
         scrollX =
           strip.startMarkerStripX +
-          strip.routePx * 0.45;
+          strip.routePx * 0.45 +
+          playerX -
+          markerAnchorX;
       }
       state.lastScrollX = scrollX;
     }
@@ -316,4 +323,48 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       drawDebugOverlay(ctx, strip, scrollX, playerX, viewW, viewH);
     }
   }
+}
+
+function snapScrollXToNearestLand(strip, scrollX) {
+  if (!strip?.layerSegments?.ground?.length || !Number.isFinite(scrollX)) {
+    return scrollX;
+  }
+  const segments = strip.layerSegments.ground;
+  const underfoot = findGroundSegmentAtStripX(segments, scrollX);
+  if (!underfoot || !isWaterBiomeKey(underfoot.biomeKey)) {
+    return scrollX;
+  }
+
+  let bestCenterX = scrollX;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const segment of segments) {
+    if (!segment || segment.isBlend || isWaterBiomeKey(segment.biomeKey)) continue;
+    const centerX = segment.stripX + segment.stripWidth * 0.5;
+    const distance = Math.abs(centerX - scrollX);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestCenterX = centerX;
+    }
+  }
+  return bestCenterX;
+}
+
+function findGroundSegmentAtStripX(segments, stripX) {
+  if (!segments?.length || !Number.isFinite(stripX)) return null;
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    if (!segment || segment.isBlend) continue;
+    const start = segment.stripX;
+    const end = segment.stripX + segment.stripWidth;
+    const isLast = index === segments.length - 1;
+    if (stripX >= start && (stripX < end || (isLast && stripX <= end))) {
+      return segment;
+    }
+  }
+  if (stripX < segments[0].stripX) return segments[0];
+  return segments[segments.length - 1];
+}
+
+function isWaterBiomeKey(biomeKey) {
+  return biomeKey === "ocean" || biomeKey === "lake";
 }

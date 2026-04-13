@@ -2,11 +2,15 @@ import { getBiomeDefinitionById } from "../biomes/index.js";
 import {
   createInitialInventory,
   consumeInventoryItemsByType,
-} from "./inventory.js?v=20260412e";
+  transferAllInventoryItems,
+} from "./inventory.js?v=20260413a";
 import { isSnowCell } from "../generator/models/surfaceModel.js?v=20260402b";
-import { dedupePoints } from "../utils.js";
+import { clamp, dedupePoints } from "../utils.js";
 import { regionAtCell, regionAtPosition } from "./playQueries.js";
-import { DEFAULT_TIME_OF_DAY_HOURS } from "./timeOfDay.js";
+import {
+  DEFAULT_TIME_OF_DAY_HOURS,
+  normalizeTimeOfDayHours,
+} from "./timeOfDay.js";
 import { createRng } from "../random.js";
 import { getNodeTitle } from "../node/model.js";
 
@@ -14,14 +18,43 @@ const TRAVEL_SPEED = 3.75;
 const DEFAULT_MAX_HEALTH = 3;
 const DEFAULT_MAX_STAMINA = 15;
 const STAMINA_PER_TRAVEL_HOUR = 1;
+const STAMINA_PER_HUNT_HOUR = 2;
 const STAMINA_PER_REST_HOUR = 3;
 const PLAYER_INITIATIVE_RANGE = Object.freeze({ min: 5, max: 10 });
 const PLAYER_VITALITY_RANGE = Object.freeze({ min: 2, max: 5 });
 const PLAYER_STAMINA_RANGE = Object.freeze({ min: 10, max: 25 });
-const PLAYER_ACCURACY_RANGE = Object.freeze({ min: 40, max: 90 });
-const REST_HOUR_OPTIONS = Object.freeze([1, 3, 8]);
+const PLAYER_WEAPON_ACCURACY_RANGE = Object.freeze({ min: 40, max: 90 });
+const ACTION_HOUR_OPTIONS = Object.freeze([1, 3, 8]);
+const REST_HOUR_OPTIONS = ACTION_HOUR_OPTIONS;
+const HUNT_HOUR_OPTIONS = ACTION_HOUR_OPTIONS;
 const EVENT_LOOT_COLUMNS = 4;
 const EVENT_LOOT_ROWS = 4;
+const HUNT_MEAT_LOOT_COLUMNS = 1;
+const HUNT_MEAT_LOOT_ROWS = 1;
+const HUNT_AREA_RECOVERY_PER_HOUR = 0.024;
+const HUNT_SUCCESS_MIN_CHANCE = 0.04;
+const HUNT_SUCCESS_MAX_CHANCE = 0.93;
+const HUNT_SEA_ROUTE_REASON = "Det finns inget jaktbart vilt ute på öppet hav.";
+const HUNT_UNAVAILABLE_REASON = "Här finns inga tydliga jaktspår just nu.";
+const HUNT_TIME_OF_DAY_MODIFIERS = Object.freeze([
+  { start: 0, end: 4, factor: 0.5, label: "Djup natt" },
+  { start: 4, end: 7, factor: 0.88, label: "Gryning" },
+  { start: 7, end: 11, factor: 0.64, label: "Morgon" },
+  { start: 11, end: 16, factor: 0.48, label: "Mitt på dagen" },
+  { start: 16, end: 20, factor: 0.85, label: "Skymning" },
+  { start: 20, end: 24, factor: 0.63, label: "Sen kväll" },
+]);
+const HUNT_BIOME_FACTORS = Object.freeze({
+  forest: 0.92,
+  rainforest: 0.88,
+  plains: 0.68,
+  highlands: 0.72,
+  mountain: 0.45,
+  tundra: 0.43,
+  desert: 0.31,
+  lake: 0.5,
+  ocean: 0.16,
+});
 const TRAVEL_BIOME_BANDS = {
   near: 0,
   mid: 5,
@@ -64,7 +97,7 @@ export function createPlayState(world) {
     journeyElapsedHours: 0,
     initiative: playerStats.initiative,
     vitality: playerStats.vitality,
-    accuracy: playerStats.accuracy,
+    vapenTraffsakerhet: playerStats.vapenTraffsakerhet,
     maxHealth: playerStats.vitality,
     health: playerStats.vitality,
     maxStamina: playerStats.maxStamina,
@@ -74,6 +107,10 @@ export function createPlayState(world) {
     travelPauseReason: null,
     pendingRestChoice: false,
     rest: null,
+    hunt: null,
+    latestHuntFeedback: null,
+    huntAreaStates: {},
+    nextHuntRunId: 1,
     gameOver: null,
     discoveredCells,
     discoveredNodeIds,
@@ -135,6 +172,8 @@ export function applyHourlyHunger(playState, elapsedHours) {
       travelPauseReason: null,
       pendingRestChoice: false,
       rest: null,
+      hunt: null,
+      latestHuntFeedback: null,
       hoveredNodeId: null,
       pressedNodeId: null,
       gameOver: {
@@ -151,7 +190,12 @@ export function applyHourlyTravelStamina(playState, elapsedHours) {
   if (!playState || playState.gameOver) {
     return playState;
   }
-  if (!playState.travel || playState.isTravelPaused || playState.rest) {
+  if (
+    !playState.travel ||
+    playState.isTravelPaused ||
+    playState.rest ||
+    playState.hunt
+  ) {
     return playState;
   }
 
@@ -204,6 +248,8 @@ export function applyHourlyTravelStamina(playState, elapsedHours) {
     travelPauseReason: "exhausted",
     pendingRestChoice: true,
     rest: null,
+    hunt: null,
+    latestHuntFeedback: null,
     hoveredNodeId: null,
     pressedNodeId: null,
   };
@@ -214,7 +260,11 @@ export function getValidTargetIds(playState) {
     return [];
   }
 
-  if (playState.travel) {
+  if (
+    playState.travel ||
+    playState.rest ||
+    playState.hunt
+  ) {
     return [];
   }
 
@@ -226,7 +276,12 @@ export function beginTravel(playState, targetNodeId, world = null) {
     return playState;
   }
 
-  if (playState.travel || playState.gameOver) {
+  if (
+    playState.travel ||
+    playState.gameOver ||
+    playState.rest ||
+    playState.hunt
+  ) {
     return playState;
   }
 
@@ -242,6 +297,8 @@ export function beginTravel(playState, targetNodeId, world = null) {
       travelPauseReason: "exhausted",
       pendingRestChoice: true,
       rest: null,
+      hunt: null,
+      latestHuntFeedback: null,
       hoveredNodeId: null,
       pressedNodeId: null,
     };
@@ -272,6 +329,8 @@ export function beginTravel(playState, targetNodeId, world = null) {
     travelPauseReason: null,
     pendingRestChoice: false,
     rest: null,
+    hunt: null,
+    latestHuntFeedback: null,
   };
 }
 
@@ -280,7 +339,8 @@ export function advanceTravel(playState, world, deltaMs) {
     !playState?.travel ||
     !playState.position ||
     playState.isTravelPaused ||
-    playState.rest
+    playState.rest ||
+    playState.hunt
   ) {
     return playState;
   }
@@ -339,6 +399,8 @@ export function advanceTravel(playState, world, deltaMs) {
       travelPauseReason: null,
       pendingRestChoice: false,
       rest: null,
+      hunt: null,
+      latestHuntFeedback: null,
       discoveredCells,
       discoveredNodeIds,
       fogDirty: playState.fogDirty || revealed || finalReveal,
@@ -363,7 +425,7 @@ export function toggleTravelPause(playState) {
   if (!playState || playState.gameOver || !playState.travel) {
     return playState;
   }
-  if (playState.rest) {
+  if (playState.rest || playState.hunt) {
     return playState;
   }
 
@@ -390,10 +452,12 @@ export function toggleTravelPause(playState) {
 
   return {
     ...playState,
+    viewMode: "journey",
     isTravelPaused: true,
     travelPauseReason: "manual",
     pendingRestChoice: false,
     rest: null,
+    latestHuntFeedback: null,
   };
 }
 
@@ -401,7 +465,10 @@ export function beginRest(playState, requestedHours) {
   if (!playState || playState.gameOver) {
     return playState;
   }
-  if (!playState.pendingRestChoice || playState.rest) {
+  if (playState.rest || playState.hunt || hasBlockingActionInteraction(playState)) {
+    return playState;
+  }
+  if (playState.travel && !playState.isTravelPaused && !playState.pendingRestChoice) {
     return playState;
   }
 
@@ -409,21 +476,207 @@ export function beginRest(playState, requestedHours) {
   if (restHours <= 0) {
     return playState;
   }
+  const hasTravel = Boolean(playState.travel);
+  const wasTravelPaused = Boolean(playState.isTravelPaused);
+  const priorPauseReason = playState.travelPauseReason ?? null;
 
   return {
     ...playState,
-    viewMode: "journey",
     hoveredNodeId: null,
     pressedNodeId: null,
-    isTravelPaused: true,
-    travelPauseReason: "resting",
+    isTravelPaused: hasTravel ? true : false,
+    travelPauseReason: hasTravel ? "resting" : null,
     pendingRestChoice: false,
+    latestHuntFeedback: null,
     rest: {
       hours: restHours,
       elapsedHours: 0,
       staminaGain: restHours * STAMINA_PER_REST_HOUR,
+      resumeTravelOnFinish: hasTravel && !wasTravelPaused,
+      priorWasTravelPaused: wasTravelPaused,
+      priorTravelPauseReason: priorPauseReason,
     },
   };
+}
+
+export function beginHunt(playState, world, requestedHours) {
+  if (!playState || playState.gameOver || !world) {
+    return playState;
+  }
+  if (playState.hunt || playState.rest || hasBlockingActionInteraction(playState)) {
+    return playState;
+  }
+  if (playState.travel && !playState.isTravelPaused) {
+    return playState;
+  }
+
+  const huntHours = normalizeHuntHours(requestedHours);
+  if (huntHours <= 0) {
+    return playState;
+  }
+
+  const maxStamina = normalizeStaminaValue(playState.maxStamina, DEFAULT_MAX_STAMINA);
+  const stamina = Math.min(maxStamina, normalizeStaminaValue(playState.stamina, maxStamina));
+  if (stamina <= 0) {
+    return {
+      ...playState,
+      pendingRestChoice: true,
+      latestHuntFeedback: {
+        type: "hint",
+        text: "Du saknar ork för jakt. Vila först.",
+      },
+    };
+  }
+
+  const context = resolveHuntContext(playState, world);
+  if (!context.available) {
+    return {
+      ...playState,
+      latestHuntFeedback: {
+        type: "hint",
+        text: context.reason,
+      },
+    };
+  }
+
+  const currentJourneyHours = normalizeElapsedHours(playState.journeyElapsedHours);
+  const recoveredArea = recoverHuntAreaState(
+    playState.huntAreaStates,
+    context,
+    currentJourneyHours,
+  );
+  const runId = normalizeActionCounter(playState.nextHuntRunId);
+  const hasTravel = Boolean(playState.travel);
+  const wasTravelPaused = Boolean(playState.isTravelPaused);
+  const priorPauseReason = playState.travelPauseReason ?? null;
+  const startTimeOfDay = normalizeTimeOfDayHours(playState.timeOfDayHours);
+  const outlook = describeHuntOutlook(
+    context,
+    recoveredArea.areaState,
+    startTimeOfDay,
+    playState.vapenTraffsakerhet,
+  );
+
+  return {
+    ...playState,
+    hoveredNodeId: null,
+    pressedNodeId: null,
+    maxStamina,
+    stamina,
+    isTravelPaused: hasTravel ? true : false,
+    travelPauseReason: hasTravel ? "hunting" : null,
+    pendingRestChoice: false,
+    rest: null,
+    hunt: {
+      runId,
+      seed: `${String(world?.params?.seed ?? "seed")}:hunt:${runId}:${context.areaKey}`,
+      hours: huntHours,
+      elapsedHours: 0,
+      completedHours: 0,
+      successfulHours: 0,
+      totalMeatGained: 0,
+      areaKey: context.areaKey,
+      areaLabel: context.areaLabel,
+      areaType: context.areaType,
+      biomeKey: context.biomeKey,
+      areaCapacity: context.areaCapacity,
+      worldSeed: context.worldSeed,
+      startedAtJourneyHours: currentJourneyHours,
+      startedTimeOfDayHours: startTimeOfDay,
+      resumeTravelOnFinish: hasTravel && !wasTravelPaused,
+      priorWasTravelPaused: wasTravelPaused,
+      priorTravelPauseReason: priorPauseReason,
+      lastMessage: outlook,
+    },
+    latestHuntFeedback: {
+      type: "hint",
+      text: outlook,
+    },
+    huntAreaStates: recoveredArea.huntAreaStates,
+    nextHuntRunId: runId + 1,
+  };
+}
+
+export function cancelHunt(playState, world) {
+  if (!playState || playState.gameOver || !playState.hunt || !world) {
+    return playState;
+  }
+
+  const huntState = playState.hunt;
+  const totalHours = normalizeHuntHours(huntState.hours);
+  const elapsedHours = normalizeElapsedHours(huntState.elapsedHours);
+  const roundedTargetHours = clamp(Math.round(elapsedHours), 0, totalHours);
+
+  let nextState = playState;
+  if (roundedTargetHours > normalizeCompletedHours(huntState.completedHours)) {
+    nextState = resolveHuntHours(nextState, world, roundedTargetHours);
+  }
+  if (!nextState.hunt) {
+    return nextState;
+  }
+
+  return completeHunt(nextState, {
+    type: "stopped",
+    text:
+      roundedTargetHours > 0
+        ? `Du avbryter jakten. ${roundedTargetHours}h räknas.`
+        : "Du avbryter jakten innan någon full timme har passerat.",
+  });
+}
+
+export function cancelRest(playState) {
+  if (!playState || playState.gameOver || !playState.rest) {
+    return playState;
+  }
+
+  const totalRestHours = normalizeRestHours(playState.rest.hours);
+  const elapsedHours = normalizeElapsedHours(playState.rest.elapsedHours);
+  const roundedTargetHours = clamp(Math.round(elapsedHours), 0, totalRestHours);
+  return finishRest(playState, roundedTargetHours, {
+    completed: false,
+  });
+}
+
+export function advanceHunt(playState, world, elapsedHours) {
+  if (!playState || playState.gameOver || !playState.hunt || !world) {
+    return playState;
+  }
+
+  const safeElapsedHours = Number.isFinite(elapsedHours)
+    ? Math.max(0, elapsedHours)
+    : 0;
+  if (safeElapsedHours <= 0) {
+    return playState;
+  }
+
+  const huntState = playState.hunt;
+  const totalHours = normalizeHuntHours(huntState.hours);
+  const previousElapsed = normalizeElapsedHours(huntState.elapsedHours);
+  const nextElapsed = Math.min(totalHours, previousElapsed + safeElapsedHours);
+  const completedHours = Math.floor(nextElapsed + 1e-9);
+
+  let nextState = {
+    ...playState,
+    hunt: {
+      ...huntState,
+      hours: totalHours,
+      elapsedHours: nextElapsed,
+    },
+  };
+
+  nextState = resolveHuntHours(nextState, world, completedHours);
+  if (!nextState.hunt) {
+    return nextState;
+  }
+
+  if (nextElapsed >= totalHours - 1e-6) {
+    return completeHunt(nextState, {
+      type: "completed",
+      text: "Jakten är avslutad för den planerade tiden.",
+    });
+  }
+
+  return nextState;
 }
 
 export function advanceRest(playState, elapsedHours) {
@@ -453,6 +706,563 @@ export function advanceRest(playState, elapsedHours) {
     };
   }
 
+  return finishRest(playState, totalRestHours, { completed: true });
+}
+
+export function describeHuntSituation(playState, world) {
+  if (!playState || !world) {
+    return {
+      available: false,
+      reason: HUNT_UNAVAILABLE_REASON,
+      outlook: HUNT_UNAVAILABLE_REASON,
+      areaLabel: null,
+    };
+  }
+
+  const context = resolveHuntContext(playState, world);
+  if (!context.available) {
+    return {
+      available: false,
+      reason: context.reason,
+      outlook: context.reason,
+      areaLabel: context.areaLabel ?? null,
+    };
+  }
+
+  const currentJourneyHours = normalizeElapsedHours(playState.journeyElapsedHours);
+  const previewState = previewRecoveredHuntAreaState(
+    playState.huntAreaStates,
+    context,
+    currentJourneyHours,
+  );
+  const outlook = describeHuntOutlook(
+    context,
+    previewState,
+    playState.timeOfDayHours,
+    playState.vapenTraffsakerhet,
+  );
+
+  return {
+    available: true,
+    reason: null,
+    outlook,
+    areaLabel: context.areaLabel,
+  };
+}
+
+function resolveHuntHours(playState, world, targetCompletedHours) {
+  if (!playState?.hunt || !world) {
+    return playState;
+  }
+
+  const huntState = playState.hunt;
+  const totalHours = normalizeHuntHours(huntState.hours);
+  const normalizedTarget = clamp(Math.floor(targetCompletedHours), 0, totalHours);
+  let nextState = playState;
+  let completedHours = normalizeCompletedHours(huntState.completedHours);
+  while (completedHours < normalizedTarget) {
+    completedHours += 1;
+    nextState = resolveSingleHuntHour(nextState, world, completedHours);
+    if (!nextState?.hunt) {
+      break;
+    }
+  }
+  return nextState;
+}
+
+function resolveSingleHuntHour(playState, world, hourNumber) {
+  if (!playState?.hunt || !world) {
+    return playState;
+  }
+
+  const huntState = playState.hunt;
+  const context = {
+    available: true,
+    areaKey: huntState.areaKey,
+    areaLabel: huntState.areaLabel,
+    areaType: huntState.areaType,
+    biomeKey: huntState.biomeKey,
+    areaCapacity: normalizeAreaCapacity(huntState.areaCapacity),
+    worldSeed: huntState.worldSeed,
+  };
+  const boundaryJourneyHours =
+    normalizeElapsedHours(huntState.startedAtJourneyHours) + hourNumber;
+  const boundaryTimeOfDayHours = normalizeTimeOfDayHours(
+    normalizeTimeOfDayHours(huntState.startedTimeOfDayHours) + hourNumber,
+  );
+  const recovered = recoverHuntAreaState(
+    playState.huntAreaStates,
+    context,
+    boundaryJourneyHours,
+    { allowRecovery: false },
+  );
+  const areaState = recovered.areaState;
+  const chance = resolveHuntSuccessChance(
+    context,
+    areaState,
+    boundaryTimeOfDayHours,
+    playState.vapenTraffsakerhet,
+  );
+  const hourRng = createRng(`${huntState.seed}:hour:${hourNumber}`);
+  const success = hourRng.float() < chance;
+
+  const maxStamina = normalizeStaminaValue(playState.maxStamina, DEFAULT_MAX_STAMINA);
+  const currentStamina = Math.min(
+    maxStamina,
+    normalizeStaminaValue(playState.stamina, maxStamina),
+  );
+  const nextStamina = Math.max(0, currentStamina - STAMINA_PER_HUNT_HOUR);
+
+  const densityDrop = success
+    ? resolveSuccessfulHuntDensityDrop(areaState, context, hourRng)
+    : resolveFailedHuntDensityDrop(areaState, context, hourRng);
+  const nextDensity = clamp(
+    areaState.density - densityDrop,
+    0,
+    context.areaCapacity,
+  );
+  const nextAreaState = {
+    ...areaState,
+    density: nextDensity,
+    lastUpdatedHours: boundaryJourneyHours,
+  };
+  const nextHuntAreaStates = {
+    ...(recovered.huntAreaStates ?? {}),
+    [context.areaKey]: nextAreaState,
+  };
+
+  const meatFound = success
+    ? resolveHuntMeatYield(
+        context,
+        areaState,
+        playState.vapenTraffsakerhet,
+        boundaryTimeOfDayHours,
+        hourRng,
+      )
+    : 0;
+  const addedMeat = addMeatToInventory(
+    playState.inventory,
+    meatFound,
+    huntState.runId,
+    hourNumber,
+  );
+
+  const nextState = {
+    ...playState,
+    maxStamina,
+    stamina: nextStamina,
+    inventory: addedMeat.inventory,
+    huntAreaStates: nextHuntAreaStates,
+    hunt: {
+      ...huntState,
+      completedHours: hourNumber,
+      successfulHours:
+        normalizeCompletedHours(huntState.successfulHours) + (success ? 1 : 0),
+      totalMeatGained:
+        normalizeStackCount(huntState.totalMeatGained) + addedMeat.gainedMeat,
+    },
+  };
+
+  if (nextStamina > 0) {
+    return nextState;
+  }
+
+  return completeHunt(nextState, {
+    type: "exhausted",
+    text: "Jakten avbryts - du är helt slut och behöver vila.",
+  });
+}
+
+function completeHunt(playState, feedback = null) {
+  if (!playState?.hunt) {
+    return playState;
+  }
+  const huntState = playState.hunt;
+  const isExhausted = feedback?.type === "exhausted";
+  const shouldResumeTravel = shouldResumeTravelAfterHunt(huntState) && !isExhausted;
+
+  const nextState = {
+    ...playState,
+    hunt: null,
+    pendingRestChoice: isExhausted,
+    isTravelPaused: shouldResumeTravel
+      ? false
+      : Boolean(huntState.priorWasTravelPaused || isExhausted),
+    travelPauseReason: shouldResumeTravel
+      ? null
+      : isExhausted
+        ? "exhausted"
+        : huntState.priorWasTravelPaused
+          ? (huntState.priorTravelPauseReason ?? "manual")
+          : null,
+  };
+
+  if (!feedback?.text) {
+    return nextState;
+  }
+  const totalHours = normalizeHuntHours(huntState.hours);
+  const completedHours = normalizeCompletedHours(huntState.completedHours);
+  const successfulHours = normalizeCompletedHours(huntState.successfulHours);
+  const totalMeatGained = normalizeStackCount(huntState.totalMeatGained);
+  const summaryText = `Jaktresultat: ${successfulHours}/${completedHours} lyckade timmar, +${totalMeatGained} kött.`;
+  const statusText =
+    feedback?.type === "completed"
+      ? "Jakten är avslutad."
+      : feedback?.type === "stopped"
+        ? `Jakten avbröts efter ${completedHours}h.`
+        : feedback?.type === "exhausted"
+          ? "Du är utmattad och måste vila."
+          : feedback?.text;
+  return {
+    ...nextState,
+    latestHuntFeedback: {
+      type: "result",
+      text: statusText ? `${summaryText} ${statusText}` : summaryText,
+      runId: huntState.runId,
+      hour: totalHours,
+    },
+  };
+}
+
+function resolveHuntContext(playState, world) {
+  if (!playState || !world) {
+    return {
+      available: false,
+      reason: HUNT_UNAVAILABLE_REASON,
+    };
+  }
+
+  if (playState.travel) {
+    const routeType = playState.travel.routeType ?? "road";
+    if (routeType === "sea-route") {
+      return {
+        available: false,
+        reason: HUNT_SEA_ROUTE_REASON,
+      };
+    }
+
+    const startNodeId = playState.travel.startNodeId ?? null;
+    const targetNodeId = playState.travel.targetNodeId ?? null;
+    const nodes = world.features?.nodes ?? [];
+    const startNode = startNodeId == null ? null : nodes[startNodeId] ?? null;
+    const targetNode = targetNodeId == null ? null : nodes[targetNodeId] ?? null;
+    const settlementWeight =
+      (nodeSettlementWeight(startNode) + nodeSettlementWeight(targetNode)) / 2;
+    const areaCapacityBase = clamp(0.74 - settlementWeight * 0.22, 0.2, 0.9);
+    const biomeKey = biomeKeyAtPoint(world, playState.position) ?? "plains";
+    const biomeFactor = biomeHuntFactor(biomeKey);
+    const areaCapacity = clamp(
+      areaCapacityBase * (0.62 + biomeFactor * 0.6),
+      0.16,
+      0.93,
+    );
+    const sortedNodeIds = [startNodeId, targetNodeId]
+      .filter((value) => Number.isInteger(value))
+      .sort((a, b) => a - b);
+    return {
+      available: true,
+      areaKey: `stretch:${routeType}:${sortedNodeIds.join(":")}`,
+      areaLabel: "Sträckan du färdas på",
+      areaType: "stretch",
+      biomeKey,
+      areaCapacity,
+      worldSeed: String(world?.params?.seed ?? "seed"),
+    };
+  }
+
+  const nodes = world.features?.nodes ?? [];
+  const currentNode =
+    playState.currentNodeId == null ? null : nodes[playState.currentNodeId] ?? null;
+  if (currentNode) {
+    const biomeKey =
+      currentNode.cell != null ? world.climate.biome[currentNode.cell] : "plains";
+    const biomeFactor = biomeHuntFactor(biomeKey);
+    const markerWeight = nodeSettlementWeight(currentNode);
+    const baseCapacity = clamp(0.58 - markerWeight * 0.3, 0.13, 0.72);
+    const areaCapacity = clamp(baseCapacity * (0.6 + biomeFactor * 0.55), 0.11, 0.86);
+    return {
+      available: true,
+      areaKey: `node:${currentNode.id}`,
+      areaLabel: getNodeTitle(currentNode),
+      areaType: "node",
+      biomeKey,
+      areaCapacity,
+      worldSeed: String(world?.params?.seed ?? "seed"),
+    };
+  }
+
+  const biomeKey = biomeKeyAtPoint(world, playState.position) ?? "plains";
+  const biomeFactor = biomeHuntFactor(biomeKey);
+  return {
+    available: true,
+    areaKey: `wild:${biomeKey}:${playState.lastRegionId ?? "region"}`,
+    areaLabel: "Vildmarken",
+    areaType: "wild",
+    biomeKey,
+    areaCapacity: clamp(0.63 * (0.65 + biomeFactor * 0.55), 0.18, 0.9),
+    worldSeed: String(world?.params?.seed ?? "seed"),
+  };
+}
+
+function recoverHuntAreaState(
+  huntAreaStates,
+  context,
+  currentJourneyHours,
+  options = {},
+) {
+  const allowRecovery = options.allowRecovery !== false;
+  const allStates = { ...(huntAreaStates ?? {}) };
+  const existingState = allStates[context.areaKey];
+  const baseState =
+    existingState ??
+    createInitialHuntAreaState(context, {
+      currentJourneyHours,
+    });
+
+  const safeCurrentHours = normalizeElapsedHours(currentJourneyHours);
+  const previousHours = normalizeElapsedHours(baseState.lastUpdatedHours);
+  const elapsedSinceLast = Math.max(0, safeCurrentHours - previousHours);
+  const nextDensity = allowRecovery
+    ? Math.min(
+        context.areaCapacity,
+        baseState.density +
+          elapsedSinceLast * HUNT_AREA_RECOVERY_PER_HOUR * context.areaCapacity,
+      )
+    : baseState.density;
+  const nextState = {
+    ...baseState,
+    density: clamp(nextDensity, 0, context.areaCapacity),
+    areaCapacity: context.areaCapacity,
+    lastUpdatedHours: safeCurrentHours,
+  };
+  allStates[context.areaKey] = nextState;
+  return {
+    huntAreaStates: allStates,
+    areaState: nextState,
+  };
+}
+
+function previewRecoveredHuntAreaState(huntAreaStates, context, currentJourneyHours) {
+  const existingState = huntAreaStates?.[context.areaKey];
+  const baseState =
+    existingState ??
+    createInitialHuntAreaState(context, {
+      currentJourneyHours,
+    });
+  const safeCurrentHours = normalizeElapsedHours(currentJourneyHours);
+  const previousHours = normalizeElapsedHours(baseState.lastUpdatedHours);
+  const elapsedSinceLast = Math.max(0, safeCurrentHours - previousHours);
+  const recoveredDensity = Math.min(
+    context.areaCapacity,
+    baseState.density +
+      elapsedSinceLast * HUNT_AREA_RECOVERY_PER_HOUR * context.areaCapacity,
+  );
+  return {
+    ...baseState,
+    areaCapacity: context.areaCapacity,
+    density: clamp(recoveredDensity, 0, context.areaCapacity),
+    lastUpdatedHours: safeCurrentHours,
+  };
+}
+
+function createInitialHuntAreaState(context, options = {}) {
+  const seed = [
+    String(context.worldSeed ?? "seed"),
+    String(context.areaKey ?? "area"),
+    String(context.biomeKey ?? "biome"),
+    String(context.areaType ?? "type"),
+  ].join(":");
+  const rng = createRng(seed);
+  const areaCapacity = normalizeAreaCapacity(context.areaCapacity);
+  const initialDensity = areaCapacity * (0.48 + rng.float() * 0.48);
+  return {
+    areaCapacity,
+    density: clamp(initialDensity, 0, areaCapacity),
+    lastUpdatedHours: normalizeElapsedHours(options.currentJourneyHours),
+  };
+}
+
+function resolveHuntSuccessChance(context, areaState, timeOfDayHours, weaponAccuracy) {
+  const capacity = normalizeAreaCapacity(context.areaCapacity);
+  const normalizedDensity = capacity > 0 ? areaState.density / capacity : 0;
+  const abundanceComponent = clamp(areaState.density, 0, 1);
+  const timeFactor = huntTimeOfDayFactor(timeOfDayHours).factor;
+  const biomeFactor = biomeHuntFactor(context.biomeKey);
+  const skillFactor = clamp(
+    (normalizeWeaponAccuracy(weaponAccuracy) - 25) / 75,
+    0,
+    1,
+  );
+  const chance =
+    0.06 +
+    abundanceComponent * 0.39 +
+    normalizedDensity * 0.14 +
+    timeFactor * 0.15 +
+    biomeFactor * 0.12 +
+    skillFactor * 0.19;
+  return clamp(chance, HUNT_SUCCESS_MIN_CHANCE, HUNT_SUCCESS_MAX_CHANCE);
+}
+
+function resolveSuccessfulHuntDensityDrop(areaState, context, rng) {
+  const swing = 0.78 + rng.float() * 0.6;
+  const base = context.areaCapacity * 0.13 * swing;
+  const pressure = context.areaType === "node" ? 1.12 : 1;
+  return clamp(base * pressure, 0.02, context.areaCapacity * 0.45);
+}
+
+function resolveFailedHuntDensityDrop(areaState, context, rng) {
+  const base = context.areaCapacity * (0.015 + rng.float() * 0.02);
+  return clamp(base, 0.002, context.areaCapacity * 0.08);
+}
+
+function resolveHuntMeatYield(
+  context,
+  areaState,
+  weaponAccuracy,
+  timeOfDayHours,
+  rng,
+) {
+  const capacity = normalizeAreaCapacity(context.areaCapacity);
+  const normalizedDensity = capacity > 0 ? areaState.density / capacity : 0;
+  let yieldCount = 1;
+  if (normalizedDensity > 0.6 && rng.float() < 0.58) {
+    yieldCount += 1;
+  }
+  if (normalizedDensity > 0.82 && rng.float() < 0.36) {
+    yieldCount += 1;
+  }
+  if (normalizeWeaponAccuracy(weaponAccuracy) >= 72 && rng.float() < 0.32) {
+    yieldCount += 1;
+  }
+  if (huntTimeOfDayFactor(timeOfDayHours).factor >= 0.8 && rng.float() < 0.27) {
+    yieldCount += 1;
+  }
+  if (context.areaType === "node" && rng.float() < 0.45) {
+    yieldCount = Math.max(1, yieldCount - 1);
+  }
+  return clamp(Math.floor(yieldCount), 1, 4);
+}
+
+function addMeatToInventory(inventory, meatCount, runId, hourNumber) {
+  const safeMeatCount = Number.isFinite(meatCount) ? Math.max(0, Math.floor(meatCount)) : 0;
+  if (!inventory || safeMeatCount <= 0) {
+    return {
+      inventory,
+      gainedMeat: 0,
+    };
+  }
+
+  const lootInventory = {
+    columns: HUNT_MEAT_LOOT_COLUMNS,
+    rows: HUNT_MEAT_LOOT_ROWS,
+    items: [
+      {
+        id: `hunt-${runId}-${hourNumber}`,
+        type: "meat",
+        name: "Köttbit",
+        symbol: "meat",
+        width: 1,
+        height: 1,
+        count: safeMeatCount,
+        column: 0,
+        row: 0,
+      },
+    ],
+  };
+  const transferred = transferAllInventoryItems(lootInventory, inventory);
+  const remainingCount = transferred.sourceInventory?.items?.[0]?.count ?? 0;
+  const gainedMeat = Math.max(0, safeMeatCount - normalizeStackCount(remainingCount));
+  return {
+    inventory: transferred.targetInventory,
+    gainedMeat,
+  };
+}
+
+function describeHuntOutlook(context, areaState, timeOfDayHours, weaponAccuracy) {
+  const chance = resolveHuntSuccessChance(
+    context,
+    areaState,
+    timeOfDayHours,
+    weaponAccuracy,
+  );
+  if (chance >= 0.7) {
+    return "Bra läge";
+  }
+  if (chance >= 0.42) {
+    return "Medelläge";
+  }
+  return "Svagt läge";
+}
+
+function describeHuntPressure(areaState, context) {
+  const capacity = normalizeAreaCapacity(context.areaCapacity);
+  const densityRatio = capacity > 0 ? areaState.density / capacity : 0;
+  if (densityRatio >= 0.82) {
+    return "Terrängen bär tydliga viltspår.";
+  }
+  if (densityRatio >= 0.58) {
+    return "Det finns en del färska spår.";
+  }
+  if (densityRatio >= 0.34) {
+    return "Spåren är spridda och gamla.";
+  }
+  return "Området känns utjagat.";
+}
+
+function huntTimeOfDayFactor(timeOfDayHours) {
+  const normalized = normalizeTimeOfDayHours(timeOfDayHours);
+  for (const band of HUNT_TIME_OF_DAY_MODIFIERS) {
+    if (normalized >= band.start && normalized < band.end) {
+      return band;
+    }
+  }
+  return HUNT_TIME_OF_DAY_MODIFIERS[0];
+}
+
+function biomeHuntFactor(biomeKey) {
+  const factor = HUNT_BIOME_FACTORS[biomeKey];
+  if (Number.isFinite(factor)) {
+    return clamp(factor, 0.1, 1);
+  }
+  return 0.58;
+}
+
+function nodeSettlementWeight(node) {
+  const marker = String(node?.marker ?? "");
+  if (marker === "settlement") {
+    return 1;
+  }
+  if (marker === "signpost") {
+    return 0.5;
+  }
+  if (marker === "abandoned") {
+    return 0.3;
+  }
+  return 0.45;
+}
+
+function hasBlockingActionInteraction(playState) {
+  return Boolean(playState?.pendingJourneyEvent);
+}
+
+function shouldResumeTravelAfterRest(restState) {
+  return Boolean(restState?.resumeTravelOnFinish);
+}
+
+function shouldResumeTravelAfterHunt(huntState) {
+  return Boolean(huntState?.resumeTravelOnFinish);
+}
+
+function finishRest(playState, countedRestHours, options = {}) {
+  if (!playState?.rest) {
+    return playState;
+  }
+  const totalRestHours = normalizeRestHours(playState.rest.hours);
+  const countedHours = clamp(
+    Number.isFinite(countedRestHours) ? Math.floor(countedRestHours) : 0,
+    0,
+    totalRestHours,
+  );
   const maxStamina = normalizeStaminaValue(
     playState.maxStamina,
     DEFAULT_MAX_STAMINA,
@@ -461,18 +1271,76 @@ export function advanceRest(playState, elapsedHours) {
     maxStamina,
     normalizeStaminaValue(playState.stamina, maxStamina),
   );
-  const staminaGain = normalizeStaminaValue(playState.rest.staminaGain, 0);
-  const nextStamina = Math.min(maxStamina, currentStamina + staminaGain);
+  const requestedGain = countedHours * STAMINA_PER_REST_HOUR;
+  const nextStamina = Math.min(maxStamina, currentStamina + requestedGain);
+  const actualGain = Math.max(0, nextStamina - currentStamina);
 
   return {
     ...playState,
     maxStamina,
     stamina: nextStamina,
     rest: null,
-    isTravelPaused: false,
-    travelPauseReason: null,
+    isTravelPaused: shouldResumeTravelAfterRest(playState.rest)
+      ? false
+      : Boolean(playState.rest.priorWasTravelPaused),
+    travelPauseReason: shouldResumeTravelAfterRest(playState.rest)
+      ? null
+      : playState.rest.priorWasTravelPaused
+        ? (playState.rest.priorTravelPauseReason ?? "manual")
+        : null,
     pendingRestChoice: false,
+    latestHuntFeedback: {
+      type: "result",
+      text: options.completed
+        ? `Vila klar: ${countedHours}h, +${actualGain} stamina.`
+        : countedHours > 0
+          ? `Vila avbruten: ${countedHours}h räknas, +${actualGain} stamina.`
+          : "Vila avbruten: ingen full timme räknas (+0 stamina).",
+    },
   };
+}
+
+function normalizeActionCounter(value) {
+  if (!Number.isFinite(value)) {
+    return 1;
+  }
+  return Math.max(1, Math.floor(value));
+}
+
+function normalizeHuntHours(value) {
+  const wholeHours = Number.isFinite(value) ? Math.floor(value) : 0;
+  if (!HUNT_HOUR_OPTIONS.includes(wholeHours)) {
+    return 0;
+  }
+  return wholeHours;
+}
+
+function normalizeCompletedHours(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor(value));
+}
+
+function normalizeStackCount(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor(value));
+}
+
+function normalizeAreaCapacity(value) {
+  if (!Number.isFinite(value)) {
+    return 0.25;
+  }
+  return clamp(value, 0.08, 1);
+}
+
+function normalizeWeaponAccuracy(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return clamp(Math.floor(value), 0, 100);
 }
 
 export function isNodeDiscovered(playState, nodeId) {
@@ -776,9 +1644,12 @@ function createPlayerStats(world) {
     maxStamina: rng
       .fork("stamina")
       .int(PLAYER_STAMINA_RANGE.min, PLAYER_STAMINA_RANGE.max),
-    accuracy: rng
-      .fork("accuracy")
-      .int(PLAYER_ACCURACY_RANGE.min, PLAYER_ACCURACY_RANGE.max),
+    vapenTraffsakerhet: rng
+      .fork("weapon-accuracy")
+      .int(
+        PLAYER_WEAPON_ACCURACY_RANGE.min,
+        PLAYER_WEAPON_ACCURACY_RANGE.max,
+      ),
   };
 }
 

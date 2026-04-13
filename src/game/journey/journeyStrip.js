@@ -22,10 +22,16 @@ const ROUTE_EXTENSION_WORLD = 4;
 
 // Must match PLAYER_X_FRAC in journeyScene.js so extension math is consistent.
 const PLAYER_X_FRAC = 0.22;
+// Must match the marker anchor used in journeyScene (centered node framing).
+const MARKER_ANCHOR_X_FRAC = 0.5;
 
 // Transition blend zone in pixels
 const BLEND_ZONE_PX = 48;
 const WATER_BIOME_KEYS = new Set(["ocean", "lake"]);
+const NODE_LAND_WINDOW_BACK_PX = 24;
+const NODE_LAND_WINDOW_FORWARD_PX = 108;
+const PLAYER_LAND_WINDOW_BACK_PX = 84;
+const PLAYER_LAND_WINDOW_FORWARD_PX = 92;
 const WATER_SHORE_TAPER_PX_BY_LAYER = Object.freeze({
   mid: 30,
   far: 40,
@@ -214,6 +220,8 @@ export function buildJourneyStrip(travel, viewW, viewH, options = {}) {
   //   extAfterPx ≥ playerX*(1 − 1/FAR_SPEED) + viewW*(1/FAR_SPEED − 0.5)
   const FAR_SPEED = 0.26; // must match PARALLAX_SPEED.far
   const playerX = viewW * PLAYER_X_FRAC;
+  const markerAnchorX = viewW * MARKER_ANCHOR_X_FRAC;
+  const departurePlayerOffsetPx = playerX - markerAnchorX;
 
   const minExtBefore =
     Math.ceil(playerX * (1 / FAR_SPEED - 1) + viewW / 2) + 32;
@@ -291,6 +299,7 @@ export function buildJourneyStrip(travel, viewW, viewH, options = {}) {
     extBeforePx,
     extAfterPx,
     showSnow,
+    departurePlayerOffsetPx,
   );
   const midSegments = buildOffsetSegments(
     travel,
@@ -298,6 +307,7 @@ export function buildJourneyStrip(travel, viewW, viewH, options = {}) {
     extAfterPx,
     MID_OFFSET_WORLD,
     showSnow,
+    departurePlayerOffsetPx,
   );
   const farSegments = buildOffsetSegments(
     travel,
@@ -305,6 +315,7 @@ export function buildJourneyStrip(travel, viewW, viewH, options = {}) {
     extAfterPx,
     FAR_OFFSET_WORLD,
     showSnow,
+    departurePlayerOffsetPx,
   );
 
   // --- 4. Build silhouette segment data for each layer ------------------
@@ -391,6 +402,8 @@ export function extendStripWithTravel(
 ) {
   const FAR_SPEED = 0.26; // must match PARALLAX_SPEED.far — slowest layer drives post-ext size
   const playerX = viewW * PLAYER_X_FRAC;
+  const markerAnchorX = viewW * MARKER_ANCHOR_X_FRAC;
+  const departurePlayerOffsetPx = playerX - markerAnchorX;
 
   const routeWorldLength = travel.totalLength ?? 0;
   const routePx = routeWorldLength * PX_PER_WORLD;
@@ -420,6 +433,8 @@ export function extendStripWithTravel(
   const rawFar = travel.biomeBandSegments?.far?.segments?.length
     ? travel.biomeBandSegments.far.segments
     : rawNear;
+  const departureGround = pickPreExtensionGround(rawNear, showSnow);
+  const arrivalGround = pickPostExtensionGround(rawNear, showSnow);
 
   const nearPx = expandFromStartX(
     rawNear,
@@ -428,6 +443,7 @@ export function extendStripWithTravel(
     routePx,
     extAfterPx,
     showSnow,
+    departurePlayerOffsetPx,
   );
   const midPx = expandFromStartX(
     rawMid,
@@ -436,6 +452,7 @@ export function extendStripWithTravel(
     routePx,
     extAfterPx,
     showSnow,
+    departurePlayerOffsetPx,
   );
   const farPx = expandFromStartX(
     rawFar,
@@ -444,6 +461,7 @@ export function extendStripWithTravel(
     routePx,
     extAfterPx,
     showSnow,
+    departurePlayerOffsetPx,
   );
 
   // Truncate the old post-extension from every layer before appending the
@@ -483,6 +501,24 @@ export function extendStripWithTravel(
   appendLayerSegs(strip.layerSegments.mid, midPx, "mid", PARALLAX_SPEED.mid);
   appendLayerSegs(strip.layerSegments.far, farPx, "far", PARALLAX_SPEED.far);
 
+  // `expandFromStartX()` can only patch inside the newly appended range.
+  // When a node is centered, the player stands left of the node marker, which
+  // can still be inside the previously existing strip. Patch that area as well.
+  strip.layerSegments.ground = enforceDepartureLandWindow(
+    strip.layerSegments.ground,
+    newStartX,
+    departureGround,
+    departurePlayerOffsetPx,
+  );
+  if (routePx > 0.5) {
+    strip.layerSegments.ground = enforceDepartureLandWindow(
+      strip.layerSegments.ground,
+      newDestX,
+      arrivalGround,
+      departurePlayerOffsetPx,
+    );
+  }
+
   strip.startMarkerStripX = newStartX;
   strip.destMarkerStripX = newDestX;
   strip.totalStripPx = Math.ceil(newDestX + extAfterPx);
@@ -505,11 +541,13 @@ function expandFromStartX(
   routePx,
   extAfterPx,
   showSnow = true,
+  departurePlayerOffsetPx = 0,
 ) {
   const result = [];
   const firstBiome = normalizeBiomeKey(rawSegs[0]?.biome) ?? "plains";
   const firstSnow = showSnow && Boolean(rawSegs[0]?.isSnow);
   const departureGround = pickPreExtensionGround(rawSegs, showSnow);
+  const arrivalGround = pickPostExtensionGround(rawSegs, showSnow);
   const lastBiome =
     normalizeBiomeKey(rawSegs[rawSegs.length - 1]?.biome) ?? firstBiome;
   const lastSnow = showSnow && Boolean(rawSegs[rawSegs.length - 1]?.isSnow);
@@ -547,11 +585,21 @@ function expandFromStartX(
   }
 
   const merged = mergeAdjacentSegments(result);
-  return enforceDepartureLandWindow(
+  let patched = enforceDepartureLandWindow(
     merged,
     startX,
     departureGround,
+    departurePlayerOffsetPx,
   );
+  if (routePx > 0.5) {
+    patched = enforceDepartureLandWindow(
+      patched,
+      startX + routePx,
+      arrivalGround,
+      departurePlayerOffsetPx,
+    );
+  }
+  return patched;
 }
 
 // Append fully-built layer segments (with color + silhouette) onto an array.
@@ -738,6 +786,7 @@ function buildGroundDetails(groundSegments, strip = null) {
   for (const segment of groundSegments) {
     if (!segment || segment.isBlend) continue;
     if (!segment.biomeKey || segment.stripWidth < 20) continue;
+    if (WATER_BIOME_KEYS.has(segment.biomeKey)) continue;
 
     const rng = createSeededRng(
       hashString(
@@ -1063,11 +1112,10 @@ function getGroundDetailSpacing(biomeKey, isSnow) {
 
 function getGroundDetailMotifs(biomeKey, isSnow) {
   if (isSnow) {
-    if (biomeKey === "ocean" || biomeKey === "lake") {
-      return ["foam", "wave-ripple", "foam"];
-    }
+    if (biomeKey === "ocean" || biomeKey === "lake") return [];
     return ["snow-dune", "snow-dune", "pebble", "frost-tuft", "ice-shard"];
   }
+  if (biomeKey === "ocean" || biomeKey === "lake") return [];
   return DETAIL_THEME_BY_BIOME[biomeKey] ?? ["tuft", "stone", "pebble", "tuft"];
 }
 
@@ -1195,7 +1243,13 @@ function scaleSegments(segs, speed) {
 // Biome sampling helpers
 // ---------------------------------------------------------------------------
 
-function buildNearSegments(travel, extBeforePx, extAfterPx, showSnow = true) {
+function buildNearSegments(
+  travel,
+  extBeforePx,
+  extAfterPx,
+  showSnow = true,
+  departurePlayerOffsetPx = 0,
+) {
   // Use the near biome band from travel if available, otherwise fall back to
   // sampling the straight start→dest line directly.
   const rawSegs =
@@ -1207,6 +1261,7 @@ function buildNearSegments(travel, extBeforePx, extAfterPx, showSnow = true) {
     extAfterPx,
     travel.totalLength ?? 0,
     showSnow,
+    departurePlayerOffsetPx,
   );
 }
 
@@ -1216,6 +1271,7 @@ function buildOffsetSegments(
   extAfterPx,
   offsetWorld,
   showSnow = true,
+  departurePlayerOffsetPx = 0,
 ) {
   // Use mid/far band from travel when it matches the offset.
   // These constants must match TRAVEL_BIOME_BANDS in travel.js (mid:5, far:10).
@@ -1238,6 +1294,7 @@ function buildOffsetSegments(
     extAfterPx,
     travel.totalLength ?? 0,
     showSnow,
+    departurePlayerOffsetPx,
   );
 }
 
@@ -1273,11 +1330,13 @@ function expandSegmentsToPx(
   extAfterPx,
   totalWorldLength,
   showSnow = true,
+  departurePlayerOffsetPx = 0,
 ) {
   const result = [];
   const firstBiome = normalizeBiomeKey(rawSegs[0]?.biome) ?? "plains";
   const firstSnow = showSnow && Boolean(rawSegs[0]?.isSnow);
   const preExtensionGround = pickPreExtensionGround(rawSegs, showSnow);
+  const postExtensionGround = pickPostExtensionGround(rawSegs, showSnow);
   const lastBiome =
     normalizeBiomeKey(rawSegs[rawSegs.length - 1]?.biome) ?? firstBiome;
   const lastSnow = showSnow && Boolean(rawSegs[rawSegs.length - 1]?.isSnow);
@@ -1330,11 +1389,21 @@ function expandSegmentsToPx(
   }
 
   const merged = mergeAdjacentSegments(result);
-  return enforceDepartureLandWindow(
+  let patched = enforceDepartureLandWindow(
     merged,
     extBeforePx,
     preExtensionGround,
+    departurePlayerOffsetPx,
   );
+  if (routePx > 0.5) {
+    patched = enforceDepartureLandWindow(
+      patched,
+      extBeforePx + routePx,
+      postExtensionGround,
+      departurePlayerOffsetPx,
+    );
+  }
+  return patched;
 }
 
 function pickPreExtensionGround(rawSegs, showSnow) {
@@ -1355,31 +1424,92 @@ function pickPreExtensionGround(rawSegs, showSnow) {
   };
 }
 
+function pickPostExtensionGround(rawSegs, showSnow) {
+  if (rawSegs?.length) {
+    for (let index = rawSegs.length - 1; index >= 0; index -= 1) {
+      const segment = rawSegs[index];
+      const biomeKey = normalizeBiomeKey(segment?.biome) ?? "plains";
+      if (!WATER_BIOME_KEYS.has(biomeKey)) {
+        return {
+          biomeKey,
+          isSnow: showSnow && Boolean(segment?.isSnow),
+        };
+      }
+    }
+  }
+  return {
+    biomeKey: "plains",
+    isSnow: false,
+  };
+}
+
 function enforceDepartureLandWindow(
   segments,
   departureX,
   preferredGround,
+  departurePlayerOffsetPx = 0,
 ) {
   if (!segments?.length || !Number.isFinite(departureX)) {
     return segments ?? [];
-  }
-  const index = findSegmentIndexAtX(segments, departureX);
-  if (index < 0) {
-    return segments;
-  }
-
-  const current = segments[index];
-  if (!current || !WATER_BIOME_KEYS.has(current.biomeKey)) {
-    return segments;
   }
 
   const patch = {
     biomeKey: preferredGround?.biomeKey ?? "plains",
     isSnow: Boolean(preferredGround?.isSnow),
   };
-  const windowStart = departureX - 22;
-  const windowEnd = departureX + 96;
-  return replaceBiomeInWindow(segments, windowStart, windowEnd, patch);
+
+  let nextSegments = segments;
+  const patchTargets = resolveDeparturePatchTargets(
+    departureX,
+    departurePlayerOffsetPx,
+  );
+  for (const target of patchTargets) {
+    const patchX = target.x;
+    const index = findSegmentIndexAtX(nextSegments, patchX);
+    if (index < 0) {
+      continue;
+    }
+
+    const current = nextSegments[index];
+    if (!current || !WATER_BIOME_KEYS.has(current.biomeKey)) {
+      continue;
+    }
+
+    const { backPx, forwardPx } = getDeparturePatchWindowPx(target.kind);
+    const windowStart = patchX - backPx;
+    const windowEnd = patchX + forwardPx;
+    nextSegments = replaceBiomeInWindow(
+      nextSegments,
+      windowStart,
+      windowEnd,
+      patch,
+    );
+  }
+  return nextSegments;
+}
+
+function getDeparturePatchWindowPx(targetKind) {
+  if (targetKind === "player") {
+    return {
+      backPx: PLAYER_LAND_WINDOW_BACK_PX,
+      forwardPx: PLAYER_LAND_WINDOW_FORWARD_PX,
+    };
+  }
+  return {
+    backPx: NODE_LAND_WINDOW_BACK_PX,
+    forwardPx: NODE_LAND_WINDOW_FORWARD_PX,
+  };
+}
+
+function resolveDeparturePatchTargets(departureX, departurePlayerOffsetPx) {
+  const targets = [{ x: departureX, kind: "node" }];
+  if (Number.isFinite(departurePlayerOffsetPx)) {
+    const playerPoint = departureX + departurePlayerOffsetPx;
+    if (!targets.some((target) => Math.abs(target.x - playerPoint) < 0.5)) {
+      targets.push({ x: playerPoint, kind: "player" });
+    }
+  }
+  return targets;
 }
 
 function replaceBiomeInWindow(segments, startX, endX, patch) {
@@ -1436,7 +1566,8 @@ function findSegmentIndexAtX(segments, x) {
     if (!segment) continue;
     const start = segment.stripX;
     const end = segment.stripX + segment.stripWidth;
-    if (x >= start && x <= end) {
+    const isLast = index === segments.length - 1;
+    if (x >= start && (x < end || (isLast && x <= end))) {
       return index;
     }
   }

@@ -24,7 +24,7 @@
       rel="icon"
       href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="%23e6d7b6"/><path d="M6 22 L13 10 L20 22 M12 17 L16 12 L23 22" fill="none" stroke="%23543f27" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
     />
-    <link rel="stylesheet" href="./styles.css?v=20260412g" />
+    <link rel="stylesheet" href="./styles.css?v=20260413b" />
   </head>
   <body>
     <div id="editor-shell" class="app-shell">
@@ -156,70 +156,6 @@
             </p>
           </div>
         </div>
-        <div id="play-arrival-cue" class="play-arrival-cue" aria-live="polite">
-          <span id="play-arrival-cue-text"></span>
-        </div>
-        <section
-          id="play-journey-event-dialog"
-          class="play-journey-event-dialog"
-          aria-live="polite"
-          hidden
-        >
-          <p id="play-journey-event-body" class="play-journey-event-body">
-            Nu är du här.
-          </p>
-          <div id="play-journey-event-loot" class="play-journey-event-loot" hidden>
-            <div class="play-journey-event-loot-header">
-              <h4 class="play-journey-event-loot-title">Fynd</h4>
-              <button
-                id="play-journey-event-take-all"
-                type="button"
-                class="ghost-button play-journey-event-take-all"
-              >
-                Ta allt
-              </button>
-            </div>
-            <div
-              id="play-journey-event-loot-list"
-              class="play-inventory-grid play-inventory-grid--journey-loot"
-              role="grid"
-              aria-label="Loot"
-            ></div>
-          </div>
-        </section>
-        <section
-          id="play-rest-dialog"
-          class="play-rest-dialog"
-          aria-live="assertive"
-          hidden
-        >
-          <p id="play-rest-body" class="play-rest-body">
-            Du är utmattad. Välj hur länge du vill vila.
-          </p>
-          <div id="play-rest-options" class="play-rest-options">
-            <button
-              type="button"
-              class="ghost-button play-rest-option"
-              data-rest-hours="1"
-            >
-              Vila 1h
-            </button>
-            <button
-              type="button"
-              class="ghost-button play-rest-option"
-              data-rest-hours="3"
-            >
-              Vila 3h
-            </button>
-            <button
-              type="button"
-              class="ghost-button play-rest-option"
-              data-rest-hours="8"
-            >
-              Vila 8h
-            </button>
-          </div>
-        </section>
         <section
           id="play-game-over-dialog"
           class="play-game-over-dialog"
@@ -244,6 +180,120 @@
           aria-label="Spelvy"
         ></canvas>
         <section id="play-journey-panel" class="play-journey-panel" hidden>
+          <div id="play-arrival-cue" class="play-arrival-cue" aria-live="polite">
+            <span id="play-arrival-cue-text"></span>
+          </div>
+          <section
+            id="play-journey-event-dialog"
+            class="play-journey-event-dialog"
+            aria-live="polite"
+            hidden
+          >
+            <p id="play-journey-event-body" class="play-journey-event-body">
+              Nu är du här.
+            </p>
+            <div id="play-journey-event-loot" class="play-journey-event-loot" hidden>
+              <div
+                id="play-journey-event-loot-list"
+                class="play-inventory-grid play-inventory-grid--journey-loot"
+                role="grid"
+                aria-label="Loot"
+              ></div>
+              <button
+                id="play-journey-event-take-all"
+                type="button"
+                class="ghost-button play-journey-event-take-all"
+              >
+                Ta allt
+              </button>
+            </div>
+          </section>
+          <section
+            id="play-rest-dialog"
+            class="play-rest-dialog"
+            aria-live="polite"
+            hidden
+          >
+            <p id="play-rest-body" class="play-rest-body">
+              Du är utmattad. Välj hur länge du vill vila.
+            </p>
+            <div id="play-rest-options" class="play-rest-options">
+              <section class="play-rest-column">
+                <h4 class="play-rest-column-title">Jakt</h4>
+                <button
+                  type="button"
+                  class="ghost-button play-rest-option"
+                  data-hunt-hours="1"
+                >
+                  1 h
+                </button>
+                <button
+                  type="button"
+                  class="ghost-button play-rest-option"
+                  data-hunt-hours="3"
+                >
+                  3 h
+                </button>
+                <button
+                  type="button"
+                  class="ghost-button play-rest-option"
+                  data-hunt-hours="8"
+                >
+                  8 h
+                </button>
+                <p id="play-hunt-outlook" class="play-hunt-outlook" hidden></p>
+              </section>
+              <section class="play-rest-column">
+                <h4 class="play-rest-column-title">Vila</h4>
+                <button
+                  type="button"
+                  class="ghost-button play-rest-option"
+                  data-rest-hours="1"
+                >
+                  1 h
+                </button>
+                <button
+                  type="button"
+                  class="ghost-button play-rest-option"
+                  data-rest-hours="3"
+                >
+                  3 h
+                </button>
+                <button
+                  type="button"
+                  class="ghost-button play-rest-option"
+                  data-rest-hours="8"
+                >
+                  8 h
+                </button>
+              </section>
+            </div>
+            <div class="play-rest-footer">
+              <button
+                id="play-action-cancel"
+                type="button"
+                class="ghost-button play-rest-dismiss"
+                hidden
+              >
+                Avbryt
+              </button>
+            </div>
+          </section>
+          <section
+            id="play-action-result-dialog"
+            class="play-action-result-dialog"
+            aria-live="polite"
+            hidden
+          >
+            <p id="play-action-result-body" class="play-action-result-body"></p>
+            <button
+              id="play-action-result-ok"
+              type="button"
+              class="ghost-button play-action-result-ok"
+            >
+              OK
+            </button>
+          </section>
           <aside id="play-journey-vitals" class="play-journey-vitals" aria-live="polite">
             <div
               id="play-journey-hearts"
@@ -387,6 +437,6 @@
 
     <div id="build-version-badge" class="build-version-badge" aria-live="polite"></div>
 
-    <script type="module" src="./src/app.js?v=20260412o"></script>
+    <script type="module" src="./src/app.js?v=20260413i"></script>
   </body>
 </html>
