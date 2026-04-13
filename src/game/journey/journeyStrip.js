@@ -27,8 +27,8 @@ const PLAYER_X_FRAC = 0.22;
 const BLEND_ZONE_PX = 48;
 const WATER_BIOME_KEYS = new Set(["ocean", "lake"]);
 const WATER_SHORE_TAPER_PX_BY_LAYER = Object.freeze({
-  mid: 34,
-  far: 46,
+  mid: 30,
+  far: 40,
 });
 const TREE_BLOCKED_BIOMES = new Set(["ocean", "lake"]);
 const TREE_ALLOWED_BIOMES = new Set([
@@ -167,15 +167,15 @@ const NODE_DECORATION_EXCLUSION_RADIUS_BY_LAYER = Object.freeze({
   near2: 90,
 });
 const DETAIL_THEME_BY_BIOME = {
-  forest: ["tuft", "stone", "stick", "tuft"],
-  rainforest: ["tuft", "tuft", "stone", "leaf"],
-  highlands: ["tuft", "stone", "pebble", "stone"],
-  plains: ["tuft", "stone", "flower", "tuft"],
-  desert: ["sand-dune", "pebble", "stone", "sand-dune"],
-  tundra: ["frost-tuft", "stone", "snow-dune", "pebble"],
-  mountain: ["stone", "pebble", "stone", "frost-tuft"],
-  ocean: ["foam", "drift", "foam", "pebble"],
-  lake: ["foam", "drift", "pebble", "foam"],
+  forest: ["tuft", "branch", "stone", "grass-clump", "tuft"],
+  rainforest: ["leaf", "tuft", "branch", "grass-clump", "leaf", "stone"],
+  highlands: ["stone", "pebble", "scree", "tuft", "stone"],
+  plains: ["tuft", "grass-clump", "flower", "stone", "branch"],
+  desert: ["sand-dune", "dune-ripple", "pebble", "stone", "drift"],
+  tundra: ["frost-tuft", "snow-dune", "pebble", "ice-shard", "stone"],
+  mountain: ["stone", "scree", "pebble", "frost-tuft", "stone"],
+  ocean: ["foam", "wave-ripple", "foam", "drift", "wave-ripple"],
+  lake: ["foam", "wave-ripple", "reed", "drift", "pebble"],
 };
 
 // ---------------------------------------------------------------------------
@@ -509,6 +509,7 @@ function expandFromStartX(
   const result = [];
   const firstBiome = normalizeBiomeKey(rawSegs[0]?.biome) ?? "plains";
   const firstSnow = showSnow && Boolean(rawSegs[0]?.isSnow);
+  const departureGround = pickPreExtensionGround(rawSegs, showSnow);
   const lastBiome =
     normalizeBiomeKey(rawSegs[rawSegs.length - 1]?.biome) ?? firstBiome;
   const lastSnow = showSnow && Boolean(rawSegs[rawSegs.length - 1]?.isSnow);
@@ -545,7 +546,12 @@ function expandFromStartX(
     });
   }
 
-  return mergeAdjacentSegments(result);
+  const merged = mergeAdjacentSegments(result);
+  return enforceDepartureLandWindow(
+    merged,
+    startX,
+    departureGround,
+  );
 }
 
 // Append fully-built layer segments (with color + silhouette) onto an array.
@@ -731,7 +737,6 @@ function buildGroundDetails(groundSegments, strip = null) {
 
   for (const segment of groundSegments) {
     if (!segment || segment.isBlend) continue;
-    if (TREE_BLOCKED_BIOMES.has(segment.biomeKey)) continue;
     if (!segment.biomeKey || segment.stripWidth < 20) continue;
 
     const rng = createSeededRng(
@@ -751,6 +756,7 @@ function buildGroundDetails(groundSegments, strip = null) {
     const avgSpacing = (minSpacingPx + maxSpacingPx) * 0.5;
     const count = Math.max(1, Math.round(usableWidth / avgSpacing));
     const motifs = getGroundDetailMotifs(segment.biomeKey, segment.isSnow);
+    if (!motifs.length) continue;
 
     for (let i = 0; i < count; i += 1) {
       const t = (i + 0.08 + rng() * 0.84) / count;
@@ -761,13 +767,18 @@ function buildGroundDetails(groundSegments, strip = null) {
       );
       if (isInsideNodeDecorationExclusionZone(stripX, nodeExclusionZones))
         continue;
+      const motif = motifs[Math.floor(rng() * motifs.length)];
+      const verticalRange = getGroundDetailVerticalRange(
+        segment.biomeKey,
+        motif,
+      );
       details.push({
         stripX,
         biomeKey: segment.biomeKey,
         isSnow: Boolean(segment.isSnow),
-        motif: motifs[Math.floor(rng() * motifs.length)],
+        motif,
         scale: lerp(0.72, 1.28, rng()),
-        verticalFrac: lerp(0.04, 0.96, rng()),
+        verticalFrac: lerp(verticalRange.min, verticalRange.max, rng()),
       });
     }
   }
@@ -1029,7 +1040,7 @@ function getTreeSpawnTuningForBiome(layerName, biomeKey) {
 
 function getGroundDetailSpacing(biomeKey, isSnow) {
   if (isSnow) {
-    return { minSpacingPx: 34, maxSpacingPx: 60 };
+    return { minSpacingPx: 30, maxSpacingPx: 54 };
   }
   switch (biomeKey) {
     case "forest":
@@ -1038,13 +1049,13 @@ function getGroundDetailSpacing(biomeKey, isSnow) {
     case "plains":
       return { minSpacingPx: 28, maxSpacingPx: 52 };
     case "desert":
-      return { minSpacingPx: 30, maxSpacingPx: 56 };
+      return { minSpacingPx: 26, maxSpacingPx: 48 };
     case "mountain":
     case "tundra":
-      return { minSpacingPx: 34, maxSpacingPx: 62 };
+      return { minSpacingPx: 30, maxSpacingPx: 54 };
     case "ocean":
     case "lake":
-      return { minSpacingPx: 42, maxSpacingPx: 74 };
+      return { minSpacingPx: 26, maxSpacingPx: 48 };
     default:
       return { minSpacingPx: 32, maxSpacingPx: 58 };
   }
@@ -1052,9 +1063,32 @@ function getGroundDetailSpacing(biomeKey, isSnow) {
 
 function getGroundDetailMotifs(biomeKey, isSnow) {
   if (isSnow) {
-    return ["snow-dune", "snow-dune", "pebble", "frost-tuft"];
+    if (biomeKey === "ocean" || biomeKey === "lake") {
+      return ["foam", "wave-ripple", "foam"];
+    }
+    return ["snow-dune", "snow-dune", "pebble", "frost-tuft", "ice-shard"];
   }
   return DETAIL_THEME_BY_BIOME[biomeKey] ?? ["tuft", "stone", "pebble", "tuft"];
+}
+
+function getGroundDetailVerticalRange(biomeKey, motif) {
+  if (biomeKey === "ocean" || biomeKey === "lake") {
+    if (motif === "foam" || motif === "wave-ripple") {
+      return { min: 0.02, max: 0.28 };
+    }
+    return { min: 0.06, max: 0.38 };
+  }
+  if (
+    motif === "sand-dune" ||
+    motif === "snow-dune" ||
+    motif === "dune-ripple"
+  ) {
+    return { min: 0.14, max: 0.72 };
+  }
+  if (motif === "reed") {
+    return { min: 0.06, max: 0.34 };
+  }
+  return { min: 0.04, max: 0.96 };
 }
 
 function createNodeDecorationExclusionZones(strip, layerName) {
@@ -1243,6 +1277,7 @@ function expandSegmentsToPx(
   const result = [];
   const firstBiome = normalizeBiomeKey(rawSegs[0]?.biome) ?? "plains";
   const firstSnow = showSnow && Boolean(rawSegs[0]?.isSnow);
+  const preExtensionGround = pickPreExtensionGround(rawSegs, showSnow);
   const lastBiome =
     normalizeBiomeKey(rawSegs[rawSegs.length - 1]?.biome) ?? firstBiome;
   const lastSnow = showSnow && Boolean(rawSegs[rawSegs.length - 1]?.isSnow);
@@ -1250,8 +1285,8 @@ function expandSegmentsToPx(
   // Pre-extension
   if (extBeforePx > 0) {
     result.push({
-      biomeKey: firstBiome,
-      isSnow: firstSnow,
+      biomeKey: preExtensionGround.biomeKey,
+      isSnow: preExtensionGround.isSnow,
       stripX: 0,
       stripWidth: extBeforePx,
     });
@@ -1294,7 +1329,118 @@ function expandSegmentsToPx(
     });
   }
 
+  const merged = mergeAdjacentSegments(result);
+  return enforceDepartureLandWindow(
+    merged,
+    extBeforePx,
+    preExtensionGround,
+  );
+}
+
+function pickPreExtensionGround(rawSegs, showSnow) {
+  if (rawSegs?.length) {
+    for (const segment of rawSegs) {
+      const biomeKey = normalizeBiomeKey(segment?.biome) ?? "plains";
+      if (!WATER_BIOME_KEYS.has(biomeKey)) {
+        return {
+          biomeKey,
+          isSnow: showSnow && Boolean(segment?.isSnow),
+        };
+      }
+    }
+  }
+  return {
+    biomeKey: "plains",
+    isSnow: false,
+  };
+}
+
+function enforceDepartureLandWindow(
+  segments,
+  departureX,
+  preferredGround,
+) {
+  if (!segments?.length || !Number.isFinite(departureX)) {
+    return segments ?? [];
+  }
+  const index = findSegmentIndexAtX(segments, departureX);
+  if (index < 0) {
+    return segments;
+  }
+
+  const current = segments[index];
+  if (!current || !WATER_BIOME_KEYS.has(current.biomeKey)) {
+    return segments;
+  }
+
+  const patch = {
+    biomeKey: preferredGround?.biomeKey ?? "plains",
+    isSnow: Boolean(preferredGround?.isSnow),
+  };
+  const windowStart = departureX - 22;
+  const windowEnd = departureX + 96;
+  return replaceBiomeInWindow(segments, windowStart, windowEnd, patch);
+}
+
+function replaceBiomeInWindow(segments, startX, endX, patch) {
+  if (!segments?.length || !Number.isFinite(startX) || !Number.isFinite(endX)) {
+    return segments ?? [];
+  }
+  const windowStart = Math.min(startX, endX);
+  const windowEnd = Math.max(startX, endX);
+  const result = [];
+
+  for (const segment of segments) {
+    if (!segment) continue;
+    const segStart = segment.stripX;
+    const segEnd = segment.stripX + segment.stripWidth;
+    if (segEnd <= windowStart || segStart >= windowEnd) {
+      result.push({ ...segment });
+      continue;
+    }
+
+    if (segStart < windowStart) {
+      result.push({
+        ...segment,
+        stripWidth: Math.max(1, windowStart - segStart),
+      });
+    }
+
+    const overlapStart = Math.max(segStart, windowStart);
+    const overlapEnd = Math.min(segEnd, windowEnd);
+    if (overlapEnd > overlapStart) {
+      result.push({
+        ...segment,
+        biomeKey: patch.biomeKey,
+        isSnow: patch.isSnow,
+        stripX: overlapStart,
+        stripWidth: Math.max(1, overlapEnd - overlapStart),
+      });
+    }
+
+    if (segEnd > windowEnd) {
+      result.push({
+        ...segment,
+        stripX: windowEnd,
+        stripWidth: Math.max(1, segEnd - windowEnd),
+      });
+    }
+  }
+
   return mergeAdjacentSegments(result);
+}
+
+function findSegmentIndexAtX(segments, x) {
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    if (!segment) continue;
+    const start = segment.stripX;
+    const end = segment.stripX + segment.stripWidth;
+    if (x >= start && x <= end) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 /**
@@ -1450,9 +1596,13 @@ function applyWaterShorelineGeometryTaper(segments, layerDepth) {
 
     const samples = segment.topEdgeSamples;
     const sampleCount = samples.length;
+    // Keep a visible middle section so narrow islands do not disappear when
+    // both sides touch water.
+    const maxFadeBySamples = Math.floor((sampleCount - 1) * 0.45);
     const fadeCount = Math.max(
       2,
       Math.min(
+        Math.max(2, maxFadeBySamples),
         sampleCount - 1,
         Math.round(Math.min(taperPx, Math.max(2, segment.stripWidth * 0.6))),
       ),

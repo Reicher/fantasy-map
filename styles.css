@@ -658,6 +658,82 @@ canvas[data-dragging="true"] {
   pointer-events: none;
 }
 
+.play-journey-vitals {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 13;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(213, 233, 244, 0.28);
+  background:
+    linear-gradient(180deg, rgba(8, 17, 28, 0.72), rgba(8, 12, 20, 0.62));
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(6px) saturate(1.12);
+  pointer-events: none;
+}
+
+.play-journey-hearts {
+  gap: 6px;
+  min-height: 0;
+}
+
+.play-journey-hearts .play-character-heart {
+  font-size: 1.12rem;
+}
+
+.play-journey-stamina {
+  gap: 5px;
+  min-height: 0;
+}
+
+.play-journey-food {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(240, 248, 252, 0.95);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.play-journey-food-icon {
+  position: relative;
+  width: 17px;
+  height: 12px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, rgba(232, 217, 190, 0.96) 0 58%, rgba(131, 73, 30, 0.98) 58% 100%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.34);
+}
+
+.play-journey-food-icon::before,
+.play-journey-food-icon::after {
+  content: "";
+  position: absolute;
+  left: -2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(233, 221, 203, 0.95);
+}
+
+.play-journey-food-icon::before {
+  top: 1px;
+}
+
+.play-journey-food-icon::after {
+  bottom: 1px;
+}
+
+.play-journey-food-count {
+  min-width: 2ch;
+  text-align: right;
+  font-size: 0.92rem;
+}
+
 .play-arrival-cue {
   position: absolute;
   left: 50%;
@@ -677,7 +753,7 @@ canvas[data-dragging="true"] {
   width: min(48vw, 560px);
   max-width: calc(100% - 24px);
   display: grid;
-  gap: 14px;
+  gap: 12px;
   padding: 18px 20px;
   border-radius: 18px;
   border: 1px solid rgba(198, 224, 236, 0.42);
@@ -688,6 +764,46 @@ canvas[data-dragging="true"] {
   pointer-events: auto;
 }
 
+.play-rest-dialog {
+  position: absolute;
+  inset: 0;
+  z-index: 19;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  padding: 24px;
+  background: rgba(2, 8, 12, 0.64);
+  pointer-events: auto;
+}
+
+.play-rest-body {
+  margin: 0;
+  color: rgba(241, 249, 255, 0.95);
+  text-align: center;
+  font-size: clamp(1rem, 2.2vw, 1.2rem);
+  line-height: 1.35;
+}
+
+.play-rest-options {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.play-rest-option {
+  min-height: 36px;
+  padding: 6px 13px;
+  border-color: rgba(214, 236, 246, 0.32);
+  background: rgba(234, 248, 255, 0.15);
+  color: rgba(241, 251, 255, 0.95);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.74rem;
+}
+
 .play-journey-event-body {
   margin: 0;
   color: rgba(243, 250, 255, 0.94);
@@ -695,15 +811,44 @@ canvas[data-dragging="true"] {
   line-height: 1.4;
 }
 
-.play-journey-event-ok {
-  min-height: 44px;
-  justify-self: end;
-  padding: 9px 18px;
+.play-journey-event-loot {
+  display: grid;
+  gap: 8px;
+}
+
+.play-journey-event-loot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.play-journey-event-loot-title {
+  margin: 0;
+  color: rgba(225, 238, 246, 0.92);
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.play-journey-event-take-all {
+  min-height: 34px;
+  padding: 5px 12px;
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   background: rgba(234, 248, 255, 0.14);
   border-color: rgba(214, 236, 246, 0.24);
   color: rgba(241, 251, 255, 0.95);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
-  font-size: 0.9rem;
+}
+
+.play-journey-event-take-all:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.play-inventory-grid--journey-loot {
+  width: min(100%, 232px);
 }
 
 .play-game-over-dialog {
@@ -859,6 +1004,36 @@ canvas[data-dragging="true"] {
   min-height: 28px;
 }
 
+.play-character-stamina {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 18px;
+}
+
+.play-character-stamina-orb {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(112, 183, 255, 0.55);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.play-character-stamina-orb[data-filled="true"] {
+  background: radial-gradient(
+    circle at 35% 30%,
+    rgba(209, 235, 255, 0.94),
+    rgba(58, 146, 230, 0.98)
+  );
+  box-shadow: 0 0 6px rgba(52, 150, 248, 0.44);
+}
+
+.play-character-stamina-orb[data-filled="false"] {
+  background: rgba(155, 182, 205, 0.2);
+  border-color: rgba(149, 183, 210, 0.34);
+  box-shadow: none;
+}
+
 .play-character-heart {
   display: inline-block;
   font-size: 1.35rem;
@@ -917,6 +1092,7 @@ canvas[data-dragging="true"] {
 }
 
 .play-inventory-item {
+  position: relative;
   width: 100%;
   height: 100%;
   border-radius: 8px;
@@ -965,6 +1141,23 @@ canvas[data-dragging="true"] {
   pointer-events: none;
 }
 
+.play-inventory-item-count {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  min-width: 14px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: rgba(7, 14, 20, 0.92);
+  border: 1px solid rgba(196, 222, 236, 0.52);
+  color: rgba(246, 250, 253, 0.95);
+  font-size: 0.58rem;
+  line-height: 1.2;
+  font-weight: 700;
+  text-align: center;
+  pointer-events: none;
+}
+
 .play-inventory-item-symbol--meat {
   border-radius: 58% 47% 58% 45%;
   background:
@@ -999,6 +1192,89 @@ canvas[data-dragging="true"] {
   transform: rotate(24deg);
 }
 
+.play-inventory-item-symbol--bullets {
+  width: 17px;
+  height: 15px;
+}
+
+.play-inventory-item-symbol--bullets::before,
+.play-inventory-item-symbol--bullets::after {
+  content: "";
+  position: absolute;
+  border-radius: 3px;
+  background: linear-gradient(180deg, rgba(255, 223, 146, 0.98), rgba(169, 123, 56, 0.98));
+}
+
+.play-inventory-item-symbol--bullets::before {
+  left: 2px;
+  top: 2px;
+  width: 5px;
+  height: 10px;
+}
+
+.play-inventory-item-symbol--bullets::after {
+  right: 2px;
+  top: 3px;
+  width: 5px;
+  height: 9px;
+}
+
+.play-inventory-item-symbol--medicine {
+  width: 16px;
+  height: 16px;
+}
+
+.play-inventory-item-symbol--medicine::before,
+.play-inventory-item-symbol--medicine::after {
+  content: "";
+  position: absolute;
+  background: rgba(238, 70, 70, 0.98);
+  border-radius: 2px;
+}
+
+.play-inventory-item-symbol--medicine::before {
+  left: 6px;
+  top: 1px;
+  width: 4px;
+  height: 14px;
+}
+
+.play-inventory-item-symbol--medicine::after {
+  left: 1px;
+  top: 6px;
+  width: 14px;
+  height: 4px;
+}
+
+.play-inventory-item-symbol--tobacco {
+  width: 18px;
+  height: 12px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, rgba(230, 216, 191, 0.97) 0 62%, rgba(122, 70, 28, 0.98) 62% 100%);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.32);
+}
+
+.play-inventory-item-symbol--coffee {
+  width: 16px;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(112, 71, 38, 0.98);
+  box-shadow: inset 0 -1px 0 rgba(28, 15, 7, 0.58);
+}
+
+.play-inventory-item-symbol--coffee::after {
+  content: "";
+  position: absolute;
+  right: -2px;
+  top: 2px;
+  width: 3px;
+  height: 7px;
+  border: 1px solid rgba(177, 132, 89, 0.86);
+  border-left: none;
+  border-radius: 0 3px 3px 0;
+}
+
 .play-settings-buttons {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1018,7 +1294,7 @@ canvas[data-dragging="true"] {
 .play-bottom-nav {
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto auto auto auto;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto auto auto;
   align-items: center;
   gap: 8px;
   padding: 9px 10px;
@@ -1165,6 +1441,10 @@ canvas[data-dragging="true"] {
     font-size: 0.98rem;
   }
 
+  .play-rest-body {
+    font-size: 0.95rem;
+  }
+
   .play-arrival-cue span {
     font-size: clamp(1.2rem, 5vw, 1.8rem);
     padding: 6px 11px;
@@ -1240,6 +1520,7 @@ canvas[data-dragging="true"] {
   #play-view #play-canvas,
   #play-view .play-journey-panel,
   #play-view .play-journey-event-dialog,
+  #play-view .play-rest-dialog,
   #play-view .play-arrival-cue,
   #play-view .play-bottom-hud {
     display: none !important;
@@ -1286,6 +1567,15 @@ canvas[data-dragging="true"] {
     font-size: 1.15rem;
   }
 
+  .play-character-stamina {
+    gap: 4px;
+  }
+
+  .play-character-stamina-orb {
+    width: 9px;
+    height: 9px;
+  }
+
   .play-inventory-grid {
     gap: 4px;
   }
@@ -1318,5 +1608,20 @@ canvas[data-dragging="true"] {
 
   .play-location-line {
     font-size: 0.75rem;
+  }
+
+  .play-journey-vitals {
+    top: 8px;
+    left: 8px;
+    gap: 7px;
+    padding: 6px 8px;
+  }
+
+  .play-journey-hearts .play-character-heart {
+    font-size: 1rem;
+  }
+
+  .play-journey-food-count {
+    font-size: 0.82rem;
   }
 }

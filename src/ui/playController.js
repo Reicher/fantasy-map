@@ -1,10 +1,12 @@
 import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
-import { createViewport } from "../render/renderer.js?v=20260412c";
+import { createViewport } from "../render/renderer.js?v=20260412d";
 import { findPlayableNodeAtWorldPoint } from "../game/playQueries.js?v=20260409e";
 import {
   applyHourlyHunger,
+  applyHourlyTravelStamina,
+  advanceRest,
   isNodeDiscovered,
-} from "../game/travel.js?v=20260412f";
+} from "../game/travel.js?v=20260412i";
 import { advanceTimeOfDayHours, getElapsedTimeOfDayHours } from "../game/timeOfDay.js";
 import { getNodeTitle } from "../node/model.js";
 
@@ -41,9 +43,7 @@ export function createPlayController({
     const viewport = createViewport(state.currentWorld, createPlayCamera());
     const worldPoint = viewport.canvasToWorld(canvasX, canvasY);
     const hoveredNodeId =
-      state.playState.travel || hasBlockingJourneyEvent(state.playState)
-      ? null
-      : findPlayableNodeAtEvent(event);
+      state.playState.travel ? null : findPlayableNodeAtEvent(event);
 
     if (hoveredNodeId != null) {
       const nodes = state.currentWorld.features?.nodes ?? [];
@@ -123,8 +123,7 @@ export function createPlayController({
       !state.playState ||
       state.playState.gameOver ||
       state.playState.viewMode !== "map" ||
-      state.playState.travel ||
-      hasBlockingJourneyEvent(state.playState)
+      state.playState.travel
     ) {
       return;
     }
@@ -149,8 +148,7 @@ export function createPlayController({
       !state.playState ||
       state.playState.gameOver ||
       state.playState.viewMode !== "map" ||
-      state.playState.travel ||
-      hasBlockingJourneyEvent(state.playState)
+      state.playState.travel
     ) {
       return;
     }
@@ -249,22 +247,51 @@ export function createPlayController({
       const delta = timestamp - state.lastTravelTick;
       state.lastTravelTick = timestamp;
       const isJourney = state.playState?.viewMode === "journey";
-      const isTraveling = Boolean(state.playState?.travel);
+      const hasTravel = Boolean(state.playState?.travel);
+      const isTravelPaused = Boolean(state.playState?.isTravelPaused);
+      const isResting = Boolean(state.playState?.rest);
+      const isTraveling = hasTravel && !isTravelPaused && !isResting;
+      const shouldAdvanceWorldTime = isTraveling || isResting;
 
-      if (isTraveling) {
+      if (shouldAdvanceWorldTime) {
         const elapsedTimeOfDayHours = getElapsedTimeOfDayHours(delta);
         const nextTimeOfDayHours = advanceTimeOfDayHours(
           state.playState?.timeOfDayHours,
           delta,
         );
+        const currentJourneyElapsedHours = Number.isFinite(
+          state.playState?.journeyElapsedHours,
+        )
+          ? Math.max(0, state.playState.journeyElapsedHours)
+          : 0;
         state.playState = {
           ...state.playState,
           timeOfDayHours: nextTimeOfDayHours,
+          journeyElapsedHours: currentJourneyElapsedHours + elapsedTimeOfDayHours,
         };
-        state.playState = applyHourlyHunger(state.playState, elapsedTimeOfDayHours);
+
+        if (isTraveling) {
+          state.playState = applyHourlyHunger(
+            state.playState,
+            elapsedTimeOfDayHours,
+          );
+          state.playState = applyHourlyTravelStamina(
+            state.playState,
+            elapsedTimeOfDayHours,
+          );
+        }
+
+        if (isResting) {
+          state.playState = advanceRest(state.playState, elapsedTimeOfDayHours);
+        }
       }
 
-      if (state.playState?.travel && !state.playState?.gameOver) {
+      if (
+        state.playState?.travel &&
+        !state.playState?.gameOver &&
+        !state.playState?.isTravelPaused &&
+        !state.playState?.rest
+      ) {
         state.playState = profiler.measure("advance-travel", () =>
           advanceTravel(state.playState, state.currentWorld, delta),
         );
@@ -273,6 +300,8 @@ export function createPlayController({
       profiler.setSnapshot({
         viewMode: state.playState?.viewMode ?? "unknown",
         traveling: state.playState?.travel ? "yes" : "no",
+        paused: state.playState?.isTravelPaused ? "yes" : "no",
+        resting: state.playState?.rest ? "yes" : "no",
       });
       const shouldRenderMapFrame =
         !isJourney &&
@@ -302,8 +331,4 @@ export function createPlayController({
     }
     lastRenderedAt = 0;
   }
-}
-
-function hasBlockingJourneyEvent(playState) {
-  return Boolean(playState?.pendingJourneyEvent?.requiresAcknowledgement);
 }

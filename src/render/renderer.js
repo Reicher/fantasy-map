@@ -4,7 +4,7 @@ import {
   drawOcean,
   drawFrame,
 } from "./backgroundLayer.js?v=20260401e";
-import { drawNodes, drawPlayerMarker } from "./nodesLayer.js?v=20260409a";
+import { drawNodes, drawPlayerMarker } from "./nodesLayer.js?v=20260412c";
 import { drawTravelDebugOverlay } from "./debugLayer.js?v=20260404a";
 import { drawFogOfWar } from "./fogLayer.js?v=20260403h";
 import {

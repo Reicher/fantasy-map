@@ -25,9 +25,9 @@ import {
 import { applyCanvasResolution } from "./ui/canvasResolution.js?v=20260403a";
 import { createPlayProfiler } from "./ui/playProfiler.js?v=20260403a";
 import { updateStats } from "./ui/statsPanel.js";
-import { createEditorSession } from "./ui/editorSession.js?v=20260412c";
+import { createEditorSession } from "./ui/editorSession.js?v=20260412d";
 import { clearHover } from "./ui/hoverPanel.js?v=20260408a";
-import { createPlaySession } from "./ui/playSession.js?v=20260412h";
+import { createPlaySession } from "./ui/playSession.js?v=20260412m";
 import { BUILD_META, formatBuildLabel } from "./buildMeta.js";
 import {
   createTransitionController,
@@ -53,6 +53,9 @@ const refs = {
   playJourneyPanel: document.querySelector("#play-journey-panel"),
   playJourneyCanvas: document.querySelector("#play-journey-canvas"),
   playBottomHud: document.querySelector("#play-bottom-hud"),
+  playJourneyHearts: document.querySelector("#play-journey-hearts"),
+  playJourneyStamina: document.querySelector("#play-journey-stamina"),
+  playJourneyFoodCount: document.querySelector("#play-journey-food-count"),
   playPanelCharacter: document.querySelector("#play-panel-character"),
   playPanelInventory: document.querySelector("#play-panel-inventory"),
   playPanelSettings: document.querySelector("#play-panel-settings"),
@@ -65,8 +68,13 @@ const refs = {
   playPanelToggleSettingsButton: document.querySelector(
     "#play-panel-toggle-settings",
   ),
+  playCharacterInitiative: document.querySelector("#play-character-initiative"),
+  playCharacterVitality: document.querySelector("#play-character-vitality"),
+  playCharacterStamina: document.querySelector("#play-character-stamina"),
+  playCharacterAccuracy: document.querySelector("#play-character-accuracy"),
+  playCharacterStatus: document.querySelector("#play-character-status"),
   playLocationLine: document.querySelector("#play-location-line"),
-  playCharacterHearts: document.querySelector("#play-character-hearts"),
+  playToggleTravelButton: document.querySelector("#play-toggle-travel"),
   playInventoryList: document.querySelector("#play-inventory-list"),
   playSwitchModeButton: document.querySelector("#play-switch-mode"),
   playSettingsToggleBiomeLabelsButton: document.querySelector(
@@ -85,7 +93,15 @@ const refs = {
   playArrivalCueText: document.querySelector("#play-arrival-cue-text"),
   playJourneyEventDialog: document.querySelector("#play-journey-event-dialog"),
   playJourneyEventBody: document.querySelector("#play-journey-event-body"),
-  playJourneyEventOkButton: document.querySelector("#play-journey-event-ok"),
+  playJourneyEventLoot: document.querySelector("#play-journey-event-loot"),
+  playJourneyEventLootList: document.querySelector("#play-journey-event-loot-list"),
+  playJourneyEventTakeAllButton: document.querySelector(
+    "#play-journey-event-take-all",
+  ),
+  playRestDialog: document.querySelector("#play-rest-dialog"),
+  playRestBody: document.querySelector("#play-rest-body"),
+  playRestOptions: document.querySelector("#play-rest-options"),
+  playRestButtons: Array.from(document.querySelectorAll("[data-rest-hours]")),
   playGameOverDialog: document.querySelector("#play-game-over-dialog"),
   playGameOverBody: document.querySelector("#play-game-over-body"),
   playGameOverOkButton: document.querySelector("#play-game-over-ok"),
@@ -140,8 +156,8 @@ const state = {
     showSnow: true,
   },
   playMapOptions: {
-    showBiomeLabels: false,
-    showNodeLabels: false,
+    showBiomeLabels: true,
+    showNodeLabels: true,
     showHoverInspector: true,
     debugTravelSampling: false,
   },
@@ -295,9 +311,22 @@ if (refs.playSwitchModeButton) {
   });
 }
 
-if (refs.playJourneyEventOkButton) {
-  refs.playJourneyEventOkButton.addEventListener("click", () => {
-    acknowledgePendingJourneyEvent();
+if (refs.playToggleTravelButton) {
+  refs.playToggleTravelButton.addEventListener("click", () => {
+    if (state.currentMode !== "play" || !state.playState) {
+      return;
+    }
+    playSession.toggleTravelPause();
+  });
+}
+
+for (const button of refs.playRestButtons) {
+  button.addEventListener("click", () => {
+    if (state.currentMode !== "play" || !state.playState) {
+      return;
+    }
+    const requestedHours = Number(button.dataset.restHours);
+    playSession.startRest(requestedHours);
   });
 }
 
@@ -380,6 +409,12 @@ window.addEventListener("keydown", (event) => {
     playSession.setPlayViewMode(
       state.playState?.viewMode === "journey" ? "map" : "journey",
     );
+    return;
+  }
+
+  if ((event.key === " " || event.code === "Space") && state.playState?.travel) {
+    event.preventDefault();
+    playSession.toggleTravelPause();
     return;
   }
 
@@ -487,17 +522,6 @@ function togglePlayHudPanel(panelName) {
   state.playHudPanels = {
     ...state.playHudPanels,
     [panelName]: !state.playHudPanels[panelName],
-  };
-  playSession.updatePlaySubView();
-}
-
-function acknowledgePendingJourneyEvent() {
-  if (!state.playState?.pendingJourneyEvent) {
-    return;
-  }
-  state.playState = {
-    ...state.playState,
-    pendingJourneyEvent: null,
   };
   playSession.updatePlaySubView();
 }

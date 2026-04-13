@@ -33,11 +33,11 @@ export const highlandsBiome = {
   },
   journey: {
     silhouette: {
-      baseY: 0.4,
-      amplitude: 0.2,
-      wavelength1: 180,
-      wavelength2: 80,
-      sharpness: 1.4,
+      baseY: 0.3,
+      amplitude: 0.3,
+      wavelength1: 145,
+      wavelength2: 62,
+      sharpness: 2.1,
     },
   },
   generation: {

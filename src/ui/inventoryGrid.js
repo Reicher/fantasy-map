@@ -2,17 +2,25 @@ import {
   canMoveInventoryItem,
   getInventorySignature,
   moveInventoryItem,
-} from "../game/inventory.js?v=20260412d";
+} from "../game/inventory.js?v=20260412e";
+
+const INVENTORY_DRAG_MIME = "application/x-fantasy-map-inventory-item";
+let globalDragPayload = null;
 
 export function createInventoryGridController({
   root,
+  gridId = "inventory",
   getInventory,
   onInventoryChange,
+  canDropExternalItem,
+  onDropExternalItem,
 }) {
   let activeDragItemId = null;
   let selectedItemId = null;
   let dropTargetKey = "";
   let lastRenderSignature = null;
+  const normalizedGridId =
+    typeof gridId === "string" && gridId.trim() ? gridId.trim() : "inventory";
 
   if (root) {
     root.classList.add("play-inventory-grid");
@@ -80,12 +88,18 @@ export function createInventoryGridController({
         slot.dataset.cellKey = cellKey;
         slot.setAttribute("role", "gridcell");
 
-        if (
-          activeItemForHighlight &&
-          dropTargetKey === cellKey &&
-          canMoveInventoryItem(inventory, activeItemForHighlight, column, row)
-        ) {
-          slot.classList.add("is-drop-target");
+        if (dropTargetKey === cellKey) {
+          const canHighlight = activeItemForHighlight
+            ? canMoveInventoryItem(
+                inventory,
+                activeItemForHighlight,
+                column,
+                row,
+              )
+            : true;
+          if (canHighlight) {
+            slot.classList.add("is-drop-target");
+          }
         }
 
         const item = itemMap.get(cellKey);
@@ -117,9 +131,15 @@ export function createInventoryGridController({
       selectedItemId = itemId;
       dropTargetKey = "";
       itemElement.classList.add("is-dragging");
+      const payload = {
+        gridId: normalizedGridId,
+        itemId,
+      };
+      globalDragPayload = payload;
 
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData(INVENTORY_DRAG_MIME, JSON.stringify(payload));
         event.dataTransfer.setData("text/plain", itemId);
         event.dataTransfer.setDragImage(
           itemElement,
@@ -136,6 +156,9 @@ export function createInventoryGridController({
       }
       activeDragItemId = null;
       dropTargetKey = "";
+      if (globalDragPayload?.gridId === normalizedGridId) {
+        globalDragPayload = null;
+      }
       render(true);
     });
 
@@ -145,15 +168,17 @@ export function createInventoryGridController({
         return;
       }
 
-      const dragItemId = activeDragItemId;
-      if (!dragItemId) {
+      const dragPayload = getDragPayloadFromEvent(event, {
+        fallbackGridId: normalizedGridId,
+        fallbackItemId: activeDragItemId,
+      });
+      if (!dragPayload) {
         return;
       }
 
       const column = Number(slot.dataset.column);
       const row = Number(slot.dataset.row);
-      const inventory = getInventory?.();
-      if (!inventory || !canMoveInventoryItem(inventory, dragItemId, column, row)) {
+      if (!canDropPayload(dragPayload, column, row)) {
         return;
       }
 
@@ -189,20 +214,28 @@ export function createInventoryGridController({
 
       event.preventDefault();
 
-      const dropItemId =
-        activeDragItemId ||
-        event.dataTransfer?.getData("text/plain") ||
-        selectedItemId;
-      if (!dropItemId) {
+      const column = Number(slot.dataset.column);
+      const row = Number(slot.dataset.row);
+      const payload =
+        getDragPayloadFromEvent(event, {
+          fallbackGridId: normalizedGridId,
+          fallbackItemId: activeDragItemId ?? selectedItemId,
+        }) ?? null;
+      if (!payload) {
         return;
       }
 
-      const column = Number(slot.dataset.column);
-      const row = Number(slot.dataset.row);
-      tryMoveItem(dropItemId, column, row);
+      if (payload.gridId === normalizedGridId) {
+        tryMoveItem(payload.itemId, column, row);
+      } else {
+        onDropExternalItem?.(payload, column, row);
+      }
 
       activeDragItemId = null;
       dropTargetKey = "";
+      if (globalDragPayload?.gridId === payload.gridId) {
+        globalDragPayload = null;
+      }
       render(true);
     });
 
@@ -232,18 +265,35 @@ export function createInventoryGridController({
     });
   }
 
+  function canDropPayload(payload, column, row) {
+    if (!payload?.itemId) {
+      return false;
+    }
+
+    if (payload.gridId === normalizedGridId) {
+      const inventory = getInventory?.();
+      if (!inventory) {
+        return false;
+      }
+      return canMoveInventoryItem(inventory, payload.itemId, column, row);
+    }
+
+    return Boolean(canDropExternalItem?.(payload, column, row));
+  }
+
   function tryMoveItem(itemId, column, row) {
     const inventory = getInventory?.();
     if (!inventory) {
-      return;
+      return false;
     }
 
     const nextInventory = moveInventoryItem(inventory, itemId, column, row);
     if (nextInventory === inventory) {
-      return;
+      return false;
     }
 
     onInventoryChange?.(nextInventory);
+    return true;
   }
 }
 
@@ -259,7 +309,11 @@ function createItemElement(item, isSelected) {
   const label = item.name || "Foremal";
   const width = Number.isFinite(item.width) ? Math.max(1, Math.floor(item.width)) : 1;
   const height = Number.isFinite(item.height) ? Math.max(1, Math.floor(item.height)) : 1;
-  itemButton.title = `${label} (${width}x${height})`;
+  const count = normalizeItemCount(item?.count);
+  itemButton.title =
+    count > 1
+      ? `${label} x${count} (${width}x${height})`
+      : `${label} (${width}x${height})`;
   itemButton.setAttribute("aria-label", itemButton.title);
 
   const symbol = document.createElement("span");
@@ -267,6 +321,14 @@ function createItemElement(item, isSelected) {
   symbol.setAttribute("aria-hidden", "true");
 
   itemButton.appendChild(symbol);
+
+  if (count > 1) {
+    const countBadge = document.createElement("span");
+    countBadge.className = "play-inventory-item-count";
+    countBadge.textContent = String(count);
+    countBadge.setAttribute("aria-hidden", "true");
+    itemButton.appendChild(countBadge);
+  }
 
   return itemButton;
 }
@@ -292,6 +354,69 @@ function buildTopLeftItemMap(inventory) {
   return map;
 }
 
+function getDragPayloadFromEvent(
+  event,
+  { fallbackGridId = "", fallbackItemId = null } = {},
+) {
+  if (fallbackItemId) {
+    return {
+      gridId: fallbackGridId || "inventory",
+      itemId: fallbackItemId,
+    };
+  }
+
+  const payload = parseDragPayload(event?.dataTransfer?.getData(INVENTORY_DRAG_MIME));
+  if (payload) {
+    return payload;
+  }
+
+  return parseDragPayloadFromGlobal();
+}
+
+function parseDragPayload(rawValue) {
+  if (!rawValue) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    const gridId =
+      typeof parsed.gridId === "string" && parsed.gridId.trim()
+        ? parsed.gridId.trim()
+        : null;
+    const itemId =
+      typeof parsed.itemId === "string" && parsed.itemId.trim()
+        ? parsed.itemId.trim()
+        : null;
+    if (!gridId || !itemId) {
+      return null;
+    }
+    return { gridId, itemId };
+  } catch {
+    return null;
+  }
+}
+
+function parseDragPayloadFromGlobal() {
+  const gridId =
+    typeof globalDragPayload?.gridId === "string" &&
+    globalDragPayload.gridId.trim()
+      ? globalDragPayload.gridId.trim()
+      : null;
+  const itemId =
+    typeof globalDragPayload?.itemId === "string" &&
+    globalDragPayload.itemId.trim()
+      ? globalDragPayload.itemId.trim()
+      : null;
+  if (!gridId || !itemId) {
+    return null;
+  }
+  return { gridId, itemId };
+}
+
 function buildCellKey(column, row) {
   return `${column}:${row}`;
 }
@@ -299,6 +424,13 @@ function buildCellKey(column, row) {
 function normalizeDimension(value, fallback) {
   if (!Number.isFinite(value)) {
     return fallback;
+  }
+  return Math.max(1, Math.floor(value));
+}
+
+function normalizeItemCount(value) {
+  if (!Number.isFinite(value)) {
+    return 1;
   }
   return Math.max(1, Math.floor(value));
 }

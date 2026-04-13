@@ -17,6 +17,8 @@ const SETTLEMENT_UPWARD_OFFSET_PX = 30;
 const ABANDONED_UPWARD_OFFSET_PX = 13;
 const SIGNPOST_VISUAL_HEIGHT_PX = 104;
 const SIGNPOST_UPWARD_OFFSET_PX = 18;
+const DEST_MARKER_RENDER_LAG_PX = 24;
+const DEST_MARKER_REVEAL_PROGRESS = 0.08;
 const WATER_BIOMES = new Set(["ocean", "lake"]);
 
 const LAYER_HAZE = {
@@ -205,7 +207,6 @@ export function drawGroundDetails(ctx, strip, scrollX, playerX, viewW) {
   const layerStripLeft = scrollX * PARALLAX_SPEED.ground - playerX;
 
   for (const detail of details) {
-    if (isWaterBiome(detail.biomeKey)) continue;
     const canvasX = detail.stripX - layerStripLeft;
     if (canvasX < -24 || canvasX > viewW + 24) continue;
     const verticalFrac = clamp01(
@@ -243,6 +244,63 @@ export function drawGroundTrees(ctx, strip, scrollX, playerX, viewW) {
       upwardOffsetPx: tree.upwardOffsetPx ?? 0,
     });
   }
+}
+
+export function drawDepartureFoothold(
+  ctx,
+  strip,
+  scrollX,
+  playerX,
+  groundTopY,
+  playerFeetY,
+  travelProgressWorld,
+) {
+  if (!strip?.layerSegments?.ground?.length) return;
+  if (!Number.isFinite(travelProgressWorld)) return;
+
+  const fadeDistanceWorld = 2.4;
+  const fadeT = clamp01(travelProgressWorld / fadeDistanceWorld);
+  if (fadeT >= 1) return;
+
+  const playerStripX = scrollX;
+  const underfoot = findGroundSegmentAtStripX(
+    strip.layerSegments.ground,
+    playerStripX,
+  );
+  if (!underfoot || !isWaterBiome(underfoot.biomeKey)) return;
+
+  const nearbyLand = findNearestLandSegment(strip.layerSegments.ground, playerStripX);
+  const baseRgb = nearbyLand?.colorRgb ?? [152, 132, 102];
+  const litRgb = lerpRgb(baseRgb, [210, 182, 136], 0.24);
+  const shadowRgb = lerpRgb(baseRgb, [78, 66, 52], 0.4);
+  const alpha = (1 - fadeT) * 0.64;
+
+  const width = 78 + (1 - fadeT) * 24;
+  const height = Math.max(12, (playerFeetY - groundTopY) * 0.24);
+  const centerX = playerX - 6;
+  const topY = groundTopY + Math.max(7, (playerFeetY - groundTopY) * 0.2);
+
+  ctx.save();
+  ctx.fillStyle = `rgba(${Math.round(shadowRgb[0])}, ${Math.round(shadowRgb[1])}, ${Math.round(shadowRgb[2])}, ${alpha * 0.52})`;
+  ctx.beginPath();
+  ctx.moveTo(centerX - width * 0.54, topY + height * 0.75);
+  ctx.quadraticCurveTo(centerX - width * 0.26, topY - height * 0.12, centerX, topY + height * 0.12);
+  ctx.quadraticCurveTo(centerX + width * 0.27, topY + height * 0.28, centerX + width * 0.56, topY + height * 0.8);
+  ctx.lineTo(centerX + width * 0.56, topY + height * 1.32);
+  ctx.lineTo(centerX - width * 0.54, topY + height * 1.32);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = `rgba(${Math.round(litRgb[0])}, ${Math.round(litRgb[1])}, ${Math.round(litRgb[2])}, ${alpha * 0.62})`;
+  ctx.beginPath();
+  ctx.moveTo(centerX - width * 0.46, topY + height * 0.76);
+  ctx.quadraticCurveTo(centerX - width * 0.18, topY + height * 0.1, centerX + width * 0.1, topY + height * 0.26);
+  ctx.quadraticCurveTo(centerX + width * 0.3, topY + height * 0.4, centerX + width * 0.46, topY + height * 0.83);
+  ctx.lineTo(centerX + width * 0.46, topY + height * 1.13);
+  ctx.lineTo(centerX - width * 0.46, topY + height * 1.13);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
 }
 
 export function drawForegroundCanopyTrees(
@@ -283,6 +341,8 @@ export function drawNodeMarkers({
   playerFeetY,
   viewH,
   activeTravel,
+  travelProgress,
+  travelTotalLength,
   world,
 }) {
   if (!activeTravel) {
@@ -298,7 +358,19 @@ export function drawNodeMarkers({
   const nodes = world?.features?.nodes ?? [];
 
   const startCanvasX = strip.startMarkerStripX - layerStripLeft;
-  const destCanvasX = strip.destMarkerStripX - layerStripLeft;
+  const baseDestCanvasX = strip.destMarkerStripX - layerStripLeft;
+  const isTraveling =
+    Number.isFinite(travelProgress) &&
+    Number.isFinite(travelTotalLength) &&
+    travelTotalLength > 0;
+  const progressRatio = isTraveling
+    ? clamp01(travelProgress / travelTotalLength)
+    : 1;
+  const showDestMarker =
+    !isTraveling || progressRatio >= DEST_MARKER_REVEAL_PROGRESS;
+  const destCanvasX = isTraveling
+    ? baseDestCanvasX + DEST_MARKER_RENDER_LAG_PX
+    : baseDestCanvasX;
   const startNodeId = activeTravel?.startNodeId ?? null;
   const destNodeId = activeTravel?.targetNodeId ?? null;
   const startNode = startNodeId == null ? null : (nodes[startNodeId] ?? null);
@@ -325,27 +397,29 @@ export function drawNodeMarkers({
         ? ABANDONED_UPWARD_OFFSET_PX
         : SETTLEMENT_UPWARD_OFFSET_PX,
   });
-  drawNodeMarkerOnCanvas(ctx, destCanvasX, markerY, {
-    marker: destMarker,
-    scale: NODE_MARKER_SCALE,
-    highlighted: true,
-    groundY: playerFeetY,
-    variantSeed: destNode?.id ?? destNodeId ?? "dest",
-    minVisualHeightPx: destSignpost
-      ? SIGNPOST_VISUAL_HEIGHT_PX
-      : destMarker === "abandoned"
-        ? ABANDONED_VISUAL_HEIGHT_PX
-        : SETTLEMENT_VISUAL_HEIGHT_PX,
-    verticalOffsetPx: destSignpost
-      ? SIGNPOST_UPWARD_OFFSET_PX
-      : destMarker === "abandoned"
-        ? ABANDONED_UPWARD_OFFSET_PX
-        : SETTLEMENT_UPWARD_OFFSET_PX,
-  });
+  if (showDestMarker) {
+    drawNodeMarkerOnCanvas(ctx, destCanvasX, markerY, {
+      marker: destMarker,
+      scale: NODE_MARKER_SCALE,
+      highlighted: true,
+      groundY: playerFeetY,
+      variantSeed: destNode?.id ?? destNodeId ?? "dest",
+      minVisualHeightPx: destSignpost
+        ? SIGNPOST_VISUAL_HEIGHT_PX
+        : destMarker === "abandoned"
+          ? ABANDONED_VISUAL_HEIGHT_PX
+          : SETTLEMENT_VISUAL_HEIGHT_PX,
+      verticalOffsetPx: destSignpost
+        ? SIGNPOST_UPWARD_OFFSET_PX
+        : destMarker === "abandoned"
+          ? ABANDONED_UPWARD_OFFSET_PX
+          : SETTLEMENT_UPWARD_OFFSET_PX,
+    });
+  }
 
   return {
     startMarkerCanvasX: startCanvasX,
-    destMarkerCanvasX: destCanvasX,
+    destMarkerCanvasX: showDestMarker ? destCanvasX : null,
   };
 }
 
@@ -518,6 +592,19 @@ function drawGroundDetailGlyph(ctx, x, y, detail) {
       ctx.stroke();
       break;
     }
+    case "branch": {
+      ctx.strokeStyle = "rgba(96,71,48,0.8)";
+      ctx.lineWidth = Math.max(1, 1.15 * scale);
+      ctx.beginPath();
+      ctx.moveTo(x - 3.2 * scale, y - 1.3 * scale);
+      ctx.lineTo(x + 3.4 * scale, y - 2.1 * scale);
+      ctx.moveTo(x - 0.2 * scale, y - 1.7 * scale);
+      ctx.lineTo(x - 1.7 * scale, y - 4.2 * scale);
+      ctx.moveTo(x + 1.3 * scale, y - 1.95 * scale);
+      ctx.lineTo(x + 2.8 * scale, y - 3.9 * scale);
+      ctx.stroke();
+      break;
+    }
     case "leaf": {
       ctx.fillStyle = "rgba(82,114,62,0.75)";
       ctx.beginPath();
@@ -533,10 +620,36 @@ function drawGroundDetailGlyph(ctx, x, y, detail) {
       ctx.fill();
       break;
     }
+    case "grass-clump": {
+      ctx.strokeStyle = "rgba(78,109,62,0.84)";
+      ctx.lineWidth = Math.max(1, 1.05 * scale);
+      ctx.beginPath();
+      ctx.moveTo(x - 3 * scale, y);
+      ctx.lineTo(x - 1.8 * scale, y - 4.8 * scale);
+      ctx.moveTo(x - 1 * scale, y);
+      ctx.lineTo(x - 0.3 * scale, y - 6.2 * scale);
+      ctx.moveTo(x + 0.6 * scale, y);
+      ctx.lineTo(x + 0.8 * scale, y - 6.1 * scale);
+      ctx.moveTo(x + 2.4 * scale, y);
+      ctx.lineTo(x + 1.7 * scale, y - 4.9 * scale);
+      ctx.stroke();
+      break;
+    }
     case "flower": {
       ctx.fillStyle = "rgba(241,216,124,0.84)";
       ctx.beginPath();
       ctx.arc(x, y - 2.2 * scale, 1.4 * scale, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case "scree": {
+      ctx.fillStyle = isSnow
+        ? "rgba(188,192,198,0.76)"
+        : "rgba(112,104,96,0.78)";
+      ctx.beginPath();
+      ctx.ellipse(x - 2.1 * scale, y - 0.8 * scale, 1.4 * scale, 1.0 * scale, 0, 0, Math.PI * 2);
+      ctx.ellipse(x, y - 1.2 * scale, 1.7 * scale, 1.1 * scale, 0, 0, Math.PI * 2);
+      ctx.ellipse(x + 2.2 * scale, y - 0.6 * scale, 1.5 * scale, 1.0 * scale, 0, 0, Math.PI * 2);
       ctx.fill();
       break;
     }
@@ -554,12 +667,61 @@ function drawGroundDetailGlyph(ctx, x, y, detail) {
       ctx.fill();
       break;
     }
+    case "dune-ripple": {
+      ctx.strokeStyle = "rgba(182,152,102,0.72)";
+      ctx.lineWidth = Math.max(1, 1.05 * scale);
+      for (let i = 0; i < 3; i += 1) {
+        const yy = y - (1.9 - i * 1.25) * scale;
+        ctx.beginPath();
+        ctx.moveTo(x - 3.2 * scale, yy);
+        ctx.quadraticCurveTo(x, yy - 1.1 * scale, x + 3.2 * scale, yy);
+        ctx.stroke();
+      }
+      break;
+    }
+    case "ice-shard": {
+      ctx.fillStyle = "rgba(210,229,246,0.82)";
+      ctx.beginPath();
+      ctx.moveTo(x - 1.2 * scale, y - 0.6 * scale);
+      ctx.lineTo(x + 0.2 * scale, y - 5.8 * scale);
+      ctx.lineTo(x + 1.5 * scale, y - 0.4 * scale);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case "reed": {
+      ctx.strokeStyle = "rgba(116,141,102,0.82)";
+      ctx.lineWidth = Math.max(1, 1.0 * scale);
+      ctx.beginPath();
+      ctx.moveTo(x - 1.8 * scale, y);
+      ctx.lineTo(x - 1.8 * scale, y - 6.2 * scale);
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y - 7.4 * scale);
+      ctx.moveTo(x + 1.9 * scale, y);
+      ctx.lineTo(x + 1.9 * scale, y - 5.8 * scale);
+      ctx.stroke();
+      break;
+    }
     case "foam": {
       ctx.strokeStyle = "rgba(234,241,247,0.68)";
       ctx.lineWidth = Math.max(1, 1.2 * scale);
       ctx.beginPath();
       ctx.moveTo(x - 3.2 * scale, y - 1.4 * scale);
       ctx.lineTo(x + 3.2 * scale, y - 1.4 * scale);
+      ctx.stroke();
+      break;
+    }
+    case "wave-ripple": {
+      ctx.strokeStyle = "rgba(226,238,247,0.72)";
+      ctx.lineWidth = Math.max(1, 1.1 * scale);
+      ctx.beginPath();
+      ctx.moveTo(x - 4 * scale, y - 1.5 * scale);
+      ctx.quadraticCurveTo(x - 2.1 * scale, y - 3.2 * scale, x, y - 1.5 * scale);
+      ctx.quadraticCurveTo(x + 2.1 * scale, y + 0.2 * scale, x + 4 * scale, y - 1.5 * scale);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x - 3.1 * scale, y + 0.25 * scale);
+      ctx.quadraticCurveTo(x - 1.4 * scale, y - 1.05 * scale, x + 0.3 * scale, y + 0.2 * scale);
       ctx.stroke();
       break;
     }
@@ -576,4 +738,34 @@ function drawGroundDetailGlyph(ctx, x, y, detail) {
       break;
   }
   ctx.restore();
+}
+
+function findGroundSegmentAtStripX(segments, stripX) {
+  if (!segments?.length || !Number.isFinite(stripX)) return null;
+  for (const segment of segments) {
+    if (!segment || segment.isBlend) continue;
+    const start = segment.stripX;
+    const end = segment.stripX + segment.stripWidth;
+    if (stripX >= start && stripX <= end) {
+      return segment;
+    }
+  }
+  if (stripX < segments[0].stripX) return segments[0];
+  return segments[segments.length - 1];
+}
+
+function findNearestLandSegment(segments, stripX) {
+  if (!segments?.length || !Number.isFinite(stripX)) return null;
+  let best = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const segment of segments) {
+    if (!segment || segment.isBlend || isWaterBiome(segment.biomeKey)) continue;
+    const center = segment.stripX + segment.stripWidth * 0.5;
+    const distance = Math.abs(center - stripX);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = segment;
+    }
+  }
+  return best;
 }

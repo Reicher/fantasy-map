@@ -1,23 +1,25 @@
 import {
   advanceTravel,
+  beginRest,
   beginTravel,
   createPlayState,
   getDiscoveredNodeIds,
   getVisibleNodeIds,
   getValidTargetIds,
   sampleTravelBiomeBandPoints,
-} from "../game/travel.js?v=20260412f";
-import { createJourneyScene } from "../game/journeyScene.js?v=20260411c";
+  toggleTravelPause as toggleTravelPauseState,
+} from "../game/travel.js?v=20260412i";
+import { createJourneyScene } from "../game/journeyScene.js?v=20260412o";
 import {
   renderPlayWorldDynamic,
   renderPlayWorldStatic,
-} from "../render/renderer.js?v=20260412c";
+} from "../render/renderer.js?v=20260412e";
 import { inspectWorldAt } from "../inspector.js?v=20260408b";
 import { createPlayCamera as buildPlayCamera } from "./cameraState.js?v=20260407a";
 import { clearHover, showHoverHit } from "./hoverPanel.js?v=20260408a";
 import { createMapAtlasCacheManager } from "./mapAtlasCache.js?v=20260408h";
-import { createPlayController } from "./playController.js?v=20260412e";
-import { createPlaySubViewController } from "./playSubView.js?v=20260412f";
+import { createPlayController } from "./playController.js?v=20260412g";
+import { createPlaySubViewController } from "./playSubView.js?v=20260412i";
 import {
   createTransitionController,
   waitForNextPaintIfActive,
@@ -70,6 +72,8 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     renderPlayWorld,
     setPlayViewMode,
     updatePlaySubView,
+    toggleTravelPause,
+    startRest,
     enterPlayMode,
     stopAnimation: playController.stopAnimation,
     resetJourney: journeyScene.reset,
@@ -163,6 +167,12 @@ export function createPlaySession({ refs, state, syncModeUi }) {
     if (!state.playState || (mode !== "map" && mode !== "journey")) {
       return;
     }
+    if (
+      mode === "map" &&
+      (state.playState.pendingRestChoice || state.playState.rest)
+    ) {
+      return;
+    }
 
     state.playState = {
       ...state.playState,
@@ -179,6 +189,30 @@ export function createPlaySession({ refs, state, syncModeUi }) {
 
   function updatePlaySubView() {
     playSubView.update(state.currentWorld, state.playState);
+  }
+
+  function toggleTravelPause() {
+    if (!state.playState?.travel || state.playState?.gameOver) {
+      return false;
+    }
+    state.playState = toggleTravelPauseState(state.playState);
+    playController.ensureAnimation();
+    renderPlayWorld();
+    return true;
+  }
+
+  function startRest(hours) {
+    if (!state.playState || state.playState.gameOver) {
+      return false;
+    }
+    const nextPlayState = beginRest(state.playState, hours);
+    if (nextPlayState === state.playState) {
+      return false;
+    }
+    state.playState = nextPlayState;
+    playController.ensureAnimation();
+    renderPlayWorld();
+    return true;
   }
 
   async function enterPlayMode() {

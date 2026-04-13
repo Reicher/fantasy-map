@@ -16,18 +16,19 @@
 import {
   buildJourneyStrip,
   extendStripWithTravel,
-} from "./journey/journeyStrip.js?v=20260412b";
+} from "./journey/journeyStrip.js?v=20260412c";
 import { drawPlayerFigure } from "./journey/journeyStyle.js?v=20260412d";
 import {
   drawDebugOverlay,
   drawForegroundCanopyTrees,
+  drawDepartureFoothold,
   drawGroundDetails,
   drawGroundLayer,
   drawGroundTrees,
   drawNodeMarkers,
   drawSilhouetteLayer,
   drawTreeDecorationsForLayer,
-} from "./journey/journeyLayerRenderers.js";
+} from "./journey/journeyLayerRenderers.js?v=20260412b";
 import {
   createSkyState,
   drawNightVeil,
@@ -81,7 +82,9 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
 
     const viewW = canvas.width;
     const viewH = canvas.height;
-    const isTraveling = Boolean(playState?.travel);
+    const isTraveling = Boolean(
+      playState?.travel && !playState?.isTravelPaused && !playState?.rest,
+    );
     const showSnow = options.showSnow !== false;
     const worldSnapshot = options.world ?? getWorld();
     const nextKey = travelKey(playState?.travel);
@@ -194,8 +197,6 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     const markerTravel = playState?.travel ?? state.lastTravel ?? state.idleTravel;
     const playerX = Math.round(viewW * PLAYER_X_FRAC);
     const playerFeetY = Math.round(viewH * PLAYER_FEET_Y_FRAC);
-    const markerAnchorX = viewW / 2;
-
     let scrollX = state.lastScrollX;
     if (strip && playState?.travel) {
       const progress = Math.max(
@@ -207,33 +208,30 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       );
       scrollX =
         strip.startMarkerStripX +
-        progress * strip.pxPerWorld +
-        playerX -
-        markerAnchorX;
+        progress * strip.pxPerWorld;
       state.lastScrollX = scrollX;
     } else if (strip) {
       if (state.lastTravel) {
-        scrollX = strip.destMarkerStripX + playerX - markerAnchorX;
+        scrollX = strip.destMarkerStripX;
       } else if (state.idleTravel) {
         // Idle preview should frame the local surroundings around the current
         // position, not the synthetic route's start edge (which can be water).
         scrollX =
           strip.startMarkerStripX +
-          strip.routePx * 0.5 +
-          playerX -
-          markerAnchorX;
+          strip.routePx * 0.5;
       } else {
         scrollX =
           strip.startMarkerStripX +
-          strip.routePx * 0.45 +
-          playerX -
-          markerAnchorX;
+          strip.routePx * 0.45;
       }
       state.lastScrollX = scrollX;
     }
 
     ctx.clearRect(0, 0, viewW, viewH);
-    const skyState = createSkyState(playState?.timeOfDayHours, viewW, viewH);
+    const skyState = createSkyState(playState?.timeOfDayHours, viewW, viewH, {
+      elapsedHours: playState?.journeyElapsedHours ?? playState?.hungerElapsedHours,
+      skySeed: world?.params?.seed,
+    });
     const skyHazeRgb = skyState.horizonRgb;
 
     drawSky(ctx, viewW, viewH, skyState);
@@ -278,6 +276,15 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     drawGroundLayer(ctx, strip, scrollX, playerX, viewW);
     drawGroundDetails(ctx, strip, scrollX, playerX, viewW);
     drawGroundTrees(ctx, strip, scrollX, playerX, viewW);
+    drawDepartureFoothold(
+      ctx,
+      strip,
+      scrollX,
+      playerX,
+      groundTopY,
+      playerFeetY,
+      playState?.travel?.progress ?? Number.POSITIVE_INFINITY,
+    );
 
     const markerSnapshot = drawNodeMarkers({
       ctx,
@@ -288,6 +295,8 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       playerFeetY,
       viewH,
       activeTravel: markerTravel,
+      travelProgress: playState?.travel?.progress ?? null,
+      travelTotalLength: playState?.travel?.totalLength ?? null,
       world,
     });
 

@@ -49,30 +49,18 @@ export function drawPlayerMarker(ctx, playerStart, viewport) {
 
   ctx.save();
   ctx.beginPath();
-  ctx.fillStyle = "rgba(16, 8, 8, 0.26)";
-  ctx.arc(point.x, point.y, 10.6, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(82, 8, 8, 0.32)";
+  ctx.arc(point.x, point.y, 13, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.beginPath();
-  ctx.strokeStyle = "rgba(255, 244, 226, 0.98)";
-  ctx.lineWidth = 3.1;
+  ctx.fillStyle = "#f03737";
   ctx.arc(point.x, point.y, 8.1, 0, Math.PI * 2);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.strokeStyle = "rgba(28, 11, 11, 0.86)";
-  ctx.lineWidth = 1.6;
-  ctx.arc(point.x, point.y, 6.0, 0, Math.PI * 2);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.fillStyle = "#b31e1e";
-  ctx.arc(point.x, point.y, 4.25, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.beginPath();
-  ctx.fillStyle = "rgba(255, 244, 226, 0.98)";
-  ctx.arc(point.x, point.y, 1.45, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(255, 244, 244, 0.98)";
+  ctx.arc(point.x, point.y, 2.5, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }

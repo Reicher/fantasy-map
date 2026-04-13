@@ -1,5 +1,5 @@
 import { RENDER_HEIGHT, RENDER_WIDTH } from "../config.js";
-import { createViewport } from "../render/renderer.js?v=20260412c";
+import { createViewport } from "../render/renderer.js?v=20260412d";
 
 export function createMapAtlasCacheManager({
   canvas,
