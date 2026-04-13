@@ -8,6 +8,7 @@ import {
 import {
   describeHuntSituation,
   isNodeDiscovered,
+  updateAbandonedLootInventory,
 } from "../game/travel.js?v=20260413a";
 import { getNodeTitle } from "../node/model.js";
 import { createInventoryGridController } from "./inventoryGrid.js?v=20260412e";
@@ -1201,26 +1202,5 @@ function getLootInventory(playState) {
 }
 
 function withUpdatedLootInventory(playState, nextLootInventory) {
-  if (!playState) {
-    return playState;
-  }
-  const lootEvent = getLootEvent(playState);
-  if (!lootEvent) {
-    return playState;
-  }
-
-  if (!nextLootInventory || isInventoryEmpty(nextLootInventory)) {
-    return {
-      ...playState,
-      pendingJourneyEvent: null,
-    };
-  }
-
-  return {
-    ...playState,
-    pendingJourneyEvent: {
-      ...lootEvent,
-      inventory: nextLootInventory,
-    },
-  };
+  return updateAbandonedLootInventory(playState, nextLootInventory);
 }

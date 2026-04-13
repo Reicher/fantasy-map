@@ -2,6 +2,7 @@ import { getBiomeDefinitionById } from "../biomes/index.js";
 import {
   createInitialInventory,
   consumeInventoryItemsByType,
+  isInventoryEmpty,
   transferAllInventoryItems,
 } from "./inventory.js?v=20260413a";
 import { isSnowCell } from "../generator/models/surfaceModel.js?v=20260402b";
@@ -92,6 +93,7 @@ export function createPlayState(world) {
     pressedNodeId: null,
     travel: null,
     pendingJourneyEvent: null,
+    abandonedLootByNodeId: {},
     inventory: createInitialInventory(),
     hungerElapsedHours: 0,
     journeyElapsedHours: 0,
@@ -381,6 +383,12 @@ export function advanceTravel(playState, world, deltaMs) {
         targetNodeId,
       );
     }
+    const arrival = createNodeArrivalResult(
+      targetNodeId,
+      world,
+      playState.graph,
+      playState,
+    );
     return {
       ...playState,
       currentNodeId: targetNodeId,
@@ -390,11 +398,8 @@ export function advanceTravel(playState, world, deltaMs) {
           ? (regionAtCell(world, targetNode.cell)?.id ?? lastRegionId)
           : lastRegionId,
       travel: null,
-      pendingJourneyEvent: createNodeArrivalEvent(
-        targetNodeId,
-        world,
-        playState.graph,
-      ),
+      pendingJourneyEvent: arrival.event,
+      abandonedLootByNodeId: arrival.abandonedLootByNodeId,
       isTravelPaused: false,
       travelPauseReason: null,
       pendingRestChoice: false,
@@ -1360,6 +1365,39 @@ export function isNodeDiscovered(playState, nodeId) {
   return playState?.currentNodeId === nodeId;
 }
 
+export function updateAbandonedLootInventory(playState, nextLootInventory) {
+  if (!playState) {
+    return playState;
+  }
+
+  const lootEvent = getPendingAbandonedLootEvent(playState);
+  if (!lootEvent) {
+    return playState;
+  }
+
+  const nextAbandonedLootByNodeId = setAbandonedLootInventoryForNode(
+    playState.abandonedLootByNodeId,
+    lootEvent.nodeId,
+    nextLootInventory,
+  );
+  if (!nextLootInventory || isInventoryEmpty(nextLootInventory)) {
+    return {
+      ...playState,
+      pendingJourneyEvent: null,
+      abandonedLootByNodeId: nextAbandonedLootByNodeId,
+    };
+  }
+
+  return {
+    ...playState,
+    pendingJourneyEvent: {
+      ...lootEvent,
+      inventory: cloneInventorySnapshot(nextLootInventory),
+    },
+    abandonedLootByNodeId: nextAbandonedLootByNodeId,
+  };
+}
+
 export function getDiscoveredNodeIds(playState) {
   return [...collectDiscoveredNodeIdSet(playState)].sort((a, b) => a - b);
 }
@@ -1390,26 +1428,79 @@ export function getVisibleNodeIds(playState) {
   return [...visibleNodeIds].sort((a, b) => a - b);
 }
 
-function createNodeArrivalEvent(nodeId, world, graph = null) {
+function createNodeArrivalResult(nodeId, world, graph = null, playState = null) {
   const node = nodeId == null ? null : world?.features?.nodes?.[nodeId];
   if (node?.marker === "abandoned") {
-    return createAbandonedLootEvent(nodeId, world);
+    return createAbandonedLootArrivalResult(nodeId, world, playState);
   }
   if (node?.marker === "signpost") {
-    return createSignpostDirectionsEvent(nodeId, world, graph);
+    return {
+      event: createSignpostDirectionsEvent(nodeId, world, graph),
+      abandonedLootByNodeId: normalizeAbandonedLootByNodeId(
+        playState?.abandonedLootByNodeId,
+      ),
+    };
   }
 
-  return null;
+  return {
+    event: null,
+    abandonedLootByNodeId: normalizeAbandonedLootByNodeId(
+      playState?.abandonedLootByNodeId,
+    ),
+  };
 }
 
-function createAbandonedLootEvent(nodeId, world) {
-  const inventory = createAbandonedLootInventory(world, nodeId);
+function createAbandonedLootArrivalResult(nodeId, world, playState) {
+  const key = getAbandonedLootNodeKey(nodeId);
+  const abandonedLootByNodeId = normalizeAbandonedLootByNodeId(
+    playState?.abandonedLootByNodeId,
+  );
+  const hasTrackedLoot = Object.prototype.hasOwnProperty.call(
+    abandonedLootByNodeId,
+    key,
+  );
+  const trackedInventory = hasTrackedLoot ? abandonedLootByNodeId[key] : null;
+  const baseInventory = hasTrackedLoot
+    ? cloneInventorySnapshot(trackedInventory)
+    : createAbandonedLootInventory(world, nodeId);
+  const inventory = normalizeLootInventory(baseInventory);
+  const nextAbandonedLootByNodeId = hasTrackedLoot
+    ? abandonedLootByNodeId
+    : setAbandonedLootInventoryForNode(
+        abandonedLootByNodeId,
+        nodeId,
+        inventory,
+      );
+
+  if (!inventory || isInventoryEmpty(inventory)) {
+    return {
+      event: {
+        type: "abandoned-empty",
+        nodeId: nodeId == null ? null : nodeId,
+        message: "Platsen är redan länsad.",
+        requiresAcknowledgement: false,
+      },
+      abandonedLootByNodeId: setAbandonedLootInventoryForNode(
+        nextAbandonedLootByNodeId,
+        nodeId,
+        null,
+      ),
+    };
+  }
+
   return {
-    type: "abandoned-loot",
-    nodeId: nodeId == null ? null : nodeId,
-    message: "Du hittar ett övergivet förråd.",
-    requiresAcknowledgement: false,
-    inventory,
+    event: {
+      type: "abandoned-loot",
+      nodeId: nodeId == null ? null : nodeId,
+      message: "Du hittar ett övergivet förråd.",
+      requiresAcknowledgement: false,
+      inventory,
+    },
+    abandonedLootByNodeId: setAbandonedLootInventoryForNode(
+      nextAbandonedLootByNodeId,
+      nodeId,
+      inventory,
+    ),
   };
 }
 
@@ -1522,6 +1613,75 @@ function createLootEntry(type, name, symbol, count) {
     symbol,
     count: Math.max(1, Math.min(10, Math.floor(count))),
   };
+}
+
+function normalizeAbandonedLootByNodeId(value) {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  return value;
+}
+
+function getAbandonedLootNodeKey(nodeId) {
+  return String(nodeId ?? "unknown");
+}
+
+function setAbandonedLootInventoryForNode(
+  abandonedLootByNodeId,
+  nodeId,
+  inventory,
+) {
+  const key = getAbandonedLootNodeKey(nodeId);
+  const next = {
+    ...normalizeAbandonedLootByNodeId(abandonedLootByNodeId),
+  };
+  const normalizedInventory = normalizeLootInventory(inventory);
+  next[key] =
+    normalizedInventory && !isInventoryEmpty(normalizedInventory)
+      ? normalizedInventory
+      : null;
+  return next;
+}
+
+function normalizeLootInventory(inventory) {
+  const snapshot = cloneInventorySnapshot(inventory);
+  if (!snapshot || isInventoryEmpty(snapshot)) {
+    return null;
+  }
+  return snapshot;
+}
+
+function cloneInventorySnapshot(inventory) {
+  if (!inventory || typeof inventory !== "object") {
+    return null;
+  }
+  const columns = Number.isFinite(inventory.columns)
+    ? Math.max(1, Math.floor(inventory.columns))
+    : EVENT_LOOT_COLUMNS;
+  const rows = Number.isFinite(inventory.rows)
+    ? Math.max(1, Math.floor(inventory.rows))
+    : EVENT_LOOT_ROWS;
+  const items = Array.isArray(inventory.items)
+    ? inventory.items
+        .filter(Boolean)
+        .map((item) => ({
+          ...item,
+          count: Number.isFinite(item?.count)
+            ? Math.max(1, Math.floor(item.count))
+            : 1,
+        }))
+    : [];
+
+  return {
+    columns,
+    rows,
+    items,
+  };
+}
+
+function getPendingAbandonedLootEvent(playState) {
+  const event = playState?.pendingJourneyEvent;
+  return event?.type === "abandoned-loot" ? event : null;
 }
 
 function createTravel(

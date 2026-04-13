@@ -248,15 +248,19 @@ export function createSkyState(timeOfDayHours, viewW, viewH, options = {}) {
   const moonIllumination = 0.5 - 0.5 * Math.cos(moonCycleProgress * TAU);
   const moonPhaseIndex =
     Math.floor(moonCycleProgress * LUNAR_PHASE_COUNT + 0.5) % LUNAR_PHASE_COUNT;
+  const moonPhaseVisibility = 0.42 + moonIllumination * 0.58;
 
   const moonVisible =
     clamp01((moonAltitude + 0.2) / 0.54) *
-    (0.28 + night * 0.88) *
-    (0.18 + moonIllumination * 0.94) *
-    (1 - cloudCover * 0.52 + twilight * 0.18);
+    (0.36 + night * 0.92) *
+    moonPhaseVisibility *
+    (1 - cloudCover * 0.48 + twilight * 0.18);
 
   const moonlight =
-    clamp01((moonAltitude + 0.08) / 1.04) * moonIllumination * moonVisible * night;
+    clamp01((moonAltitude + 0.08) / 1.04) *
+    (0.24 + moonIllumination * 0.76) *
+    moonVisible *
+    night;
 
   return {
     hour,
@@ -404,7 +408,14 @@ function drawMoon(ctx, skyState) {
 }
 
 function drawMoonDiskWithPhase(ctx, moon, skyState) {
-  const litAlpha = (0.34 + moon.visible * 0.56) * (0.16 + moon.illumination * 0.96);
+  const earthshineAlpha =
+    (0.12 + moon.visible * 0.22) * (1 - skyState.cloudCover * 0.36);
+  ctx.fillStyle = `rgba(142, 162, 188, ${earthshineAlpha})`;
+  ctx.beginPath();
+  ctx.arc(moon.x, moon.y, moon.radius, 0, TAU);
+  ctx.fill();
+
+  const litAlpha = (0.44 + moon.visible * 0.5) * (0.24 + moon.illumination * 0.76);
   ctx.fillStyle = `rgba(235, 243, 255, ${litAlpha})`;
   ctx.beginPath();
   ctx.arc(moon.x, moon.y, moon.radius, 0, TAU);
@@ -415,18 +426,24 @@ function drawMoonDiskWithPhase(ctx, moon, skyState) {
   ctx.arc(moon.x, moon.y, moon.radius, 0, TAU);
   ctx.clip();
 
-  const shadowAlpha = (0.48 + (1 - moon.illumination) * 0.42) * moon.visible;
+  const shadowAlpha = (0.14 + (1 - moon.illumination) * 0.24) * moon.visible;
   ctx.fillStyle = `rgba(10, 19, 36, ${shadowAlpha})`;
 
   switch (moon.phaseIndex) {
     case 0: {
       // Nymåne
-      ctx.fillRect(
-        moon.x - moon.radius - 2,
-        moon.y - moon.radius - 2,
-        moon.radius * 2 + 4,
-        moon.radius * 2 + 4,
+      // Keep a slim earthshine rim so the moon never fully disappears.
+      ctx.beginPath();
+      ctx.ellipse(
+        moon.x + moon.radius * 1.08,
+        moon.y,
+        moon.radius * 1.1,
+        moon.radius,
+        0,
+        0,
+        TAU,
       );
+      ctx.fill();
       break;
     }
     case 1: {
@@ -536,6 +553,14 @@ function drawMoonDiskWithPhase(ctx, moon, skyState) {
   }
 
   ctx.restore();
+
+  const rimAlpha =
+    (0.14 + moon.visible * 0.2) * (0.24 + moon.illumination * 0.76);
+  ctx.strokeStyle = `rgba(220, 232, 248, ${rimAlpha})`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(moon.x, moon.y, moon.radius, 0, TAU);
+  ctx.stroke();
 }
 
 function drawClouds(ctx, viewW, viewH, skyState) {
