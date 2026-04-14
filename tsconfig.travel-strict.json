@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": false,
+    "noImplicitAny": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["src/game/travel/**/*.ts"]
+}

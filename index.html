@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Isolerad fantasivärld</title>
+    <title>Färdväg</title>
     <script>
       (() => {
         const params = new URLSearchParams(window.location.search);
@@ -24,7 +24,7 @@
       rel="icon"
       href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="%23e6d7b6"/><path d="M6 22 L13 10 L20 22 M12 17 L16 12 L23 22" fill="none" stroke="%23543f27" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
     />
-    <link rel="stylesheet" href="./styles.css?v=20260413d" />
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div id="editor-shell" class="app-shell">
@@ -165,6 +165,8 @@
           <p id="play-game-over-body" class="play-game-over-body">
             Du svalt ihjäl.
           </p>
+          <pre id="play-game-over-stats" class="play-game-over-stats" hidden></pre>
+          <p id="play-game-over-record" class="play-game-over-record" hidden></p>
           <button
             id="play-game-over-ok"
             type="button"
@@ -307,9 +309,8 @@
               role="img"
               aria-label="Stamina: 15 av 15"
             ></div>
-            <div class="play-journey-food" role="img" aria-label="Mat: 0">
-              <span class="play-journey-food-icon" aria-hidden="true"></span>
-              <span id="play-journey-food-count" class="play-journey-food-count">0</span>
+            <div class="play-journey-food">
+              <span id="play-journey-food-count" class="play-journey-food-count">0 Mat</span>
             </div>
           </aside>
           <canvas
@@ -381,6 +382,11 @@
                   Snö
                 </button>
               </div>
+              <div
+                id="build-version-badge"
+                class="build-version-badge"
+                aria-live="polite"
+              ></div>
             </section>
           </div>
           <div class="play-bottom-nav">
@@ -394,6 +400,7 @@
             >
               Resa
             </button>
+            <span class="play-bottom-nav-divider" aria-hidden="true"></span>
             <button
               id="play-toggle-travel"
               type="button"
@@ -403,15 +410,7 @@
             >
               Pausa
             </button>
-            <button
-              id="play-panel-toggle-character"
-              type="button"
-              class="ghost-button play-main-panel-button"
-              data-tooltip="Öppna/stäng karaktär (C)"
-              title="Öppna/stäng karaktär (C)"
-            >
-              Karaktär
-            </button>
+            <span class="play-bottom-nav-divider" aria-hidden="true"></span>
             <button
               id="play-panel-toggle-inventory"
               type="button"
@@ -420,6 +419,15 @@
               title="Öppna/stäng inventarie (I)"
             >
               Inventarie
+            </button>
+            <button
+              id="play-panel-toggle-character"
+              type="button"
+              class="ghost-button play-main-panel-button"
+              data-tooltip="Öppna/stäng karaktär (C)"
+              title="Öppna/stäng karaktär (C)"
+            >
+              Karaktär
             </button>
             <button
               id="play-panel-toggle-settings"
@@ -435,8 +443,6 @@
       </div>
     </section>
 
-    <div id="build-version-badge" class="build-version-badge" aria-live="polite"></div>
-
-    <script type="module" src="./src/app.js?v=20260413i"></script>
+    <script type="module" src="./src/app.ts"></script>
   </body>
 </html>

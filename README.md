@@ -1,19 +1,22 @@
-# Fantasy Map
+# Färdväg
 
-En dependency-fri webbapp för att generera, utforska och spela på en deterministisk fantasikarta. Projektet består i dag av två tydliga lägen:
+En webbapp för att generera, utforska och spela på en deterministisk fantasikarta. Projektet består i dag av två tydliga lägen:
 
 - `Editor`: generera kartor, justera parametrar och exportera kartbild
 - `Spelläge`: utforska kartan med fog of war, resa mellan noder och växla mellan kartvy och färdvy
 
-Projektet är byggt i ren HTML, CSS och JavaScript med ES-moduler och använder ingen extern frontend-stack eller npm-beroenden.
+Projektet är byggt i HTML, CSS och TypeScript med ES-moduler och körs via Vite.
 
 ## Snabbstart
 
 Starta den lokala servern:
 
 ```bash
+npm install
 npm start
 ```
+
+Obs: kör via `npm start` (Vite). En enkel statisk server (`python -m http.server`) kan inte köra TypeScript-modulerna direkt.
 
 Öppna sedan:
 
@@ -121,11 +124,11 @@ Ansvarar för att bygga världen:
 
 Några centrala filer:
 
-- [src/generator/worldGenerator.js](/Users/robin.reicher/Projects/fantasy-map/src/generator/worldGenerator.js)
-- [src/generator/terrain.js](/Users/robin.reicher/Projects/fantasy-map/src/generator/terrain.js)
-- [src/generator/hydrology.js](/Users/robin.reicher/Projects/fantasy-map/src/generator/hydrology.js)
-- [src/generator/regions.js](/Users/robin.reicher/Projects/fantasy-map/src/generator/regions.js)
-- [src/generator/compileGeometry.js](/Users/robin.reicher/Projects/fantasy-map/src/generator/compileGeometry.js)
+- [src/generator/worldGenerator.ts](./src/generator/worldGenerator.ts)
+- [src/generator/terrain.ts](./src/generator/terrain.ts)
+- [src/generator/hydrology.ts](./src/generator/hydrology.ts)
+- [src/generator/regions.ts](./src/generator/regions.ts)
+- [src/generator/compileGeometry.ts](./src/generator/compileGeometry.ts)
 
 ### `src/render/*`
 
@@ -141,11 +144,11 @@ Canvas-rendering av kartan:
 
 Några centrala filer:
 
-- [src/render/renderer.js](/Users/robin.reicher/Projects/fantasy-map/src/render/renderer.js)
-- [src/render/terrainLayer.js](/Users/robin.reicher/Projects/fantasy-map/src/render/terrainLayer.js)
-- [src/render/waterLayer.js](/Users/robin.reicher/Projects/fantasy-map/src/render/waterLayer.js)
-- [src/render/forestLayer.js](/Users/robin.reicher/Projects/fantasy-map/src/render/forestLayer.js)
-- [src/render/fogLayer.js](/Users/robin.reicher/Projects/fantasy-map/src/render/fogLayer.js)
+- [src/render/renderer.ts](./src/render/renderer.ts)
+- [src/render/terrainLayer.ts](./src/render/terrainLayer.ts)
+- [src/render/waterLayer.ts](./src/render/waterLayer.ts)
+- [src/render/forestLayer.ts](./src/render/forestLayer.ts)
+- [src/render/fogLayer.ts](./src/render/fogLayer.ts)
 
 ### `src/game/*`
 
@@ -160,10 +163,10 @@ Spelstate och färdlogik:
 
 Några centrala filer:
 
-- [src/game/travel.js](/Users/robin.reicher/Projects/fantasy-map/src/game/travel.js)
-- [src/game/playQueries.js](/Users/robin.reicher/Projects/fantasy-map/src/game/playQueries.js)
-- [src/game/journeyScene.js](/Users/robin.reicher/Projects/fantasy-map/src/game/journeyScene.js)
-- [src/game/playViewText.js](/Users/robin.reicher/Projects/fantasy-map/src/game/playViewText.js)
+- [src/game/travel.ts](./src/game/travel.ts)
+- [src/game/playQueries.ts](./src/game/playQueries.ts)
+- [src/game/journeyScene.ts](./src/game/journeyScene.ts)
+- [src/game/playViewText.ts](./src/game/playViewText.ts)
 
 ### `src/ui/*`
 
@@ -178,18 +181,18 @@ UI-shell och kontrollflöden för editor och spel:
 
 Några centrala filer:
 
-- [src/app.js](/Users/robin.reicher/Projects/fantasy-map/src/app.js)
-- [src/ui/appShell.js](/Users/robin.reicher/Projects/fantasy-map/src/ui/appShell.js)
-- [src/ui/editorSession.js](/Users/robin.reicher/Projects/fantasy-map/src/ui/editorSession.js)
-- [src/ui/playSession.js](/Users/robin.reicher/Projects/fantasy-map/src/ui/playSession.js)
-- [src/ui/playController.js](/Users/robin.reicher/Projects/fantasy-map/src/ui/playController.js)
+- [src/app.ts](./src/app.ts)
+- [src/ui/appShell.ts](./src/ui/appShell.ts)
+- [src/ui/editorSession.ts](./src/ui/editorSession.ts)
+- [src/ui/playSession.ts](./src/ui/playSession.ts)
+- [src/ui/playController.ts](./src/ui/playController.ts)
 
 ### Toppnivåfiler
 
-- [index.html](/Users/robin.reicher/Projects/fantasy-map/index.html): primär entrypoint för både play och editor (via `mode`-query)
-- [editor/index.html](/Users/robin.reicher/Projects/fantasy-map/editor/index.html): kompatibilitetsentrypoint som redirectar till `/?mode=editor`
-- [styles.css](/Users/robin.reicher/Projects/fantasy-map/styles.css): gemensam styling
-- [src/config.js](/Users/robin.reicher/Projects/fantasy-map/src/config.js): standardvärden och centrala konstanter
+- [index.html](./index.html): primär entrypoint för både play och editor (via `mode`-query)
+- [editor/index.html](./editor/index.html): kompatibilitetsentrypoint som redirectar till `/?mode=editor`
+- [styles.css](./styles.css): gemensam styling
+- [src/config.ts](./src/config.ts): standardvärden och centrala konstanter
 
 ## Nuvarande datastruktur
 
@@ -266,10 +269,10 @@ Noder och kartnamn i spelkartan filtreras mot upptäckt mark och resbarhet, så 
 
 Om du ska vidareutveckla projektet är det här de bästa ingångarna:
 
-1. [src/app.js](/Users/robin.reicher/Projects/fantasy-map/src/app.js)
-2. [src/generator/worldGenerator.js](/Users/robin.reicher/Projects/fantasy-map/src/generator/worldGenerator.js)
-3. [src/render/renderer.js](/Users/robin.reicher/Projects/fantasy-map/src/render/renderer.js)
-4. [src/ui/playSession.js](/Users/robin.reicher/Projects/fantasy-map/src/ui/playSession.js)
-5. [src/game/journeyScene.js](/Users/robin.reicher/Projects/fantasy-map/src/game/journeyScene.js)
+1. [src/app.ts](./src/app.ts)
+2. [src/generator/worldGenerator.ts](./src/generator/worldGenerator.ts)
+3. [src/render/renderer.ts](./src/render/renderer.ts)
+4. [src/ui/playSession.ts](./src/ui/playSession.ts)
+5. [src/game/journeyScene.ts](./src/game/journeyScene.ts)
 
 Det ger en ganska bra bild av hela flödet från generering till rendering och spel.

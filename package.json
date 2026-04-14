@@ -1,14 +1,31 @@
 {
-  "name": "fantasy-map",
+  "name": "fardvag",
   "private": true,
   "type": "module",
   "scripts": {
-    "version:stamp": "node scripts/stamp-build-meta.mjs",
+    "version:stamp": "node --import tsx scripts/stamp-build-meta.ts",
     "prestart": "npm run version:stamp",
-    "start": "python3 -m http.server 4173",
+    "start": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173",
+    "typecheck": "tsc --noEmit",
+    "typecheck:travel": "tsc --noEmit -p tsconfig.travel-strict.json",
     "pretest": "npm run version:stamp",
-    "test": "node scripts/check-determinism.mjs",
+    "test": "node --import tsx scripts/check-determinism.ts",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test:unit:coverage": "vitest run --coverage",
+    "verify:stability": "npm run typecheck && npm run typecheck:travel && npm run test:unit && npm run test && npm run build",
     "preexamples": "npm run version:stamp",
-    "examples": "node scripts/example-worlds.mjs"
+    "examples": "node --import tsx scripts/example-worlds.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@vitest/coverage-v8": "^4.1.4",
+    "fast-check": "^4.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.8",
+    "vitest": "^4.1.4"
   }
 }
