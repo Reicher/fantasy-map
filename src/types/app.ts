@@ -60,7 +60,6 @@ export interface AppRefs {
   playSettingsToggleBiomeLabelsButton: HTMLButtonElement | null;
   playSettingsToggleNodeLabelsButton: HTMLButtonElement | null;
   playSettingsToggleHoverButton: HTMLButtonElement | null;
-  playSettingsToggleSnowButton: HTMLButtonElement | null;
   playArrivalCue: HTMLElement | null;
   playArrivalCueText: HTMLElement | null;
   playJourneyEventDialog: HTMLElement | null;
@@ -81,7 +80,6 @@ export interface AppRefs {
   playGameOverDialog: HTMLElement | null;
   playGameOverBody: HTMLElement | null;
   playGameOverStats: HTMLElement | null;
-  playGameOverRecord: HTMLElement | null;
   playGameOverOkButton: HTMLButtonElement | null;
   buildVersionBadge: HTMLElement | null;
   tooltip: HTMLElement | null;

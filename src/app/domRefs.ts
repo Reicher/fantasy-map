@@ -64,9 +64,6 @@ export function createAppRefs(): AppRefs {
     playSettingsToggleHoverButton: queryOptional<HTMLButtonElement>(
       "#play-settings-toggle-hover",
     ),
-    playSettingsToggleSnowButton: queryOptional<HTMLButtonElement>(
-      "#play-settings-toggle-snow",
-    ),
     playArrivalCue: queryOptional<HTMLElement>("#play-arrival-cue"),
     playArrivalCueText: queryOptional<HTMLElement>("#play-arrival-cue-text"),
     playJourneyEventDialog: queryOptional<HTMLElement>("#play-journey-event-dialog"),
@@ -89,7 +86,6 @@ export function createAppRefs(): AppRefs {
     playGameOverDialog: queryOptional<HTMLElement>("#play-game-over-dialog"),
     playGameOverBody: queryOptional<HTMLElement>("#play-game-over-body"),
     playGameOverStats: queryOptional<HTMLElement>("#play-game-over-stats"),
-    playGameOverRecord: queryOptional<HTMLElement>("#play-game-over-record"),
     playGameOverOkButton: queryOptional<HTMLButtonElement>("#play-game-over-ok"),
     buildVersionBadge: queryOptional<HTMLElement>("#build-version-badge"),
     tooltip: queryOptional<HTMLElement>("#tooltip"),

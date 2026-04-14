@@ -189,13 +189,6 @@ if (refs.playSettingsToggleHoverButton) {
     togglePlayHoverInspector,
   );
 }
-if (refs.playSettingsToggleSnowButton) {
-  refs.playSettingsToggleSnowButton.addEventListener("click", () => {
-    state.renderOptions.showSnow = !state.renderOptions.showSnow;
-    syncLabelButtons();
-    playSession.renderPlayWorld();
-  });
-}
 
 if (refs.playPanelToggleCharacterButton) {
   refs.playPanelToggleCharacterButton.addEventListener("click", () => {

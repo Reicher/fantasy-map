@@ -61,9 +61,8 @@ export function createPlaySubViewController({
   let lastActionResultMessage = null;
   let lastGameOverVisible = null;
   let lastGameOverMessage = null;
-  let lastGameOverStatsText = null;
+  let lastGameOverStatsRenderSignature = null;
   let lastGameOverStatsSignature = null;
-  let lastGameOverRecordText = null;
   let lastComputedGameOverRecord = null;
   let activeTravelCueKey = null;
   let activeTravelTargetNodeId = null;
@@ -143,9 +142,8 @@ export function createPlaySubViewController({
     lastActionResultMessage = null;
     lastGameOverVisible = null;
     lastGameOverMessage = null;
-    lastGameOverStatsText = null;
+    lastGameOverStatsRenderSignature = null;
     lastGameOverStatsSignature = null;
-    lastGameOverRecordText = null;
     lastComputedGameOverRecord = null;
     activeTravelCueKey = null;
     activeTravelTargetNodeId = null;
@@ -177,7 +175,7 @@ export function createPlaySubViewController({
       lastBottomHudVisible = showBottomHud;
     }
 
-    syncPlayLegendButtons(state.playMapOptions, state.renderOptions, refs);
+    syncPlayLegendButtons(state.playMapOptions, refs);
     lastModeButtonLabel = syncBottomHudButtons(
       playState,
       state.playActivePanels,
@@ -676,7 +674,6 @@ export function createPlaySubViewController({
     const dialog = refs.playGameOverDialog;
     const body = refs.playGameOverBody;
     const stats = refs.playGameOverStats;
-    const record = refs.playGameOverRecord;
     if (!dialog || !body) {
       return;
     }
@@ -690,12 +687,13 @@ export function createPlaySubViewController({
 
     if (!shouldShow) {
       lastGameOverMessage = null;
-      lastGameOverStatsText = null;
+      lastGameOverStatsRenderSignature = null;
       lastGameOverStatsSignature = null;
-      lastGameOverRecordText = null;
       lastComputedGameOverRecord = null;
-      setElementVisible(stats, false, "block");
-      setElementVisible(record, false, "block");
+      if (stats) {
+        stats.innerHTML = "";
+      }
+      setElementVisible(stats, false, "grid");
       return;
     }
 
@@ -706,12 +704,6 @@ export function createPlaySubViewController({
     }
 
     const runStats = normalizeRunStatsForGameOver(gameOver?.stats ?? playState?.runStats);
-    const runStatsText = formatGameOverStatsText(runStats);
-    if (stats && runStatsText !== lastGameOverStatsText) {
-      stats.textContent = runStatsText;
-      lastGameOverStatsText = runStatsText;
-    }
-    setElementVisible(stats, true, "block");
 
     const runStatsSignature = buildRunStatsSignature(runStats);
     if (runStatsSignature !== lastGameOverStatsSignature) {
@@ -719,12 +711,15 @@ export function createPlaySubViewController({
       lastComputedGameOverRecord = updateAndLoadRunRecord(runStats);
     }
 
-    const recordText = formatGameOverRecordText(lastComputedGameOverRecord);
-    if (record && recordText !== lastGameOverRecordText) {
-      record.textContent = recordText;
-      lastGameOverRecordText = recordText;
+    const statsRenderSignature = buildGameOverStatsRenderSignature(
+      runStats,
+      lastComputedGameOverRecord,
+    );
+    if (stats && statsRenderSignature !== lastGameOverStatsRenderSignature) {
+      renderGameOverStats(stats, runStats, lastComputedGameOverRecord);
+      lastGameOverStatsRenderSignature = statsRenderSignature;
     }
-    setElementVisible(record, recordText.length > 0, "block");
+    setElementVisible(stats, true, "grid");
   }
 
   function hideGameOverDialog() {
@@ -732,13 +727,14 @@ export function createPlaySubViewController({
       return;
     }
     setElementVisible(refs.playGameOverDialog, false, "grid");
-    setElementVisible(refs.playGameOverStats, false, "block");
-    setElementVisible(refs.playGameOverRecord, false, "block");
+    if (refs.playGameOverStats) {
+      refs.playGameOverStats.innerHTML = "";
+    }
+    setElementVisible(refs.playGameOverStats, false, "grid");
     lastGameOverVisible = false;
     lastGameOverMessage = null;
-    lastGameOverStatsText = null;
+    lastGameOverStatsRenderSignature = null;
     lastGameOverStatsSignature = null;
-    lastGameOverRecordText = null;
     lastComputedGameOverRecord = null;
   }
 
@@ -896,7 +892,7 @@ export function createPlaySubViewController({
   }
 }
 
-function syncPlayLegendButtons(playMapOptions, renderOptions, refs) {
+function syncPlayLegendButtons(playMapOptions, refs) {
   setToggleState(
     refs.playSettingsToggleBiomeLabelsButton,
     playMapOptions.showBiomeLabels,
@@ -906,7 +902,6 @@ function syncPlayLegendButtons(playMapOptions, renderOptions, refs) {
     playMapOptions.showNodeLabels,
   );
   setToggleState(refs.playSettingsToggleHoverButton, playMapOptions.showHoverInspector);
-  setToggleState(refs.playSettingsToggleSnowButton, renderOptions.showSnow);
 }
 
 function syncBottomHudButtons(
@@ -1033,10 +1028,11 @@ function syncHudPanelsVisibility(showBottomHud, playActivePanels, refs) {
     [refs.playPanelSettings, "settings"],
   ];
   for (const [panelRef, panelName] of panels) {
+    const displayMode = panelName === "character" ? "block" : "flex";
     setElementVisible(
       panelRef,
       showBottomHud && isPlayHudPanelOpen(playActivePanels, panelName),
-      "block",
+      displayMode,
     );
   }
 }
@@ -1286,40 +1282,107 @@ function buildRunStatsSignature(stats) {
   ].join("|");
 }
 
-function formatGameOverStatsText(stats) {
+function buildGameOverStatsRenderSignature(stats, record) {
+  const newRecordKeys = Array.isArray(record?.newRecordKeys)
+    ? record.newRecordKeys
+        .filter((key) => typeof key === "string" && key.length > 0)
+        .sort()
+        .join(",")
+    : "";
+  return `${buildRunStatsSignature(stats)}|records:${newRecordKeys}`;
+}
+
+function renderGameOverStats(container, stats, record) {
+  const rows = createGameOverStatRows(stats);
+  const newRecordKeys = getNewRecordKeySet(record);
+  const fragment = document.createDocumentFragment();
+
+  for (const row of rows) {
+    const rowElement = document.createElement("p");
+    rowElement.className = "play-game-over-stat-row";
+    const hasNewRecord =
+      typeof row.recordKey === "string" && newRecordKeys.has(row.recordKey);
+    if (hasNewRecord) {
+      rowElement.classList.add("play-game-over-stat-row--record");
+    }
+
+    const label = document.createElement("span");
+    label.className = "play-game-over-stat-label";
+    label.textContent = row.label;
+    rowElement.appendChild(label);
+
+    const valueWrap = document.createElement("span");
+    valueWrap.className = "play-game-over-stat-value-wrap";
+
+    const value = document.createElement("span");
+    value.className = "play-game-over-stat-value";
+    value.textContent = row.value;
+    valueWrap.appendChild(value);
+
+    if (hasNewRecord) {
+      const recordBadge = document.createElement("span");
+      recordBadge.className = "play-game-over-stat-record";
+      recordBadge.textContent = "rekord!";
+      valueWrap.appendChild(recordBadge);
+    }
+
+    rowElement.appendChild(valueWrap);
+    fragment.appendChild(rowElement);
+  }
+
+  container.innerHTML = "";
+  container.appendChild(fragment);
+}
+
+function createGameOverStatRows(stats) {
   const totalHours = getRunTotalHours(stats);
   const huntShare = getHuntShare(stats);
   return [
-    `Kött ätit: ${formatInteger(stats.meatEaten)}`,
-    `Restid: ${formatHoursValue(stats.travelHours)}`,
-    `Jakt: ${formatHoursValue(stats.huntHours)}`,
-    `Vila: ${formatHoursValue(stats.restHours)}`,
-    `Total tid: ${formatHoursValue(totalHours)}`,
-    `Ressträcka: ${formatDistanceWithUnit(stats.distanceTraveled)}`,
-    `Jaktandel: ${formatPercent(huntShare)}`,
-  ].join("\n");
+    {
+      label: "Kött ätit",
+      value: formatInteger(stats.meatEaten),
+      recordKey: "meatEaten",
+    },
+    {
+      label: "Restid",
+      value: formatHoursValue(stats.travelHours),
+      recordKey: "travelHours",
+    },
+    {
+      label: "Jakt",
+      value: formatHoursValue(stats.huntHours),
+      recordKey: "huntHours",
+    },
+    {
+      label: "Vila",
+      value: formatHoursValue(stats.restHours),
+      recordKey: "restHours",
+    },
+    {
+      label: "Total tid",
+      value: formatHoursValue(totalHours),
+      recordKey: "totalHours",
+    },
+    {
+      label: "Ressträcka",
+      value: formatDistanceWithUnit(stats.distanceTraveled),
+      recordKey: "distanceTraveled",
+    },
+    {
+      label: "Jaktandel",
+      value: formatPercent(huntShare),
+      recordKey: null,
+    },
+  ];
 }
 
-function formatGameOverRecordText(record) {
-  if (!record) {
-    return "";
-  }
-  const lines = [
-    "Rekord:",
-    `Kött ätit: ${formatInteger(record.meatEaten)}`,
-    `Restid: ${formatHoursValue(record.travelHours)}`,
-    `Jakt: ${formatHoursValue(record.huntHours)}`,
-    `Vila: ${formatHoursValue(record.restHours)}`,
-    `Total tid: ${formatHoursValue(record.totalHours)}`,
-    `Ressträcka: ${formatDistanceWithUnit(record.distanceTraveled)}`,
-  ];
-  const newRecordLabels = Array.isArray(record.newRecordLabels)
-    ? record.newRecordLabels.filter((label) => typeof label === "string" && label.length > 0)
+function getNewRecordKeySet(record): Set<string> {
+  const newRecordKeys = Array.isArray(record?.newRecordKeys)
+    ? record.newRecordKeys
     : [];
-  if (newRecordLabels.length > 0) {
-    lines.push(`Nytt rekord: ${newRecordLabels.join(", ")}`);
-  }
-  return lines.join("\n");
+  return new Set(
+    newRecordKeys.filter((key) => typeof key === "string" && key.length > 0),
+  );
 }
 
 function updateAndLoadRunRecord(stats) {
@@ -1329,37 +1392,37 @@ function updateAndLoadRunRecord(stats) {
   const nextRecord = {
     ...currentRecord,
   };
-  const newRecordLabels = [];
+  const newRecordKeys = [];
 
   if (runStats.meatEaten > currentRecord.meatEaten) {
     nextRecord.meatEaten = runStats.meatEaten;
-    newRecordLabels.push("kött");
+    newRecordKeys.push("meatEaten");
   }
   if (runStats.travelHours > currentRecord.travelHours + 1e-9) {
     nextRecord.travelHours = runStats.travelHours;
-    newRecordLabels.push("restid");
+    newRecordKeys.push("travelHours");
   }
   if (runStats.huntHours > currentRecord.huntHours + 1e-9) {
     nextRecord.huntHours = runStats.huntHours;
-    newRecordLabels.push("jakt");
+    newRecordKeys.push("huntHours");
   }
   if (runStats.restHours > currentRecord.restHours + 1e-9) {
     nextRecord.restHours = runStats.restHours;
-    newRecordLabels.push("vila");
+    newRecordKeys.push("restHours");
   }
   if (runTotalHours > currentRecord.totalHours + 1e-9) {
     nextRecord.totalHours = runTotalHours;
-    newRecordLabels.push("total tid");
+    newRecordKeys.push("totalHours");
   }
   if (runStats.distanceTraveled > currentRecord.distanceTraveled + 1e-9) {
     nextRecord.distanceTraveled = runStats.distanceTraveled;
-    newRecordLabels.push("ressträcka");
+    newRecordKeys.push("distanceTraveled");
   }
 
   persistRunRecord(nextRecord);
   return {
     ...nextRecord,
-    newRecordLabels,
+    newRecordKeys,
   };
 }
 

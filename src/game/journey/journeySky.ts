@@ -264,9 +264,9 @@ export function createSkyState(timeOfDayHours, viewW, viewH, options = {}) {
 
   const moonVisible =
     clamp01((moonAltitude + 0.2) / 0.54) *
-    (0.36 + night * 0.92) *
+    (0.44 + night * 0.98) *
     moonPhaseVisibility *
-    (1 - cloudCover * 0.48 + twilight * 0.18);
+    (1 - cloudCover * 0.34 + twilight * 0.22);
 
   const moonlight =
     clamp01((moonAltitude + 0.08) / 1.04) *
@@ -363,8 +363,8 @@ function drawSun(ctx, skyState) {
   const sun = skyState.sun;
   if (sun.visible <= 0.001) return;
 
-  const cloudDim = 1 - skyState.cloudCover * 0.55;
-  const glowRadius = sun.radius * (3.35 + skyState.twilight * 0.92);
+  const cloudDim = 1 - skyState.cloudCover * 0.42;
+  const glowRadius = sun.radius * (3.65 + skyState.twilight * 1.02);
   const glow = ctx.createRadialGradient(
     sun.x,
     sun.y,
@@ -375,11 +375,11 @@ function drawSun(ctx, skyState) {
   );
   glow.addColorStop(
     0,
-    `rgba(255, 244, 206, ${(0.5 * sun.visible + 0.22 * skyState.daylight) * cloudDim})`,
+    `rgba(255, 244, 206, ${(0.62 * sun.visible + 0.28 * skyState.daylight) * cloudDim})`,
   );
   glow.addColorStop(
     0.5,
-    `rgba(255, 186, 116, ${0.35 * sun.visible * cloudDim})`,
+    `rgba(255, 186, 116, ${0.42 * sun.visible * cloudDim})`,
   );
   glow.addColorStop(1, "rgba(255, 172, 94, 0)");
   ctx.fillStyle = glow;
@@ -387,7 +387,7 @@ function drawSun(ctx, skyState) {
   ctx.arc(sun.x, sun.y, glowRadius, 0, TAU);
   ctx.fill();
 
-  ctx.fillStyle = `rgba(255, 240, 196, ${(0.72 + sun.visible * 0.24) * (1 - skyState.cloudCover * 0.22)})`;
+  ctx.fillStyle = `rgba(255, 240, 196, ${(0.8 + sun.visible * 0.28) * (1 - skyState.cloudCover * 0.14)})`;
   ctx.beginPath();
   ctx.arc(sun.x, sun.y, sun.radius, 0, TAU);
   ctx.fill();
@@ -408,7 +408,7 @@ function drawMoon(ctx, skyState) {
   );
   glow.addColorStop(
     0,
-    `rgba(237, 244, 255, ${(0.14 + moon.visible * 0.32) * (0.42 + moon.illumination * 0.92)})`,
+    `rgba(237, 244, 255, ${(0.2 + moon.visible * 0.42) * (0.5 + moon.illumination * 0.98)})`,
   );
   glow.addColorStop(1, "rgba(215, 231, 255, 0)");
   ctx.fillStyle = glow;
@@ -421,13 +421,13 @@ function drawMoon(ctx, skyState) {
 
 function drawMoonDiskWithPhase(ctx, moon, skyState) {
   const earthshineAlpha =
-    (0.12 + moon.visible * 0.22) * (1 - skyState.cloudCover * 0.36);
+    (0.16 + moon.visible * 0.26) * (1 - skyState.cloudCover * 0.24);
   ctx.fillStyle = `rgba(142, 162, 188, ${earthshineAlpha})`;
   ctx.beginPath();
   ctx.arc(moon.x, moon.y, moon.radius, 0, TAU);
   ctx.fill();
 
-  const litAlpha = (0.44 + moon.visible * 0.5) * (0.24 + moon.illumination * 0.76);
+  const litAlpha = (0.52 + moon.visible * 0.58) * (0.32 + moon.illumination * 0.8);
   ctx.fillStyle = `rgba(235, 243, 255, ${litAlpha})`;
   ctx.beginPath();
   ctx.arc(moon.x, moon.y, moon.radius, 0, TAU);
