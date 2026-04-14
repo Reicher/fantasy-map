@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { createInitialInventory } from "../inventory";
 import { advanceHunt, beginHunt, cancelHunt } from "./hunt";
+import type { PlayState } from "../../types/play";
+import type { World } from "../../types/world";
 
-function createTestWorld(seed = "hunt-test-seed") {
+function createTestWorld(seed = "hunt-test-seed"): World {
   const width = 16;
   const height = 16;
   const size = width * height;
@@ -33,10 +35,10 @@ function createTestWorld(seed = "hunt-test-seed") {
         },
       ],
     },
-  };
+  } as unknown as World;
 }
 
-function createBaseHuntState(overrides: Record<string, unknown> = {}): any {
+function createBaseHuntState(overrides: Record<string, unknown> = {}): PlayState {
   return {
     gameOver: null,
     travel: null,
@@ -74,12 +76,12 @@ describe("travel hunt invariants", () => {
         (requestedHours, advanceSteps, initialStamina) => {
           const world = createTestWorld("hunt-property-seed");
           const maxStamina = Math.max(1, initialStamina);
-          let state: any = createBaseHuntState({
+          let state = createBaseHuntState({
             maxStamina,
             stamina: initialStamina,
           });
 
-          state = beginHunt(state, world, requestedHours);
+          state = beginHunt(state, world, requestedHours) ?? state;
 
           if (state.hunt == null) {
             // With this fixture, only zero stamina should block hunt start.
@@ -92,7 +94,7 @@ describe("travel hunt invariants", () => {
           expect(state.pendingRestChoice).toBe(false);
 
           for (const elapsedHours of advanceSteps) {
-            state = advanceHunt(state, world, elapsedHours);
+            state = advanceHunt(state, world, elapsedHours) ?? state;
             expect(state.stamina).toBeGreaterThanOrEqual(0);
             expect(state.stamina).toBeLessThanOrEqual(state.maxStamina);
 
@@ -121,9 +123,9 @@ describe("travel hunt invariants", () => {
     const stepSchedule = [1, 1, 2, 1, 3];
 
     const run = () => {
-      let state: any = beginHunt(createBaseHuntState(), world, 8);
+      let state = beginHunt(createBaseHuntState(), world, 8) ?? createBaseHuntState();
       for (const elapsedHours of stepSchedule) {
-        state = advanceHunt(state, world, elapsedHours);
+        state = advanceHunt(state, world, elapsedHours) ?? state;
       }
       return {
         stamina: state.stamina,

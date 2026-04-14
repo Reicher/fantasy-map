@@ -6,10 +6,11 @@ import {
   applyHourlyTravelStamina,
   finalizeHourlySurvival,
 } from "./survival";
+import type { PlayState } from "../../types/play";
 
 function createBaseSurvivalState(
   overrides: Record<string, unknown> = {},
-): any {
+): PlayState {
   return {
     gameOver: null,
     maxHealth: 5,
@@ -55,9 +56,9 @@ describe("travel survival invariants", () => {
           });
 
           for (const elapsedHours of hourSteps) {
-            state = applyHourlyHunger(state, elapsedHours);
-            state = applyHourlyTravelStamina(state, elapsedHours);
-            state = finalizeHourlySurvival(state);
+            state = applyHourlyHunger(state, elapsedHours) ?? state;
+            state = applyHourlyTravelStamina(state, elapsedHours) ?? state;
+            state = finalizeHourlySurvival(state) ?? state;
 
             expect(state.health).toBeGreaterThanOrEqual(0);
             expect(state.health).toBeLessThanOrEqual(state.maxHealth);

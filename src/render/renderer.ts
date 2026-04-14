@@ -32,8 +32,14 @@ import {
 } from "./waterLayer";
 import type { RenderOptions, SceneOptions, ViewportLike } from "../types/runtime";
 import type { World } from "../types/world";
+import type { NodeLike } from "../node/model";
 
 export { createViewport } from "./viewport";
+
+type RenderNode = { id: number; x: number; y: number; marker?: string };
+type EnvironmentEntry =
+  | { type: "forest"; footY: number; entry: unknown }
+  | { type: "mountain"; footY: number; glyph: unknown };
 
 export function renderEditorWorld(
   canvas: HTMLCanvasElement,
@@ -61,7 +67,7 @@ export function renderPlayWorldStatic(
     showFrame: false,
     showPlayerMarker: false,
     showNodes: false,
-    showRoads: true,
+    showRoads: false,
     showOceanWaves: true,
     showLakeWaves: true,
     showBiomeBorders: true,
@@ -78,7 +84,7 @@ export function renderPlayWorldDynamic(
 ) {
   return renderDynamicOverlays(canvas, world, options, {
     showPlayerMarker: true,
-    showRoads: false,
+    showRoads: true,
     showNodes: true,
     showLabels: true,
     showFogOfWar: true,
@@ -99,7 +105,7 @@ function renderScene(
     (options.viewport as ViewportLike | undefined) ??
     createViewport(world, options.cameraState);
   const { terrain, hydrology, climate, regions, geometry } = world;
-  const nodes = ((world.features as any)?.nodes ?? []) as any[];
+  const nodes = getWorldNodes(world);
   const renderWidth = options.renderWidth ?? RENDER_WIDTH;
   const renderHeight = options.renderHeight ?? RENDER_HEIGHT;
   const scaleX = canvas.width / renderWidth;
@@ -173,8 +179,8 @@ function renderScene(
       viewport,
       options,
     ).map((entry) => ({
-      type: "forest",
-      footY: entry.footY,
+      type: "forest" as const,
+      footY: Number(entry?.footY ?? 0),
       entry,
     }));
     const { glyphs: mountainGlyphs, glyphHits } = collectMountainRenderGlyphs(
@@ -186,10 +192,10 @@ function renderScene(
       options,
     );
     mountainGlyphHits = glyphHits;
-    const environmentEntries: any[] = [
+    const environmentEntries: EnvironmentEntry[] = [
       ...forestEntries,
       ...mountainGlyphs.map((glyph) => ({
-        type: "mountain",
+        type: "mountain" as const,
         footY: getMountainFootY(glyph),
         glyph,
       })),
@@ -245,7 +251,7 @@ function renderDynamicOverlays(
     (options.viewport as ViewportLike | undefined) ??
     createViewport(world, options.cameraState);
   const geometry = world.geometry;
-  const nodes = ((world.features as any)?.nodes ?? []) as any[];
+  const nodes = getWorldNodes(world);
   const renderWidth = options.renderWidth ?? RENDER_WIDTH;
   const renderHeight = options.renderHeight ?? RENDER_HEIGHT;
   const scaleX = canvas.width / renderWidth;
@@ -311,4 +317,24 @@ function renderDynamicOverlays(
     ...viewport,
     mountainGlyphHits: [],
   };
+}
+
+function getWorldNodes(world: World): RenderNode[] {
+  const features = world.features as
+    | { nodes?: Array<(NodeLike & { id?: unknown; x?: unknown; y?: unknown }) | undefined> }
+    | null
+    | undefined;
+  const nodes = Array.isArray(features?.nodes) ? features.nodes : [];
+  return nodes
+    .filter((node) =>
+      Number.isInteger(node?.id) &&
+      Number.isFinite(node?.x) &&
+      Number.isFinite(node?.y),
+    )
+    .map((node) => ({
+      id: Number(node?.id),
+      x: Number(node?.x),
+      y: Number(node?.y),
+      marker: typeof node?.marker === "string" ? node.marker : undefined,
+    }));
 }

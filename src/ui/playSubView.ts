@@ -9,17 +9,29 @@ import {
   describeHuntSituation,
   updateAbandonedLootInventory,
 } from "../game/travel";
+import { formatDistanceWithUnit } from "../game/travel/runStats";
 import { isNodeDiscovered } from "../game/travel/selectors";
 import { getNodeTitle } from "../node/model";
+import type { NodeLike } from "../node/model";
 import { createInventoryGridController } from "./inventoryGrid";
 import { setElementVisible } from "./viewState";
 import type { PlaySubViewDeps } from "../types/runtime";
 import type { InventoryDragPayload, InventoryState } from "../types/inventory";
+import type { PlayState } from "../types/play";
+import type { World } from "../types/world";
+
+interface JourneyPresentationSnapshot {
+  viewW?: number;
+  destMarkerCanvasX?: number | null;
+}
+
+interface ArrivalCueOptions {
+  revealActualTitle?: boolean;
+}
 
 const PLAYER_INVENTORY_GRID_ID = "player-inventory";
 const LOOT_INVENTORY_GRID_ID = "journey-loot";
 const GAME_OVER_RECORD_STORAGE_KEY = "fardvag.play.run-record.v1";
-const KILOMETERS_PER_CELL = 1;
 
 export function createPlaySubViewController({
   refs,
@@ -245,7 +257,11 @@ export function createPlaySubViewController({
     profiler.setSnapshot(journeyScene.getDebugSnapshot());
   }
 
-  function maybeTriggerArrivalCue(world: any, playState: any, presentation: any = {}) {
+  function maybeTriggerArrivalCue(
+    world: World,
+    playState: PlayState,
+    presentation: JourneyPresentationSnapshot = {},
+  ) {
     if (playState.travel) {
       const cueKey = buildTravelCueKey(playState.travel);
       const targetNodeId = playState.travel.targetNodeId ?? null;
@@ -295,16 +311,16 @@ export function createPlaySubViewController({
   }
 
   function triggerArrivalCue(
-    world: any,
-    playState: any,
+    world: World,
+    playState: PlayState,
     targetNodeId: number | null,
     cueKey: string | null,
-    options: any = {},
+    options: ArrivalCueOptions = {},
   ) {
     if (cueKey && shownArrivalCueKeys.has(cueKey)) {
       return;
     }
-    const nodes = world?.features?.nodes;
+    const nodes = getWorldNodes(world);
     const node = targetNodeId == null ? null : nodes?.[targetNodeId];
     const title = options.revealActualTitle
       ? getNodeTitle(node) || "Okänd plats"
@@ -322,6 +338,16 @@ export function createPlaySubViewController({
     void refs.playArrivalCue.offsetWidth;
     refs.playArrivalCue.classList.add("play-arrival-cue--animate");
     rememberCue(cueKey);
+  }
+
+  function getWorldNodes(
+    world: World | null | undefined,
+  ): Array<(NodeLike & { id?: number }) | undefined> {
+    const features = world?.features as
+      | { nodes?: Array<(NodeLike & { id?: number }) | undefined> }
+      | null
+      | undefined;
+    return Array.isArray(features?.nodes) ? features.nodes : [];
   }
 
   function rememberCue(cueKey) {
@@ -1412,15 +1438,6 @@ function formatHoursValue(value) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 1,
   })} h`;
-}
-
-function formatDistanceWithUnit(value) {
-  const safeValue = normalizeElapsedHours(value);
-  const distanceKm = safeValue * KILOMETERS_PER_CELL;
-  return `${distanceKm.toLocaleString("sv-SE", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 1,
-  })} km`;
 }
 
 function formatInteger(value) {

@@ -13,7 +13,13 @@ import {
   samplePath,
 } from "./travel/biomeBands";
 import { normalizeStaminaValue } from "./travel/normalizers";
-import { createInitialRunStats } from "./travel/runStats";
+import {
+  createInitialRunStats,
+  formatDistanceWithUnit,
+  normalizeRunStats,
+} from "./travel/runStats";
+import { measureGraphPathDistance } from "./travel/pathGeometry";
+import type { PlayState } from "../types/play";
 
 export {
   buildTravelBiomeBandSegments,
@@ -25,6 +31,9 @@ export {
   getVisibleNodeIds,
   isNodeDiscovered,
 } from "./travel/selectors";
+export {
+  toggleTravelPause,
+} from "./travel/pause";
 export {
   applyHourlyHunger,
   applyHourlyTravelStamina,
@@ -49,9 +58,8 @@ const PLAYER_STAMINA_RANGE = Object.freeze({ min: 10, max: 25 });
 const PLAYER_WEAPON_ACCURACY_RANGE = Object.freeze({ min: 40, max: 90 });
 const EVENT_LOOT_COLUMNS = 4;
 const EVENT_LOOT_ROWS = 4;
-const KILOMETERS_PER_CELL = 1;
 
-export function createPlayState(world) {
+export function createPlayState(world): PlayState {
   const playerStats = createPlayerStats(world);
   const currentNodeId =
     world.playerStart?.nodeId ?? world.features?.nodes?.[0]?.id ?? null;
@@ -188,6 +196,18 @@ export function advanceTravel(playState, world, deltaMs) {
     playState.travel.totalLength,
     playState.travel.progress + (deltaMs / 1000) * TRAVEL_SPEED,
   );
+  const currentProgress = Number.isFinite(playState.travel.progress)
+    ? playState.travel.progress
+    : 0;
+  const distanceDelta = Math.max(0, nextProgress - currentProgress);
+  const normalizedRunStats = normalizeRunStats(playState.runStats);
+  const runStats =
+    distanceDelta > 0
+      ? {
+          ...normalizedRunStats,
+          distanceTraveled: normalizedRunStats.distanceTraveled + distanceDelta,
+        }
+      : playState.runStats;
   const sample = samplePath(
     playState.travel.points,
     playState.travel.segmentLengths,
@@ -243,6 +263,7 @@ export function advanceTravel(playState, world, deltaMs) {
       rest: null,
       hunt: null,
       latestHuntFeedback: null,
+      runStats,
       discoveredCells,
       discoveredNodeIds,
       fogDirty: playState.fogDirty || revealed || finalReveal,
@@ -253,6 +274,7 @@ export function advanceTravel(playState, world, deltaMs) {
     ...playState,
     position: sample.point,
     lastRegionId,
+    runStats,
     discoveredCells,
     discoveredNodeIds,
     fogDirty: playState.fogDirty || revealed,
@@ -260,46 +282,6 @@ export function advanceTravel(playState, world, deltaMs) {
       ...playState.travel,
       progress: nextProgress,
     },
-  };
-}
-
-export function toggleTravelPause(playState) {
-  if (!playState || playState.gameOver || !playState.travel) {
-    return playState;
-  }
-  if (playState.rest || playState.hunt) {
-    return playState;
-  }
-
-  if (playState.isTravelPaused) {
-    const stamina = normalizeStaminaValue(playState.stamina, 0);
-    if (stamina <= 0) {
-      return {
-        ...playState,
-        viewMode: "journey",
-        isTravelPaused: true,
-        travelPauseReason: "exhausted",
-        pendingRestChoice: true,
-        hoveredNodeId: null,
-        pressedNodeId: null,
-      };
-    }
-    return {
-      ...playState,
-      isTravelPaused: false,
-      travelPauseReason: null,
-      pendingRestChoice: false,
-    };
-  }
-
-  return {
-    ...playState,
-    viewMode: "journey",
-    isTravelPaused: true,
-    travelPauseReason: "manual",
-    pendingRestChoice: false,
-    rest: null,
-    latestHuntFeedback: null,
   };
 }
 
@@ -426,7 +408,7 @@ function createSignpostDirectionsEvent(nodeId, world, graph = null) {
       }
       return {
         name,
-        distance: measureGraphPathDistance(nodeId, neighborNodeId, graph),
+        distance: measureGraphPathDistance(graph, nodeId, neighborNodeId),
       };
     })
     .filter(Boolean)
@@ -457,47 +439,6 @@ function formatDirectionEntryLabel(name, distance) {
     return name;
   }
   return `${name} (${distanceLabel})`;
-}
-
-function measureGraphPathDistance(fromNodeId, toNodeId, graph) {
-  if (!graph || fromNodeId == null || toNodeId == null) {
-    return null;
-  }
-  const path = graph.get(fromNodeId)?.get(toNodeId) ?? null;
-  const points = Array.isArray(path?.points) ? path.points : [];
-  if (points.length < 2) {
-    return null;
-  }
-
-  let totalDistance = 0;
-  for (let index = 1; index < points.length; index += 1) {
-    const from = points[index - 1];
-    const to = points[index];
-    if (
-      !Number.isFinite(from?.x) ||
-      !Number.isFinite(from?.y) ||
-      !Number.isFinite(to?.x) ||
-      !Number.isFinite(to?.y)
-    ) {
-      continue;
-    }
-    totalDistance += Math.hypot(to.x - from.x, to.y - from.y);
-  }
-
-  return Number.isFinite(totalDistance) && totalDistance > 0
-    ? totalDistance
-    : null;
-}
-
-function formatDistanceWithUnit(distance) {
-  if (!Number.isFinite(distance) || distance <= 0) {
-    return "";
-  }
-  const distanceKm = distance * KILOMETERS_PER_CELL;
-  return `${distanceKm.toLocaleString("sv-SE", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 1,
-  })} km`;
 }
 
 function discoverSignpostNeighborNodes(discoveredNodeIds, graph, nodeId) {
@@ -750,7 +691,7 @@ function revealAroundPosition(world, discoveredCells, position) {
   }
 
   const baseRadius = Math.max(1, Number(world.params?.fogVisionRadius ?? 18));
-  const radius = Math.max(1, Math.round(baseRadius * 1.5));
+  const radius = Math.max(1, Math.round(baseRadius));
   const radiusSq = (radius + 0.35) * (radius + 0.35);
   const minX = Math.max(0, Math.floor(position.x - radius));
   const maxX = Math.min(

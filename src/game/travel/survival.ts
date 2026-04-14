@@ -10,13 +10,14 @@ import {
   normalizeStaminaValue,
 } from "./normalizers";
 import { normalizeRunStats, snapshotRunStats } from "./runStats";
+import type { PlayState } from "../../types/play";
 
-type PlayStateLike = any;
+type PlayStateLike = PlayState | null | undefined;
 
 export function applyHourlyHunger(
   playState: PlayStateLike,
-  elapsedHours: any,
-) {
+  elapsedHours: number | null | undefined,
+): PlayStateLike {
   if (!playState || playState.gameOver) {
     return playState;
   }
@@ -75,7 +76,7 @@ export function applyHourlyHunger(
   };
 }
 
-export function finalizeHourlySurvival(playState: PlayStateLike) {
+export function finalizeHourlySurvival(playState: PlayStateLike): PlayStateLike {
   if (!playState || playState.gameOver) {
     return playState;
   }
@@ -123,8 +124,8 @@ export function finalizeHourlySurvival(playState: PlayStateLike) {
 
 export function applyHourlyTravelStamina(
   playState: PlayStateLike,
-  elapsedHours: any,
-) {
+  elapsedHours: number | null | undefined,
+): PlayStateLike {
   if (!playState || playState.gameOver) {
     return playState;
   }

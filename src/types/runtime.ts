@@ -1,5 +1,6 @@
 import type { World } from "./world";
 import type { PlayState } from "./play";
+import type { AppRefs, AppState, CameraState, PlayProfilerLike } from "./app";
 
 export interface ViewportLike {
   margin: number;
@@ -38,7 +39,6 @@ export interface NodeOverlay {
 export interface FogOfWarOverlay {
   enabled?: boolean;
   playState?: PlayState;
-  radiusCells?: number;
   [key: string]: unknown;
 }
 
@@ -90,31 +90,36 @@ export interface SceneOptions {
 }
 
 export interface PlaySessionDeps {
-  refs: any;
-  state: any;
+  refs: AppRefs;
+  state: AppState;
   syncModeUi: () => void;
 }
 
 export interface PlayControllerDeps {
   playCanvas: HTMLCanvasElement;
   tooltip: HTMLElement | null;
-  state: any;
-  profiler: any;
+  state: AppState;
+  profiler: PlayProfilerLike;
   renderPlayWorld: () => void;
-  createPlayCamera: () => any;
-  beginTravel: (playState: PlayState, targetNodeId: number, world?: World) => PlayState;
-  advanceTravel: (playState: PlayState, world: World, delta: number) => PlayState;
+  createPlayCamera: () => CameraState;
   getValidTargetIds: (playState: PlayState) => number[];
-  inspectWorldAt: (...args: any[]) => any;
+  inspectWorldAt: (...args: unknown[]) => unknown;
   clearHover: (tooltip: HTMLElement | null) => void;
-  showHoverHit: (...args: any[]) => void;
+  showHoverHit: (...args: unknown[]) => void;
 }
 
 export interface PlaySubViewDeps {
-  refs: any;
-  state: any;
-  journeyScene: any;
-  profiler: any;
+  refs: AppRefs;
+  state: AppState;
+  journeyScene: {
+    update: (
+      playState: PlayState | null | undefined,
+      options?: { showSnow?: boolean; world?: unknown; debug?: boolean },
+    ) => void;
+    getDebugSnapshot: () => Record<string, unknown>;
+    getPresentationSnapshot?: () => Record<string, unknown>;
+  };
+  profiler: PlayProfilerLike;
 }
 
 export type RenderWorldFn = (

@@ -8,10 +8,14 @@ import {
   normalizeRestHours,
   normalizeStaminaValue,
 } from "./normalizers";
+import type { PlayRestState, PlayState } from "../../types/play";
 
-type PlayStateLike = any;
+type PlayStateLike = PlayState | null | undefined;
 
-export function beginRest(playState: PlayStateLike, requestedHours: any) {
+export function beginRest(
+  playState: PlayStateLike,
+  requestedHours: number | null | undefined,
+): PlayStateLike {
   if (!playState || playState.gameOver) {
     return playState;
   }
@@ -49,7 +53,7 @@ export function beginRest(playState: PlayStateLike, requestedHours: any) {
   };
 }
 
-export function cancelRest(playState: PlayStateLike) {
+export function cancelRest(playState: PlayStateLike): PlayStateLike {
   if (!playState || playState.gameOver || !playState.rest) {
     return playState;
   }
@@ -62,7 +66,10 @@ export function cancelRest(playState: PlayStateLike) {
   });
 }
 
-export function advanceRest(playState: PlayStateLike, elapsedHours: any) {
+export function advanceRest(
+  playState: PlayStateLike,
+  elapsedHours: number | null | undefined,
+): PlayStateLike {
   if (!playState || playState.gameOver || !playState.rest) {
     return playState;
   }
@@ -98,15 +105,17 @@ function hasBlockingActionInteraction(playState: PlayStateLike): boolean {
   return Boolean(playState?.pendingJourneyEvent);
 }
 
-function shouldResumeTravelAfterRest(restState: any): boolean {
+function shouldResumeTravelAfterRest(
+  restState: PlayRestState | null | undefined,
+): boolean {
   return Boolean(restState?.resumeTravelOnFinish);
 }
 
 function finishRest(
   playState: PlayStateLike,
-  countedRestHours: any,
+  countedRestHours: number | null | undefined,
   options: { completed?: boolean } = {},
-) {
+): PlayStateLike {
   if (!playState?.rest) {
     return playState;
   }

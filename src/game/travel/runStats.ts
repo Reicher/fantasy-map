@@ -2,6 +2,9 @@ import {
   normalizeElapsedHours,
   normalizeStackCount,
 } from "./normalizers";
+import type { PlayRunStats } from "../../types/play";
+
+const KILOMETERS_PER_CELL = 1;
 
 export function createInitialRunStats() {
   return {
@@ -13,7 +16,9 @@ export function createInitialRunStats() {
   };
 }
 
-export function normalizeRunStats(stats: any) {
+export function normalizeRunStats(
+  stats: PlayRunStats | null | undefined,
+): Required<PlayRunStats> {
   const base = createInitialRunStats();
   if (!stats || typeof stats !== "object") {
     return base;
@@ -27,6 +32,17 @@ export function normalizeRunStats(stats: any) {
   };
 }
 
-export function snapshotRunStats(stats: any) {
+export function snapshotRunStats(
+  stats: PlayRunStats | null | undefined,
+): Required<PlayRunStats> {
   return normalizeRunStats(stats);
+}
+
+export function formatDistanceWithUnit(value: unknown): string {
+  const safeValue = Number.isFinite(value) ? Math.max(0, Number(value)) : 0;
+  const distanceKm = safeValue * KILOMETERS_PER_CELL;
+  return `${distanceKm.toLocaleString("sv-SE", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+  })} km`;
 }

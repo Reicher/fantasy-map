@@ -372,7 +372,7 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     if (
       state.playActionMenuOpen &&
-      !state.playState?.travel?.isTravelPaused &&
+      !state.playState?.isTravelPaused &&
       !state.playState?.rest &&
       !state.playState?.hunt &&
       !state.playState?.pendingRestChoice

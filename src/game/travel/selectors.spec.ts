@@ -5,6 +5,7 @@ import {
   getVisibleNodeIds,
   isNodeDiscovered,
 } from "./selectors";
+import type { PlayState } from "../../types/play";
 
 describe("travel selectors", () => {
   it("satisfies discovered/visible node invariants", () => {
@@ -28,11 +29,11 @@ describe("travel selectors", () => {
             graph.set(currentNodeId, neighbors);
           }
 
-          const playState = {
+          const playState: PlayState = {
             discoveredNodeIds,
             currentNodeId,
             graph,
-          } as any;
+          };
 
           const expectedDiscovered = new Set<number>();
           for (let nodeId = 0; nodeId < discoveredNodeIds.length; nodeId += 1) {

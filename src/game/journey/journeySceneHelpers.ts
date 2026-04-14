@@ -8,8 +8,13 @@ const IDLE_PREVIEW_SPAN_MIN = 14;
 const IDLE_PREVIEW_SPAN_MAX = 34;
 
 interface TravelBiomeBandSegment {
-  biomeId: number;
-  length: number;
+  biome?: string | number;
+  label?: string;
+  isSnow?: boolean;
+  distance?: number;
+  share?: number;
+  biomeId?: number;
+  length?: number;
 }
 
 interface TravelBiomeBand {

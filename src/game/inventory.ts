@@ -9,6 +9,13 @@ const DEFAULT_COLUMNS = 4;
 const DEFAULT_ROWS = 4;
 const STARTING_MEAT_COUNT = 11;
 const DEFAULT_MAX_STACK_COUNT = 10;
+const STACK_MAX_COUNT_BY_TYPE: Readonly<Record<string, number>> = Object.freeze({
+  meat: 12,
+  bullets: 30,
+  medicine: 6,
+  tobacco: 12,
+  coffee: 12,
+});
 
 export function createInitialInventory(): InventoryState {
   return {
@@ -642,7 +649,15 @@ function getItemCount(item: InventoryItem | null | undefined): number {
 }
 
 function getStackMaxCount(item: InventoryItem | null | undefined): number {
-  return isStackableItem(item) ? DEFAULT_MAX_STACK_COUNT : 1;
+  if (!isStackableItem(item)) {
+    return 1;
+  }
+  const itemType = String(item?.type ?? "").trim().toLowerCase();
+  const configuredMax = STACK_MAX_COUNT_BY_TYPE[itemType];
+  if (Number.isFinite(configuredMax) && configuredMax > 0) {
+    return Math.max(1, Math.floor(configuredMax));
+  }
+  return DEFAULT_MAX_STACK_COUNT;
 }
 
 function isStackableItem(item: InventoryItem | null | undefined): boolean {

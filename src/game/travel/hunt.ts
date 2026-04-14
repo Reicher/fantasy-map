@@ -27,18 +27,57 @@ import {
   normalizeStaminaValue,
   normalizeWeaponAccuracy,
 } from "./normalizers";
+import type { InventoryState } from "../../types/inventory";
+import type {
+  PlayHuntAreaState,
+  PlayHuntFeedback,
+  PlayHuntState,
+  PlayState,
+} from "../../types/play";
+import type { NodeLike } from "../../node/model";
+import type { World } from "../../types/world";
 
-type PlayStateLike = any;
-type WorldLike = any;
-type HuntContext = any;
-type HuntAreaState = any;
-type HuntFeedback = { type?: string; text?: string } | null;
+type PlayStateLike = PlayState | null | undefined;
+interface HuntWorldLike {
+  params?: { seed?: unknown };
+  features?: {
+    nodes?: Array<(NodeLike & { id?: number; cell?: number }) | undefined>;
+  };
+  climate?: {
+    biome?: Array<string | number> | Uint8Array;
+  };
+}
+type WorldLike = World | HuntWorldLike | null | undefined;
+type HuntAreaState = PlayHuntAreaState;
+type HuntFeedback =
+  | Pick<PlayHuntFeedback, "type" | "text">
+  | null;
+type RngLike = ReturnType<typeof createRng>;
+
+interface HuntContextUnavailable {
+  available: false;
+  reason: string;
+  areaLabel?: string | null;
+}
+
+interface HuntContextAvailable {
+  available: true;
+  areaKey: string;
+  areaLabel: string;
+  areaType: "stretch" | "node" | "wild";
+  biomeKey: string | number;
+  areaCapacity: number;
+  worldSeed: string;
+  reason?: null;
+}
+
+type HuntContext = HuntContextUnavailable | HuntContextAvailable;
 
 export function beginHunt(
   playState: PlayStateLike,
   world: WorldLike,
-  requestedHours: any,
-) {
+  requestedHours: number | null | undefined,
+): PlayStateLike {
   if (!playState || playState.gameOver || !world) {
     return playState;
   }
@@ -136,7 +175,10 @@ export function beginHunt(
   };
 }
 
-export function cancelHunt(playState: PlayStateLike, world: WorldLike) {
+export function cancelHunt(
+  playState: PlayStateLike,
+  world: WorldLike,
+): PlayStateLike {
   if (!playState || playState.gameOver || !playState.hunt || !world) {
     return playState;
   }
@@ -146,7 +188,7 @@ export function cancelHunt(playState: PlayStateLike, world: WorldLike) {
   const elapsedHours = normalizeElapsedHours(huntState.elapsedHours);
   const roundedTargetHours = clamp(Math.round(elapsedHours), 0, totalHours);
 
-  let nextState = playState;
+  let nextState: PlayState = playState;
   if (roundedTargetHours > normalizeCompletedHours(huntState.completedHours)) {
     nextState = resolveHuntHours(nextState, world, roundedTargetHours);
   }
@@ -166,8 +208,8 @@ export function cancelHunt(playState: PlayStateLike, world: WorldLike) {
 export function advanceHunt(
   playState: PlayStateLike,
   world: WorldLike,
-  elapsedHours: any,
-) {
+  elapsedHours: number | null | undefined,
+): PlayStateLike {
   if (!playState || playState.gameOver || !playState.hunt || !world) {
     return playState;
   }
@@ -187,7 +229,7 @@ export function advanceHunt(
   const nextElapsed = Math.min(totalHours, previousElapsed + safeElapsedHours);
   const completedHours = Math.floor(nextElapsed + 1e-9);
 
-  let nextState = {
+  let nextState: PlayState = {
     ...playState,
     hunt: {
       ...huntState,
@@ -211,7 +253,15 @@ export function advanceHunt(
   return nextState;
 }
 
-export function describeHuntSituation(playState: PlayStateLike, world: WorldLike) {
+export function describeHuntSituation(
+  playState: PlayStateLike,
+  world: WorldLike,
+): {
+  available: boolean;
+  reason: string | null;
+  outlook: string;
+  areaLabel: string | null;
+} {
   if (!playState || !world) {
     return {
       available: false,
@@ -253,10 +303,10 @@ export function describeHuntSituation(playState: PlayStateLike, world: WorldLike
 }
 
 function resolveHuntHours(
-  playState: PlayStateLike,
+  playState: PlayState,
   world: WorldLike,
-  targetCompletedHours: any,
-) {
+  targetCompletedHours: number | null | undefined,
+): PlayState {
   if (!playState?.hunt || !world) {
     return playState;
   }
@@ -277,23 +327,28 @@ function resolveHuntHours(
 }
 
 function resolveSingleHuntHour(
-  playState: PlayStateLike,
+  playState: PlayState,
   world: WorldLike,
   hourNumber: number,
-) {
+): PlayState {
   if (!playState?.hunt || !world) {
     return playState;
   }
 
   const huntState = playState.hunt;
-  const context = {
+  const context: HuntContextAvailable = {
     available: true,
-    areaKey: huntState.areaKey,
-    areaLabel: huntState.areaLabel,
-    areaType: huntState.areaType,
-    biomeKey: huntState.biomeKey,
+    areaKey: String(huntState.areaKey ?? "unknown-area"),
+    areaLabel: String(huntState.areaLabel ?? "Okänt område"),
+    areaType:
+      huntState.areaType === "node" ||
+      huntState.areaType === "wild" ||
+      huntState.areaType === "stretch"
+        ? huntState.areaType
+        : "wild",
+    biomeKey: huntState.biomeKey ?? "plains",
     areaCapacity: normalizeAreaCapacity(huntState.areaCapacity),
-    worldSeed: huntState.worldSeed,
+    worldSeed: String(huntState.worldSeed ?? "seed"),
   };
   const boundaryJourneyHours =
     normalizeElapsedHours(huntState.startedAtJourneyHours) + hourNumber;
@@ -383,7 +438,10 @@ function resolveSingleHuntHour(
   });
 }
 
-function completeHunt(playState: PlayStateLike, feedback: HuntFeedback = null) {
+function completeHunt(
+  playState: PlayStateLike,
+  feedback: HuntFeedback = null,
+): PlayStateLike {
   if (!playState?.hunt) {
     return playState;
   }
@@ -391,7 +449,7 @@ function completeHunt(playState: PlayStateLike, feedback: HuntFeedback = null) {
   const isExhausted = feedback?.type === "exhausted";
   const shouldResumeTravel = shouldResumeTravelAfterHunt(huntState) && !isExhausted;
 
-  const nextState = {
+  const nextState: PlayState = {
     ...playState,
     hunt: null,
     pendingRestChoice: isExhausted,
@@ -434,7 +492,10 @@ function completeHunt(playState: PlayStateLike, feedback: HuntFeedback = null) {
   };
 }
 
-function resolveHuntContext(playState: PlayStateLike, world: WorldLike) {
+function resolveHuntContext(
+  playState: PlayStateLike,
+  world: WorldLike,
+): HuntContext {
   if (!playState || !world) {
     return {
       available: false,
@@ -453,7 +514,7 @@ function resolveHuntContext(playState: PlayStateLike, world: WorldLike) {
 
     const startNodeId = playState.travel.startNodeId ?? null;
     const targetNodeId = playState.travel.targetNodeId ?? null;
-    const nodes = world.features?.nodes ?? [];
+    const nodes = getWorldNodes(world);
     const startNode = startNodeId == null ? null : nodes[startNodeId] ?? null;
     const targetNode = targetNodeId == null ? null : nodes[targetNodeId] ?? null;
     const settlementWeight =
@@ -467,7 +528,7 @@ function resolveHuntContext(playState: PlayStateLike, world: WorldLike) {
       0.93,
     );
     const sortedNodeIds = [startNodeId, targetNodeId]
-      .filter((value) => Number.isInteger(value))
+      .filter((value): value is number => Number.isInteger(value))
       .sort((a, b) => a - b);
     return {
       available: true,
@@ -480,12 +541,11 @@ function resolveHuntContext(playState: PlayStateLike, world: WorldLike) {
     };
   }
 
-  const nodes = world.features?.nodes ?? [];
+  const nodes = getWorldNodes(world);
   const currentNode =
     playState.currentNodeId == null ? null : nodes[playState.currentNodeId] ?? null;
   if (currentNode) {
-    const biomeKey =
-      currentNode.cell != null ? world.climate.biome[currentNode.cell] : "plains";
+    const biomeKey = getBiomeKeyByCell(world, currentNode.cell) ?? "plains";
     const biomeFactor = biomeHuntFactor(biomeKey);
     const markerWeight = nodeSettlementWeight(currentNode);
     const baseCapacity = clamp(0.58 - markerWeight * 0.3, 0.13, 0.72);
@@ -514,12 +574,42 @@ function resolveHuntContext(playState: PlayStateLike, world: WorldLike) {
   };
 }
 
+function getWorldNodes(
+  world: WorldLike,
+): Array<(NodeLike & { id?: number; cell?: number }) | undefined> {
+  const features = (world as HuntWorldLike | null | undefined)?.features as
+    | { nodes?: Array<(NodeLike & { id?: number; cell?: number }) | undefined> }
+    | null
+    | undefined;
+  return Array.isArray(features?.nodes) ? features.nodes : [];
+}
+
+function getBiomeKeyByCell(
+  world: WorldLike,
+  cell: number | null | undefined,
+): string | number | null {
+  if (!Number.isInteger(cell) || cell == null || cell < 0) {
+    return null;
+  }
+  const climate = (world as HuntWorldLike | null | undefined)?.climate as
+    | { biome?: Array<string | number> | Uint8Array }
+    | undefined;
+  const biomeArray = climate?.biome;
+  if (!biomeArray || cell >= biomeArray.length) {
+    return null;
+  }
+  return biomeArray[cell] ?? null;
+}
+
 function recoverHuntAreaState(
   huntAreaStates: Record<string, HuntAreaState> | null | undefined,
-  context: HuntContext,
-  currentJourneyHours: any,
+  context: HuntContextAvailable,
+  currentJourneyHours: number | null | undefined,
   options: { allowRecovery?: boolean } = {},
-) {
+): {
+  huntAreaStates: Record<string, HuntAreaState>;
+  areaState: HuntAreaState;
+} {
   const allowRecovery = options.allowRecovery !== false;
   const allStates = { ...(huntAreaStates ?? {}) };
   const existingState = allStates[context.areaKey];
@@ -554,9 +644,9 @@ function recoverHuntAreaState(
 
 function previewRecoveredHuntAreaState(
   huntAreaStates: Record<string, HuntAreaState> | null | undefined,
-  context: HuntContext,
-  currentJourneyHours: any,
-) {
+  context: HuntContextAvailable,
+  currentJourneyHours: number | null | undefined,
+): HuntAreaState {
   const existingState = huntAreaStates?.[context.areaKey];
   const baseState =
     existingState ??
@@ -580,7 +670,7 @@ function previewRecoveredHuntAreaState(
 }
 
 function createInitialHuntAreaState(
-  context: HuntContext,
+  context: HuntContextAvailable,
   options: { currentJourneyHours?: number } = {},
 ) {
   const seed = [
@@ -600,10 +690,10 @@ function createInitialHuntAreaState(
 }
 
 function resolveHuntSuccessChance(
-  context: HuntContext,
+  context: HuntContextAvailable,
   areaState: HuntAreaState,
-  timeOfDayHours: any,
-  weaponAccuracy: any,
+  timeOfDayHours: number | null | undefined,
+  weaponAccuracy: number | null | undefined,
 ) {
   const capacity = normalizeAreaCapacity(context.areaCapacity);
   const normalizedDensity = capacity > 0 ? areaState.density / capacity : 0;
@@ -627,8 +717,8 @@ function resolveHuntSuccessChance(
 
 function resolveSuccessfulHuntDensityDrop(
   _areaState: HuntAreaState,
-  context: HuntContext,
-  rng: any,
+  context: HuntContextAvailable,
+  rng: RngLike,
 ) {
   const swing = 0.78 + rng.float() * 0.6;
   const base = context.areaCapacity * 0.13 * swing;
@@ -638,19 +728,19 @@ function resolveSuccessfulHuntDensityDrop(
 
 function resolveFailedHuntDensityDrop(
   _areaState: HuntAreaState,
-  context: HuntContext,
-  rng: any,
+  context: HuntContextAvailable,
+  rng: RngLike,
 ) {
   const base = context.areaCapacity * (0.015 + rng.float() * 0.02);
   return clamp(base, 0.002, context.areaCapacity * 0.08);
 }
 
 function resolveHuntMeatYield(
-  context: HuntContext,
+  context: HuntContextAvailable,
   areaState: HuntAreaState,
-  weaponAccuracy: any,
-  timeOfDayHours: any,
-  rng: any,
+  weaponAccuracy: number | null | undefined,
+  timeOfDayHours: number | null | undefined,
+  rng: RngLike,
 ) {
   const capacity = normalizeAreaCapacity(context.areaCapacity);
   const normalizedDensity = capacity > 0 ? areaState.density / capacity : 0;
@@ -674,10 +764,10 @@ function resolveHuntMeatYield(
 }
 
 function addMeatToInventory(
-  inventory: any,
-  meatCount: any,
-  runId: any,
-  hourNumber: any,
+  inventory: InventoryState | null | undefined,
+  meatCount: number | null | undefined,
+  runId: number | null | undefined,
+  hourNumber: number | null | undefined,
 ) {
   const safeMeatCount = Number.isFinite(meatCount)
     ? Math.max(0, Math.floor(meatCount))
@@ -716,10 +806,10 @@ function addMeatToInventory(
 }
 
 function describeHuntOutlook(
-  context: HuntContext,
+  context: HuntContextAvailable,
   areaState: HuntAreaState,
-  timeOfDayHours: any,
-  weaponAccuracy: any,
+  timeOfDayHours: number | null | undefined,
+  weaponAccuracy: number | null | undefined,
 ) {
   const chance = resolveHuntSuccessChance(
     context,
@@ -736,7 +826,7 @@ function describeHuntOutlook(
   return "Svagt läge";
 }
 
-function huntTimeOfDayFactor(timeOfDayHours: any) {
+function huntTimeOfDayFactor(timeOfDayHours: number | null | undefined) {
   const normalized = normalizeTimeOfDayHours(timeOfDayHours);
   for (const band of HUNT_TIME_OF_DAY_MODIFIERS) {
     if (normalized >= band.start && normalized < band.end) {
@@ -746,16 +836,17 @@ function huntTimeOfDayFactor(timeOfDayHours: any) {
   return HUNT_TIME_OF_DAY_MODIFIERS[0];
 }
 
-function biomeHuntFactor(biomeKey: string) {
+function biomeHuntFactor(biomeKey: string | number | null | undefined) {
+  const normalizedKey = String(biomeKey ?? "plains");
   const factor =
-    HUNT_BIOME_FACTORS[biomeKey as keyof typeof HUNT_BIOME_FACTORS];
+    HUNT_BIOME_FACTORS[normalizedKey as keyof typeof HUNT_BIOME_FACTORS];
   if (Number.isFinite(factor)) {
     return clamp(factor, 0.1, 1);
   }
   return 0.58;
 }
 
-function nodeSettlementWeight(node: any) {
+function nodeSettlementWeight(node: NodeLike | null | undefined) {
   const marker = String(node?.marker ?? "");
   if (marker === "settlement") {
     return 1;
@@ -773,6 +864,8 @@ function hasBlockingActionInteraction(playState: PlayStateLike): boolean {
   return Boolean(playState?.pendingJourneyEvent);
 }
 
-function shouldResumeTravelAfterHunt(huntState: any): boolean {
+function shouldResumeTravelAfterHunt(
+  huntState: PlayHuntState | null | undefined,
+): boolean {
   return Boolean(huntState?.resumeTravelOnFinish);
 }

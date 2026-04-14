@@ -1,6 +1,7 @@
-import { getBiomeDefinitionById } from "../../biomes/index";
+import { BIOME_KEYS, getBiomeDefinitionById } from "../../biomes/index";
 import { isSnowCell } from "../../generator/models/surfaceModel";
 import { dedupePoints } from "../../utils";
+import type { PlayTravelState } from "../../types/play";
 
 const TRAVEL_BIOME_BANDS = {
   near: 0,
@@ -8,11 +9,36 @@ const TRAVEL_BIOME_BANDS = {
   far: 10,
 };
 
-type WorldLike = any;
+interface WorldLike {
+  terrain?: {
+    width?: number;
+    height?: number;
+    elevation?: ArrayLike<number>;
+    mountainField?: ArrayLike<number>;
+  };
+  climate?: {
+    biome?: ArrayLike<number | string>;
+    temperature?: ArrayLike<number>;
+  };
+}
 type Point = { x: number; y: number };
 type PathSample = { point: Point; segmentIndex: number; segmentT: number };
-type TravelLike = any;
-type BiomeBand = { name: string; offsetDistance: number; segments: any[] };
+type TravelLike = Pick<
+  PlayTravelState,
+  "points" | "totalLength" | "progress" | "segmentLengths" | "biomeBandSegments"
+>;
+interface BiomeBandSegment {
+  biome: string;
+  label: string;
+  isSnow: boolean;
+  distance: number;
+  share: number;
+}
+type BiomeBand = {
+  name: string;
+  offsetDistance: number;
+  segments: BiomeBandSegment[];
+};
 
 function buildOffsetTravelBiomeSegments(
   world: WorldLike,
@@ -70,45 +96,72 @@ export function sampleTravelBiomeBandPoints(travel: TravelLike) {
     progress,
   );
   const bands = travel.biomeBandSegments ?? createEmptyTravelBiomeBands();
+  const nearOffset =
+    typeof bands.near?.offsetDistance === "number"
+      ? bands.near.offsetDistance
+      : 0;
+  const midOffset =
+    typeof bands.mid?.offsetDistance === "number"
+      ? bands.mid.offsetDistance
+      : TRAVEL_BIOME_BANDS.mid;
+  const farOffset =
+    typeof bands.far?.offsetDistance === "number"
+      ? bands.far.offsetDistance
+      : TRAVEL_BIOME_BANDS.far;
 
   return {
     near: createTravelBandPointSample(
       "near",
-      bands.near?.offsetDistance ?? 0,
+      nearOffset,
       sample.point,
     ),
     mid: createTravelBandPointSample(
       "mid",
-      bands.mid?.offsetDistance ?? TRAVEL_BIOME_BANDS.mid,
+      midOffset,
       offsetSamplePointLeft(
         travel.points,
         sample,
-        bands.mid?.offsetDistance ?? TRAVEL_BIOME_BANDS.mid,
+        midOffset,
       ),
     ),
     far: createTravelBandPointSample(
       "far",
-      bands.far?.offsetDistance ?? TRAVEL_BIOME_BANDS.far,
+      farOffset,
       offsetSamplePointLeft(
         travel.points,
         sample,
-        bands.far?.offsetDistance ?? TRAVEL_BIOME_BANDS.far,
+        farOffset,
       ),
     ),
   };
 }
 
 function buildBiomeSegmentsFromPoints(world: WorldLike, points: Point[]) {
-  if (!world || !points?.length) {
+  const biome = world?.climate?.biome;
+  const elevation = world?.terrain?.elevation;
+  const mountainField = world?.terrain?.mountainField;
+  const temperature = world?.climate?.temperature;
+  if (
+    !points?.length ||
+    !biome ||
+    !elevation ||
+    !mountainField ||
+    !temperature
+  ) {
     return [];
   }
 
-  const segments = [];
-  let current = null;
+  const segments: Array<{
+    biome: string;
+    label: string;
+    isSnow: boolean;
+    distance: number;
+  }> = [];
+  let current: (typeof segments)[number] | null = null;
 
   for (let index = 0; index < points.length; index += 1) {
     const point = points[index];
-    const biomeKey = biomeKeyAtPoint(world, point) ?? "plains";
+    const biomeKey = biomeKeyAtPoint(world, point) ?? BIOME_KEYS.PLAINS;
     const biomeInfo = getBiomeDefinitionById(biomeKey);
     const isSnow = isSnowAtPoint(world, point, biomeKey);
     const nextPoint = points[index + 1];
@@ -146,7 +199,7 @@ function buildBiomeSegmentsFromPoints(world: WorldLike, points: Point[]) {
 function createTravelBiomeBand(
   name: string,
   offsetDistance: number,
-  segments: any[],
+  segments: BiomeBandSegment[],
 ): BiomeBand {
   return {
     name,
@@ -276,18 +329,27 @@ function offsetSamplePointLeft(
   };
 }
 
-export function biomeKeyAtPoint(world: WorldLike, position: Point | null) {
+export function biomeKeyAtPoint(
+  world: WorldLike | null | undefined,
+  position: Point | null,
+): number | null {
   const cellIndex = getCellIndexAtPoint(world, position);
   if (cellIndex == null) {
     return null;
   }
-  return world.climate.biome[cellIndex];
+  const biome = world?.climate?.biome;
+  if (!biome || cellIndex >= biome.length) {
+    return null;
+  }
+  const value = biome[cellIndex];
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 function isSnowAtPoint(
   world: WorldLike,
   position: Point | null,
-  biomeKey: string | null = null,
+  biomeKey: number | null = null,
 ) {
   const cellIndex = getCellIndexAtPoint(world, position);
   if (cellIndex == null) {
@@ -295,10 +357,10 @@ function isSnowAtPoint(
   }
 
   return isSnowCell(
-    biomeKey ?? world.climate.biome[cellIndex],
-    world.terrain.elevation[cellIndex],
-    world.terrain.mountainField[cellIndex],
-    world.climate.temperature[cellIndex],
+    biomeKey ?? BIOME_KEYS.PLAINS,
+    world.terrain?.elevation?.[cellIndex] ?? 0,
+    world.terrain?.mountainField?.[cellIndex] ?? 0,
+    world.climate?.temperature?.[cellIndex] ?? 0,
     true,
   );
 }
@@ -307,14 +369,19 @@ function getCellIndexAtPoint(world: WorldLike, position: Point | null) {
   if (!world || !position) {
     return null;
   }
+  const width = Number(world.terrain?.width ?? 0);
+  const height = Number(world.terrain?.height ?? 0);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null;
+  }
 
   const x = Math.max(
     0,
-    Math.min(world.terrain.width - 1, Math.floor(position.x)),
+    Math.min(width - 1, Math.floor(position.x)),
   );
   const y = Math.max(
     0,
-    Math.min(world.terrain.height - 1, Math.floor(position.y)),
+    Math.min(height - 1, Math.floor(position.y)),
   );
-  return y * world.terrain.width + x;
+  return y * width + x;
 }

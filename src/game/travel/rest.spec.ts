@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { advanceRest, beginRest, cancelRest } from "./rest";
+import type { PlayState } from "../../types/play";
 
-function createBasePlayState(): any {
+function createBasePlayState(): PlayState {
   return {
     gameOver: null,
     travel: null,
@@ -35,7 +36,7 @@ describe("travel rest transitions", () => {
       ...createBasePlayState(),
       travel: { routeType: "road" },
       isTravelPaused: true,
-      travelPauseReason: "manual",
+      travelPauseReason: "manual" as const,
     };
     const next = beginRest(playState, 3);
 

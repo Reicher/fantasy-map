@@ -1,18 +1,14 @@
 import {
-  advanceTravel,
-  beginHunt,
-  beginRest,
-  beginTravel,
-  cancelRest as cancelRestState,
-  cancelHunt as cancelHuntState,
   createPlayState,
-  toggleTravelPause as toggleTravelPauseState,
 } from "../game/travel";
+import { type TravelActionEvent } from "../game/travel/actionStateMachine";
+import { reducePlayState } from "../game/playStateReducer";
 import {
   getDiscoveredNodeIds,
   getVisibleNodeIds,
   getValidTargetIds,
 } from "../game/travel/selectors";
+import { buildVisibleRoadOverlay } from "../game/travel/pathGeometry";
 import { sampleTravelBiomeBandPoints } from "../game/travel/biomeBands";
 import { createJourneyScene } from "../game/journeyScene";
 import {
@@ -33,6 +29,7 @@ import {
   waitForNextPaintIfActive,
 } from "./viewState";
 import type { PlaySessionDeps, RenderOptions } from "../types/runtime";
+import type { PlayState } from "../types/play";
 import type { World } from "../types/world";
 
 export function createPlaySession({ refs, state, syncModeUi }: PlaySessionDeps) {
@@ -43,10 +40,7 @@ export function createPlaySession({ refs, state, syncModeUi }: PlaySessionDeps) 
     getCameraState: createPlayCamera,
     renderStaticScene: renderPlayWorldStatic,
     getStaticKey(renderOptions: RenderOptions = {}) {
-      return [
-        `snow:${renderOptions.showSnow ? 1 : 0}`,
-        `roads:${buildRoadOverlaySignature(renderOptions.roadOverlay)}`,
-      ].join("|");
+      return `snow:${renderOptions.showSnow ? 1 : 0}`;
     },
   });
 
@@ -62,8 +56,6 @@ export function createPlaySession({ refs, state, syncModeUi }: PlaySessionDeps) 
     profiler: state.playProfiler,
     renderPlayWorld,
     createPlayCamera,
-    beginTravel,
-    advanceTravel,
     getValidTargetIds,
     inspectWorldAt,
     clearHover,
@@ -93,13 +85,13 @@ export function createPlaySession({ refs, state, syncModeUi }: PlaySessionDeps) 
     resetJourney: journeyScene.reset,
   };
 
-  function createInitialPlayState(world: World) {
+  function createInitialPlayState(world: World): PlayState {
     const playState = createPlayState(world);
     state.playMapCamera = buildPlayCamera(world, playState, 2);
     return state.currentMode === "play"
       ? {
           ...playState,
-          viewMode: "journey",
+          viewMode: "journey" as const,
         }
       : playState;
   }
@@ -118,7 +110,10 @@ export function createPlaySession({ refs, state, syncModeUi }: PlaySessionDeps) 
         const unknownNodeIds = visibleNodeIds.filter(
           (nodeId) => !discoveredNodeIdSet.has(nodeId),
         );
-        const visibleRoads = getVisibleRoads(state.playState, visibleNodeIds);
+        const visibleRoads = buildVisibleRoadOverlay(
+          state.playState.graph,
+          visibleNodeIds,
+        );
         const renderOptions: RenderOptions = {
           showSnow: state.renderOptions.showSnow,
           showBiomeLabels: state.playMapOptions.showBiomeLabels,
@@ -134,7 +129,6 @@ export function createPlaySession({ refs, state, syncModeUi }: PlaySessionDeps) 
           fogOfWar: {
             enabled: true,
             playState: state.playState,
-            radiusCells: state.currentWorld.params.fogVisionRadius,
           },
           nodeOverlay: {
             validNodeIds,
@@ -210,94 +204,39 @@ export function createPlaySession({ refs, state, syncModeUi }: PlaySessionDeps) 
   }
 
   function toggleTravelPause() {
-    if (!state.playState?.travel || state.playState?.gameOver) {
-      return false;
-    }
-    state.playState = toggleTravelPauseState(state.playState);
-    playController.ensureAnimation();
-    renderPlayWorld();
-    return true;
+    return dispatchTravelAction(
+      { type: "TOGGLE_TRAVEL_PAUSE" },
+      { ensureAnimation: true },
+    );
   }
 
   function startRest(hours: number) {
-    if (!state.playState || state.playState.gameOver) {
-      return false;
-    }
-    const nextPlayState = beginRest(state.playState, hours);
-    if (nextPlayState === state.playState) {
-      return false;
-    }
-    state.playState = nextPlayState;
-    playController.ensureAnimation();
-    renderPlayWorld();
-    return true;
+    return dispatchTravelAction(
+      { type: "START_REST", hours },
+      { ensureAnimation: true },
+    );
   }
 
   function startHunt(hours: number) {
-    if (!state.playState || state.playState.gameOver || !state.currentWorld) {
-      return false;
-    }
-    const nextPlayState = beginHunt(state.playState, state.currentWorld, hours);
-    if (nextPlayState === state.playState) {
-      return false;
-    }
-    state.playState = nextPlayState;
-    playController.ensureAnimation();
-    renderPlayWorld();
-    return true;
+    return dispatchTravelAction(
+      { type: "START_HUNT", hours },
+      { ensureAnimation: true },
+    );
   }
 
   function cancelTimedAction() {
-    if (!state.playState || state.playState.gameOver || !state.currentWorld) {
-      return false;
-    }
-    const nextPlayState = state.playState.hunt
-      ? cancelHuntState(state.playState, state.currentWorld)
-      : state.playState.rest
-        ? cancelRestState(state.playState)
-        : state.playState;
-    if (nextPlayState === state.playState) {
-      return false;
-    }
-    state.playState = nextPlayState;
-    playController.ensureAnimation();
-    renderPlayWorld();
-    return true;
+    return dispatchTravelAction(
+      { type: "CANCEL_TIMED_ACTION" },
+      { ensureAnimation: true },
+    );
   }
 
   function dismissActionDialog() {
-    if (!state.playState || state.playState.gameOver) {
-      return false;
-    }
-    if (state.playState.rest || state.playState.hunt || state.playState.pendingRestChoice) {
-      return false;
-    }
-    if (
-      !state.playState.travel ||
-      !state.playState.isTravelPaused ||
-      state.playState.travelPauseReason !== "manual"
-    ) {
-      return false;
-    }
-    state.playState = toggleTravelPauseState(state.playState);
-    renderPlayWorld();
-    return true;
+    return dispatchTravelAction({ type: "DISMISS_MANUAL_TRAVEL_PAUSE" });
   }
 
   function dismissActionResult() {
-    if (!state.playState || state.playState.gameOver) {
-      return false;
-    }
-    const feedback = state.playState.latestHuntFeedback;
-    if (feedback?.type !== "result") {
-      return false;
-    }
-    state.playState = {
-      ...state.playState,
-      latestHuntFeedback: null,
-    };
-    renderPlayWorld();
-    return true;
+    return dispatchTravelAction({ type: "DISMISS_HUNT_RESULT" });
   }
 
   async function enterPlayMode() {
@@ -357,92 +296,34 @@ export function createPlaySession({ refs, state, syncModeUi }: PlaySessionDeps) 
     state.playMapCamera = clamped;
     return clamped;
   }
-}
 
-function getVisibleRoads(playState: any, visibleNodeIds: number[]) {
-  if (!playState?.graph || !visibleNodeIds?.length) {
-    return [];
-  }
-
-  const visible = new Set(visibleNodeIds);
-  const seenEdges = new Set();
-  const roads = [];
-
-  for (const fromNodeId of visible) {
-    const neighbors = playState.graph.get(fromNodeId);
-    if (!neighbors) {
-      continue;
+  function dispatchTravelAction(
+    event: TravelActionEvent,
+    options: { ensureAnimation?: boolean } = {},
+  ): boolean {
+    if (!state.playState || state.playState.gameOver) {
+      return false;
     }
-
-    for (const [toNodeId, path] of neighbors.entries()) {
-      if (!visible.has(toNodeId)) {
-        continue;
-      }
-
-      const key =
-        fromNodeId < toNodeId
-          ? `${fromNodeId}_${toNodeId}`
-          : `${toNodeId}_${fromNodeId}`;
-      if (seenEdges.has(key)) {
-        continue;
-      }
-      seenEdges.add(key);
-
-      const points = (path?.points ?? [])
-        .filter(
-          (point) =>
-            point &&
-            Number.isFinite(point.x) &&
-            Number.isFinite(point.y),
-        )
-        .map((point) => ({
-          x: point.x + 0.5,
-          y: point.y + 0.5,
-        }));
-
-      if (points.length < 2) {
-        continue;
-      }
-
-      roads.push({
-        id: roads.length,
-        type: path?.routeType ?? "road",
-        points,
-      });
+    const nextPlayState = reducePlayState(
+      state.playState,
+      {
+        type: "TRAVEL_ACTION",
+        action: event,
+      },
+      {
+        world: state.currentWorld,
+      },
+    );
+    if (!nextPlayState || nextPlayState === state.playState) {
+      return false;
     }
+    state.playState = nextPlayState;
+    if (options.ensureAnimation) {
+      playController.ensureAnimation();
+    }
+    renderPlayWorld();
+    return true;
   }
-
-  return roads;
-}
-
-function buildRoadOverlaySignature(roadOverlay: any = {}) {
-  const roads = Array.isArray(roadOverlay?.roads) ? roadOverlay.roads : [];
-  if (roads.length === 0) {
-    return "none";
-  }
-
-  return roads
-    .map((road, index) => {
-      const points = Array.isArray(road?.points) ? road.points : [];
-      const first = points[0];
-      const last = points[points.length - 1];
-      const firstKey =
-        first && Number.isFinite(first.x) && Number.isFinite(first.y)
-          ? `${first.x.toFixed(1)},${first.y.toFixed(1)}`
-          : "-";
-      const lastKey =
-        last && Number.isFinite(last.x) && Number.isFinite(last.y)
-          ? `${last.x.toFixed(1)},${last.y.toFixed(1)}`
-          : "-";
-      return [
-        road?.id ?? index,
-        road?.type ?? "road",
-        points.length,
-        firstKey,
-        lastKey,
-      ].join(":");
-    })
-    .join(";");
 }
 
 async function requestLandscapeOrientationLock() {
