@@ -1,5 +1,4 @@
 import { RENDER_HEIGHT, RENDER_WIDTH } from "@fardvag/shared/config";
-import { BUILD_META, formatBuildLabel } from "../buildMeta";
 import type { AppRefs } from "@fardvag/shared/types/app";
 
 function queryRequired<T extends Element>(selector: string): T {
@@ -87,7 +86,6 @@ export function createAppRefs(): AppRefs {
     playGameOverBody: queryOptional<HTMLElement>("#play-game-over-body"),
     playGameOverStats: queryOptional<HTMLElement>("#play-game-over-stats"),
     playGameOverOkButton: queryOptional<HTMLButtonElement>("#play-game-over-ok"),
-    buildVersionBadge: queryOptional<HTMLElement>("#build-version-badge"),
     tooltip: queryOptional<HTMLElement>("#tooltip"),
     statsContainer: queryOptional<HTMLElement>("#stats"),
     toggleBiomeLabelsButton: queryRequired<HTMLButtonElement>("#toggle-biome-labels"),
@@ -105,15 +103,6 @@ export function createAppRefs(): AppRefs {
     saveImageButton: queryRequired<HTMLButtonElement>("#save-image"),
     enterPlayButtons: queryAll<HTMLButtonElement>("[data-enter-play]"),
   };
-}
-
-export function applyBuildVersionBadge(refs: Pick<AppRefs, "buildVersionBadge">): void {
-  if (!refs.buildVersionBadge) {
-    return;
-  }
-  const buildLabel = formatBuildLabel(BUILD_META);
-  refs.buildVersionBadge.textContent = buildLabel;
-  refs.buildVersionBadge.title = buildLabel;
 }
 
 export function initializeCanvasSizes(

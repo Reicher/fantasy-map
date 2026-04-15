@@ -81,7 +81,6 @@ export interface AppRefs {
   playGameOverBody: HTMLElement | null;
   playGameOverStats: HTMLElement | null;
   playGameOverOkButton: HTMLButtonElement | null;
-  buildVersionBadge: HTMLElement | null;
   tooltip: HTMLElement | null;
   statsContainer: HTMLElement | null;
   toggleBiomeLabelsButton: HTMLButtonElement;

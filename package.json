@@ -7,14 +7,11 @@
     "packages/*"
   ],
   "scripts": {
-    "version:stamp": "node --import tsx scripts/stamp-build-meta.ts",
-    "prestart": "npm run version:stamp",
     "start": "vite",
     "build": "vite build",
     "preview": "vite preview --port 4173",
     "typecheck": "tsc --noEmit",
     "typecheck:travel": "tsc --noEmit -p tsconfig.travel-strict.json",
-    "pretest": "npm run version:stamp",
     "test": "node --import tsx scripts/check-determinism.ts",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
@@ -24,7 +21,6 @@
     "benchmark:worldgen": "node --import tsx scripts/benchmark-worldgen.ts",
     "baseline:worldgen": "node --import tsx scripts/benchmark-worldgen.ts --write",
     "verify:stability": "npm run typecheck && npm run typecheck:travel && npm run test:unit && npm run test && npm run build",
-    "preexamples": "npm run version:stamp",
     "examples": "node --import tsx scripts/example-worlds.ts"
   },
   "dependencies": {

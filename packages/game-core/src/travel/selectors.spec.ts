@@ -14,10 +14,15 @@ describe("travel selectors", () => {
         fc.array(fc.nat(63), { maxLength: 120 }),
         fc.option(fc.nat(63), { nil: null }),
         fc.array(fc.nat(63), { maxLength: 40 }),
-        (rawDiscoveredIds, currentNodeId, rawNeighborIds) => {
+        fc.array(fc.nat(63), { maxLength: 120 }),
+        (rawDiscoveredIds, currentNodeId, rawNeighborIds, rawRevealedIds) => {
           const discoveredNodeIds = new Uint8Array(64);
           for (const nodeId of rawDiscoveredIds) {
             discoveredNodeIds[nodeId] = 1;
+          }
+          const revealedNodeIds = new Uint8Array(64);
+          for (const nodeId of rawRevealedIds) {
+            revealedNodeIds[nodeId] = 1;
           }
 
           const graph = new Map<number, Map<number, { points: [] }>>();
@@ -31,6 +36,7 @@ describe("travel selectors", () => {
 
           const playState: PlayState = {
             discoveredNodeIds,
+            revealedNodeIds,
             currentNodeId,
             graph,
           };
@@ -46,6 +52,11 @@ describe("travel selectors", () => {
           }
 
           const expectedVisible = new Set(expectedDiscovered);
+          for (let nodeId = 0; nodeId < revealedNodeIds.length; nodeId += 1) {
+            if (revealedNodeIds[nodeId]) {
+              expectedVisible.add(nodeId);
+            }
+          }
           if (currentNodeId != null) {
             for (const neighborId of rawNeighborIds) {
               expectedVisible.add(neighborId);
@@ -65,5 +76,24 @@ describe("travel selectors", () => {
       ),
       { numRuns: 200 },
     );
+  });
+
+  it("keeps previously revealed nodes visible even after moving away", () => {
+    const graph = new Map<number, Map<number, { points: [] }>>();
+    graph.set(
+      1,
+      new Map([
+        [0, { points: [] }],
+      ]),
+    );
+    const playState: PlayState = {
+      currentNodeId: 1,
+      discoveredNodeIds: new Uint8Array([1, 1, 0]),
+      revealedNodeIds: new Uint8Array([1, 1, 1]),
+      graph,
+    };
+
+    expect(getDiscoveredNodeIds(playState)).toEqual([0, 1]);
+    expect(getVisibleNodeIds(playState)).toEqual([0, 1, 2]);
   });
 });

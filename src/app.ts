@@ -25,7 +25,6 @@ import { createEditorSession } from "./ui/editorSession";
 import { clearHover } from "./ui/hoverPanel";
 import { createPlaySession } from "./ui/playSession";
 import {
-  applyBuildVersionBadge,
   createAppRefs,
   initializeCanvasSizes,
 } from "./app/domRefs";
@@ -46,7 +45,6 @@ import {
 } from "@fardvag/shared/types/app";
 
 const refs = createAppRefs();
-applyBuildVersionBadge(refs);
 
 const initialMode = inferInitialMode();
 initializeCanvasSizes(refs);

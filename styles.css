@@ -52,24 +52,6 @@ body {
     linear-gradient(160deg, #7b674b, #4d3f2d 48%, #2f2419 100%);
 }
 
-.build-version-badge {
-  margin-top: auto;
-  width: 100%;
-  min-height: 24px;
-  padding: 4px 8px;
-  border-radius: 10px;
-  border: 1px solid rgba(116, 88, 51, 0.26);
-  background: rgba(79, 58, 33, 0.1);
-  color: rgba(71, 52, 31, 0.9);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.68rem;
-  line-height: 1.2;
-  letter-spacing: 0.01em;
-  text-align: right;
-  white-space: nowrap;
-  pointer-events: none;
-}
-
 html[data-route="play"] #editor-shell {
   display: none;
 }
@@ -1672,12 +1654,6 @@ canvas[data-dragging="true"] {
 }
 
 @media (max-width: 760px) {
-  .build-version-badge {
-    min-height: 22px;
-    padding: 3px 7px;
-    font-size: 0.6rem;
-  }
-
   .app-shell {
     padding: 6px;
     gap: 6px;

@@ -29,8 +29,7 @@ export function getVisibleNodeIds(playState: PlayState | null | undefined): numb
     return [];
   }
 
-  const discoveredNodeIds = collectDiscoveredNodeIdSet(playState);
-  const visibleNodeIds = new Set(discoveredNodeIds);
+  const visibleNodeIds = collectRevealedNodeIdSet(playState);
   const currentNodeId = playState.currentNodeId;
   if (currentNodeId != null) {
     visibleNodeIds.add(currentNodeId);
@@ -74,4 +73,17 @@ function collectDiscoveredNodeIdSet(playState: PlayState | null | undefined): Se
     discoveredNodeIds.add(playState.currentNodeId);
   }
   return discoveredNodeIds;
+}
+
+function collectRevealedNodeIdSet(playState: PlayState | null | undefined): Set<number> {
+  const revealedNodeIds = collectDiscoveredNodeIdSet(playState);
+  const marks = playState?.revealedNodeIds;
+  if (marks?.length) {
+    for (let nodeId = 0; nodeId < marks.length; nodeId += 1) {
+      if (marks[nodeId]) {
+        revealedNodeIds.add(nodeId);
+      }
+    }
+  }
+  return revealedNodeIds;
 }

@@ -164,6 +164,7 @@ export interface PlayState {
   position?: PlayPosition | null;
   discoveredCells?: Uint8Array;
   discoveredNodeIds?: Uint8Array;
+  revealedNodeIds?: Uint8Array;
   fogDirty?: boolean;
   travelPauseReason?: TravelPauseReason | null;
   inventory?: InventoryState;

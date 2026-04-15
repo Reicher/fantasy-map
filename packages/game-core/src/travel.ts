@@ -73,6 +73,11 @@ export function createPlayState(world): PlayState {
     world.terrain.width * world.terrain.height,
   );
   const discoveredNodeIds = createDiscoveredNodeFlags(world, currentNodeId);
+  const revealedNodeIds = createRevealedNodeFlags(
+    world,
+    currentNodeId,
+    world.travelGraph,
+  );
   revealAroundPosition(
     world,
     discoveredCells,
@@ -114,6 +119,7 @@ export function createPlayState(world): PlayState {
     gameOver: null,
     discoveredCells,
     discoveredNodeIds,
+    revealedNodeIds,
     fogDirty: true,
   };
 }
@@ -219,6 +225,7 @@ export function advanceTravel(playState, world, deltaMs) {
     playState.discoveredCells ??
     new Uint8Array(world.terrain.width * world.terrain.height);
   const discoveredNodeIds = ensureDiscoveredNodeFlags(playState, world);
+  const revealedNodeIds = ensureRevealedNodeFlags(playState, world);
   const revealed = revealAroundPosition(world, discoveredCells, sample.point);
 
   if (nextProgress >= playState.travel.totalLength - 0.0001) {
@@ -233,6 +240,8 @@ export function advanceTravel(playState, world, deltaMs) {
       finalPosition,
     );
     markNodeDiscovered(discoveredNodeIds, targetNodeId);
+    markNodeRevealed(revealedNodeIds, targetNodeId);
+    revealNeighborNodes(revealedNodeIds, playState.graph, targetNodeId);
     if (targetNode?.marker === "signpost") {
       discoverSignpostNeighborNodes(
         discoveredNodeIds,
@@ -266,6 +275,7 @@ export function advanceTravel(playState, world, deltaMs) {
       runStats,
       discoveredCells,
       discoveredNodeIds,
+      revealedNodeIds,
       fogDirty: playState.fogDirty || revealed || finalReveal,
     };
   }
@@ -277,6 +287,7 @@ export function advanceTravel(playState, world, deltaMs) {
     runStats,
     discoveredCells,
     discoveredNodeIds,
+    revealedNodeIds,
     fogDirty: playState.fogDirty || revealed,
     travel: {
       ...playState.travel,
@@ -628,6 +639,17 @@ function createDiscoveredNodeFlags(world, initiallyDiscoveredNodeId = null) {
   return discoveredNodeIds;
 }
 
+function createRevealedNodeFlags(
+  world,
+  initiallyRevealedNodeId = null,
+  graph = null,
+) {
+  const revealedNodeIds = new Uint8Array(world?.features?.nodes?.length ?? 0);
+  markNodeRevealed(revealedNodeIds, initiallyRevealedNodeId);
+  revealNeighborNodes(revealedNodeIds, graph, initiallyRevealedNodeId);
+  return revealedNodeIds;
+}
+
 function ensureDiscoveredNodeFlags(playState, world) {
   const nodeCount = world?.features?.nodes?.length ?? 0;
   const currentNodeId = playState?.currentNodeId ?? null;
@@ -649,6 +671,39 @@ function ensureDiscoveredNodeFlags(playState, world) {
   return discoveredNodeIds;
 }
 
+function ensureRevealedNodeFlags(playState, world) {
+  const nodeCount = world?.features?.nodes?.length ?? 0;
+  const currentNodeId = playState?.currentNodeId ?? null;
+  const graph = playState?.graph ?? world?.travelGraph;
+  const existing = playState?.revealedNodeIds;
+
+  if (existing && existing.length === nodeCount) {
+    markNodeRevealed(existing, currentNodeId);
+    revealNeighborNodes(existing, graph, currentNodeId);
+    return existing;
+  }
+
+  const revealedNodeIds = new Uint8Array(nodeCount);
+  if (existing?.length) {
+    const copyLength = Math.min(existing.length, revealedNodeIds.length);
+    for (let index = 0; index < copyLength; index += 1) {
+      revealedNodeIds[index] = existing[index];
+    }
+  } else if (playState?.discoveredNodeIds?.length) {
+    const copyLength = Math.min(
+      playState.discoveredNodeIds.length,
+      revealedNodeIds.length,
+    );
+    for (let index = 0; index < copyLength; index += 1) {
+      revealedNodeIds[index] = playState.discoveredNodeIds[index];
+    }
+  }
+
+  markNodeRevealed(revealedNodeIds, currentNodeId);
+  revealNeighborNodes(revealedNodeIds, graph, currentNodeId);
+  return revealedNodeIds;
+}
+
 function markNodeDiscovered(discoveredNodeIds, nodeId) {
   if (
     !discoveredNodeIds ||
@@ -659,6 +714,25 @@ function markNodeDiscovered(discoveredNodeIds, nodeId) {
     return;
   }
   discoveredNodeIds[nodeId] = 1;
+}
+
+function markNodeRevealed(revealedNodeIds, nodeId) {
+  if (
+    !revealedNodeIds ||
+    nodeId == null ||
+    nodeId < 0 ||
+    nodeId >= revealedNodeIds.length
+  ) {
+    return;
+  }
+  revealedNodeIds[nodeId] = 1;
+}
+
+function revealNeighborNodes(revealedNodeIds, graph, nodeId) {
+  const neighborNodeIds = getNeighborNodeIds(graph, nodeId);
+  for (const neighborNodeId of neighborNodeIds) {
+    markNodeRevealed(revealedNodeIds, neighborNodeId);
+  }
 }
 
 function createPlayerStats(world) {
