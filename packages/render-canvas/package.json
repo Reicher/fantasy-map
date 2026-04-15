@@ -1,0 +1,12 @@
+{
+  "name": "@fardvag/render-canvas",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@fardvag/game-core": "*",
+    "@fardvag/shared": "*"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

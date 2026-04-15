@@ -1,7 +1,7 @@
-import { clamp, coordsOf, distance, segmentPointDistance } from "./utils";
-import { isFrozenLake } from "./generator/models/surfaceModel";
-import { getNodeTitle } from "./node/model";
-import type { World } from "./types/world";
+import { clamp, coordsOf, distance, segmentPointDistance } from "@fardvag/shared/utils";
+import { isFrozenLake } from "@fardvag/world-gen";
+import { getNodeTitle } from "@fardvag/shared/node/model";
+import type { World } from "@fardvag/shared/types/world";
 
 interface WorldNodeLike {
   id: number;

@@ -1,0 +1,26 @@
+{
+  "name": "@fardvag/shared",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./config": "./src/config.ts",
+    "./random": "./src/random.ts",
+    "./noise": "./src/noise.ts",
+    "./naming": "./src/naming.ts",
+    "./colorSystem": "./src/colorSystem.ts",
+    "./biomes": "./src/biomes/index.ts",
+    "./biomes/index": "./src/biomes/index.ts",
+    "./biomes/keys": "./src/biomes/keys.ts",
+    "./biomes/schema": "./src/biomes/schema.ts",
+    "./node/model": "./src/node/model.ts",
+    "./utils": "./src/utils.ts",
+    "./types": "./src/types/index.ts",
+    "./types/app": "./src/types/app.ts",
+    "./types/biome": "./src/types/biome.ts",
+    "./types/inventory": "./src/types/inventory.ts",
+    "./types/play": "./src/types/play.ts",
+    "./types/runtime": "./src/types/runtime.ts",
+    "./types/world": "./src/types/world.ts"
+  }
+}

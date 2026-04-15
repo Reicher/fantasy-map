@@ -1,20 +1,21 @@
-import { RENDER_HEIGHT, RENDER_WIDTH } from "../config";
-import { createViewport } from "../render/renderer";
-import { findPlayableNodeAtWorldPoint } from "../game/playQueries";
+import { RENDER_HEIGHT, RENDER_WIDTH } from "@fardvag/shared/config";
+import { createViewport } from "@fardvag/render-canvas";
 import {
+  findPlayableNodeAtWorldPoint,
+  formatDistanceWithUnit,
   getPlayWorldTimeActivity,
+  getElapsedTimeOfDayHours,
+  isNodeDiscovered,
+  measurePathDistance,
+  normalizeTimeOfDayHours,
   reducePlayState,
   reducePlayStateWithMeta,
-} from "../game/playStateReducer";
-import { formatDistanceWithUnit } from "../game/travel/runStats";
-import { isNodeDiscovered } from "../game/travel/selectors";
-import { measurePathDistance } from "../game/travel/pathGeometry";
-import { getElapsedTimeOfDayHours, normalizeTimeOfDayHours } from "../game/timeOfDay";
-import { getNodeTitle } from "../node/model";
-import type { NodeLike } from "../node/model";
-import type { PlayControllerDeps } from "../types/runtime";
-import type { PlayState } from "../types/play";
-import type { World } from "../types/world";
+} from "@fardvag/game-core";
+import { getNodeTitle } from "@fardvag/shared/node/model";
+import type { NodeLike } from "@fardvag/shared/node/model";
+import type { PlayControllerDeps } from "@fardvag/shared/types/runtime";
+import type { PlayState } from "@fardvag/shared/types/play";
+import type { World } from "@fardvag/shared/types/world";
 
 interface MapPanState {
   pointerId: number;

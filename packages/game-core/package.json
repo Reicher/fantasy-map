@@ -1,0 +1,12 @@
+{
+  "name": "@fardvag/game-core",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@fardvag/shared": "*",
+    "@fardvag/world-gen": "*"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

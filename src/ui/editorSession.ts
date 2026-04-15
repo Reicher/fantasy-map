@@ -1,4 +1,4 @@
-import { RENDER_HEIGHT, RENDER_WIDTH } from "../config";
+import { RENDER_HEIGHT, RENDER_WIDTH } from "@fardvag/shared/config";
 import { inspectWorldAt } from "../inspector";
 import {
   clampEditorCamera,
@@ -9,12 +9,12 @@ import {
 } from "./cameraState";
 import { clearHover, showHoverHit } from "./hoverPanel";
 import { attachEditorController } from "./editorController";
-import { renderEditorWorld } from "../render/renderer";
+import { renderEditorWorld } from "@fardvag/render-canvas";
 import { createMapAtlasCacheManager } from "./mapAtlasCache";
-import { createPlayState } from "../game/travel";
-import { findNodeAtWorldPoint } from "../game/playQueries";
-import { getViewportVisibleWorldSize } from "../render/viewport";
-import type { AppRefs, AppState } from "../types/app";
+import { createPlayState } from "@fardvag/game-core";
+import { findNodeAtWorldPoint } from "@fardvag/game-core";
+import { getViewportVisibleWorldSize } from "@fardvag/render-canvas";
+import type { AppRefs, AppState } from "@fardvag/shared/types/app";
 
 interface EditorSessionDeps {
   refs: AppRefs;

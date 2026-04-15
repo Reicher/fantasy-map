@@ -1,0 +1,334 @@
+import { floodFillRegions } from "./grid";
+import { coordsOf, indexOf } from "@fardvag/shared/utils";
+import { isSnowCell } from "./models/surfaceModel";
+
+export function buildSurfaceGeometry(world) {
+  const { terrain, climate, hydrology, regions } = world;
+  const { width, height, size, isLand } = terrain;
+
+  const biomes = regions.biomeRegions.map((region) => ({
+    id: region.id,
+    biome: region.biome,
+    size: region.size,
+    loops: traceRenderLoops(region.cells, width, 1, 0.9),
+    stats: summarizeCells(region.cells, world)
+  }));
+
+  const lakes = hydrology.lakes.map((lake) => ({
+    id: lake.id,
+    size: lake.cells.length,
+    loops: traceRenderLoops(lake.cells, width, 2, 0.9)
+  }));
+
+  const snowMask = new Uint8Array(size);
+  for (let index = 0; index < size; index += 1) {
+    if (!isLand[index] || hydrology.lakeIdByCell[index] >= 0) {
+      continue;
+    }
+
+    if (
+      isSnowCell(
+        climate.biome[index],
+        terrain.elevation[index],
+        terrain.mountainField[index],
+        climate.temperature[index],
+        true
+      )
+    ) {
+      snowMask[index] = 1;
+    }
+  }
+
+  collapseDiagonalMaskSingletons(width, height, snowMask, 2);
+  simplifyTinyMaskPatches(width, height, snowMask, 4, 2);
+
+  const snowRegions = floodFillRegions(width, height, (index) => snowMask[index] === 1, true).map(
+    (cells, id) => ({
+      id,
+      size: cells.length,
+      loops: traceRenderLoops(cells, width, 1, 0.9)
+    })
+  );
+
+  const landCells = [];
+  for (let index = 0; index < size; index += 1) {
+    if (isLand[index]) {
+      landCells.push(index);
+    }
+  }
+
+  const landLoops = traceRenderLoops(landCells, width, 2, 1.2);
+  const positiveCoastlines = landLoops.filter((loop) => signedArea(loop) > 0);
+
+  return {
+    biomes,
+    lakes,
+    snowRegions,
+    coastlineLoops: positiveCoastlines.length > 0 ? positiveCoastlines : landLoops
+  };
+}
+
+function traceRenderLoops(cells, width, smoothingIterations = 1, minLoopArea = 0) {
+  const exactLoops = traceExactLoops(cells, width);
+  return exactLoops
+    .map((loop) => smoothLoop(loop, smoothingIterations))
+    .filter((loop) => Math.abs(signedArea(loop)) >= minLoopArea);
+}
+
+function summarizeCells(cells, world) {
+  const { terrain, climate, hydrology } = world;
+  let elevation = 0;
+  let mountain = 0;
+  let temperature = 0;
+  let moisture = 0;
+  let riverStrength = 0;
+  let provinceField = 0;
+
+  for (const cell of cells) {
+    elevation += terrain.elevation[cell];
+    mountain += terrain.mountainField[cell];
+    temperature += climate.temperature[cell];
+    moisture += climate.moisture[cell];
+    riverStrength += hydrology.riverStrength[cell];
+    provinceField += terrain.provinceField[cell];
+  }
+
+  const count = Math.max(1, cells.length);
+  return {
+    elevation: elevation / count,
+    mountain: mountain / count,
+    temperature: temperature / count,
+    moisture: moisture / count,
+    riverStrength: riverStrength / count,
+    provinceField: provinceField / count
+  };
+}
+
+function traceExactLoops(cells, width) {
+  if (!cells.length) {
+    return [];
+  }
+
+  const cellSet = new Set(cells);
+  const edges = [];
+  const edgesByStartKey = new Map();
+
+  for (const cell of cells) {
+    const x = cell % width;
+    const y = Math.floor(cell / width);
+
+    if (y === 0 || !cellSet.has(cell - width)) {
+      addEdge(edges, edgesByStartKey, { x, y }, { x: x + 1, y }, "E");
+    }
+    if (x === width - 1 || !cellSet.has(cell + 1)) {
+      addEdge(edges, edgesByStartKey, { x: x + 1, y }, { x: x + 1, y: y + 1 }, "S");
+    }
+    if (!cellSet.has(cell + width)) {
+      addEdge(edges, edgesByStartKey, { x: x + 1, y: y + 1 }, { x, y: y + 1 }, "W");
+    }
+    if (x === 0 || !cellSet.has(cell - 1)) {
+      addEdge(edges, edgesByStartKey, { x, y: y + 1 }, { x, y }, "N");
+    }
+  }
+
+  const loops = [];
+
+  for (let edgeIndex = 0; edgeIndex < edges.length; edgeIndex += 1) {
+    if (edges[edgeIndex].used) {
+      continue;
+    }
+
+    const startEdge = edges[edgeIndex];
+    startEdge.used = true;
+    const loop = [startEdge.from];
+    let current = startEdge;
+
+    while (true) {
+      loop.push(current.to);
+      if (current.toKey === startEdge.fromKey) {
+        loop.pop();
+        break;
+      }
+
+      const candidates = (edgesByStartKey.get(current.toKey) ?? []).filter(
+        (candidateIndex) => !edges[candidateIndex].used
+      );
+      if (candidates.length === 0) {
+        break;
+      }
+
+      const priority = TURN_PRIORITY[current.dir];
+      let nextIndex = candidates[0];
+      let bestRank = priority.indexOf(edges[nextIndex].dir);
+      for (let index = 1; index < candidates.length; index += 1) {
+        const candidateIndex = candidates[index];
+        const rank = priority.indexOf(edges[candidateIndex].dir);
+        if (rank < bestRank) {
+          nextIndex = candidateIndex;
+          bestRank = rank;
+        }
+      }
+      edges[nextIndex].used = true;
+      current = edges[nextIndex];
+    }
+
+    const simplified = simplifyLoop(loop);
+    if (simplified.length >= 3) {
+      loops.push(simplified);
+    }
+  }
+
+  return loops;
+}
+
+function smoothLoop(loop, iterations = 1) {
+  let current = loop;
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    if (current.length < 3) {
+      return current;
+    }
+    current = chaikinSmoothClosedLoop(current, 0.24);
+  }
+  return current;
+}
+
+function chaikinSmoothClosedLoop(loop, cornerWeight = 0.24) {
+  if (loop.length < 3) {
+    return loop;
+  }
+
+  const smoothed = [];
+  for (let index = 0; index < loop.length; index += 1) {
+    const current = loop[index];
+    const next = loop[(index + 1) % loop.length];
+    smoothed.push({
+      x: current.x + (next.x - current.x) * cornerWeight,
+      y: current.y + (next.y - current.y) * cornerWeight
+    });
+    smoothed.push({
+      x: current.x + (next.x - current.x) * (1 - cornerWeight),
+      y: current.y + (next.y - current.y) * (1 - cornerWeight)
+    });
+  }
+  return smoothed;
+}
+
+function collapseDiagonalMaskSingletons(width, height, mask, passes = 1) {
+  const orthogonalOffsets = [
+    [0, -1],
+    [1, 0],
+    [0, 1],
+    [-1, 0]
+  ];
+
+  for (let pass = 0; pass < passes; pass += 1) {
+    const toClear = [];
+
+    for (let index = 0; index < mask.length; index += 1) {
+      if (mask[index] !== 1) {
+        continue;
+      }
+
+      const [x, y] = coordsOf(index, width);
+      let sameOrthogonal = 0;
+      for (const [dx, dy] of orthogonalOffsets) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+          continue;
+        }
+        if (mask[indexOf(nx, ny, width)] === 1) {
+          sameOrthogonal += 1;
+        }
+      }
+
+      if (sameOrthogonal === 0) {
+        toClear.push(index);
+      }
+    }
+
+    if (toClear.length === 0) {
+      break;
+    }
+
+    for (const index of toClear) {
+      mask[index] = 0;
+    }
+  }
+}
+
+function simplifyTinyMaskPatches(width, height, mask, maxSize = 4, passes = 1) {
+  for (let pass = 0; pass < passes; pass += 1) {
+    const groups = floodFillRegions(width, height, (index) => mask[index] === 1, true);
+    const changed = groups.filter((cells) => cells.length <= maxSize);
+    if (changed.length === 0) {
+      break;
+    }
+
+    for (const cells of changed) {
+      for (const cell of cells) {
+        mask[cell] = 0;
+      }
+    }
+  }
+}
+
+function addEdge(edges, edgesByStartKey, from, to, dir) {
+  const fromKey = `${from.x},${from.y}`;
+  const toKey = `${to.x},${to.y}`;
+  const edge = {
+    from,
+    to,
+    fromKey,
+    toKey,
+    dir,
+    used: false
+  };
+  const index = edges.length;
+  edges.push(edge);
+
+  if (!edgesByStartKey.has(edge.fromKey)) {
+    edgesByStartKey.set(edge.fromKey, []);
+  }
+  edgesByStartKey.get(edge.fromKey).push(index);
+}
+
+function simplifyLoop(loop) {
+  if (loop.length <= 3) {
+    return loop;
+  }
+
+  const simplified = [];
+  for (let index = 0; index < loop.length; index += 1) {
+    const previous = loop[(index + loop.length - 1) % loop.length];
+    const current = loop[index];
+    const next = loop[(index + 1) % loop.length];
+    const dx1 = current.x - previous.x;
+    const dy1 = current.y - previous.y;
+    const dx2 = next.x - current.x;
+    const dy2 = next.y - current.y;
+    const cross = dx1 * dy2 - dy1 * dx2;
+    if (Math.abs(cross) < 1e-6) {
+      continue;
+    }
+    simplified.push(current);
+  }
+  return simplified;
+}
+
+function signedArea(loop) {
+  let area = 0;
+  for (let index = 0; index < loop.length; index += 1) {
+    const current = loop[index];
+    const next = loop[(index + 1) % loop.length];
+    area += current.x * next.y - next.x * current.y;
+  }
+  return area * 0.5;
+}
+
+const TURN_PRIORITY = {
+  E: ["S", "E", "N", "W"],
+  S: ["W", "S", "E", "N"],
+  W: ["N", "W", "S", "E"],
+  N: ["E", "N", "W", "S"]
+};

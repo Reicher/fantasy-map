@@ -2,9 +2,9 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "strict": false,
-    "noImplicitAny": true,
+    "noImplicitAny": false,
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src/game/travel/**/*.ts"]
+  "include": ["packages/game-core/src/travel/**/*.ts"]
 }

@@ -1,5 +1,5 @@
-import { generateWorld } from "../src/generator/worldGenerator";
-import type { WorldInputParams } from "../src/types/world";
+import { generateWorld } from "@fardvag/world-gen";
+import type { WorldInputParams } from "@fardvag/shared/types/world";
 
 const scenarios: WorldInputParams[] = [
   {

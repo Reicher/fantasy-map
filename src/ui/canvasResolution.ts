@@ -1,4 +1,4 @@
-import { RENDER_HEIGHT, RENDER_WIDTH } from "../config";
+import { RENDER_HEIGHT, RENDER_WIDTH } from "@fardvag/shared/config";
 
 interface CanvasResolutionRefs {
   canvas: HTMLCanvasElement | null;

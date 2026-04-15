@@ -2,12 +2,12 @@ import {
   canMoveInventoryItem,
   getInventorySignature,
   moveInventoryItem,
-} from "../game/inventory";
+} from "@fardvag/game-core";
 import type {
   InventoryDragPayload,
   InventoryItem,
   InventoryState,
-} from "../types/inventory";
+} from "@fardvag/shared/types/inventory";
 
 const INVENTORY_DRAG_MIME = "application/x-fardvag-inventory-item";
 

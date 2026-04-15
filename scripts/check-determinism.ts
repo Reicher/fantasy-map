@@ -1,6 +1,6 @@
-import { generateWorld } from "../src/generator/worldGenerator";
-import { normalizeBiomeKeyName } from "../src/biomes/index";
-import type { World } from "../src/types/world";
+import { generateWorld } from "@fardvag/world-gen";
+import { normalizeBiomeKeyName } from "@fardvag/shared/biomes";
+import type { World } from "@fardvag/shared/types/world";
 
 const params = {
   seed: "determinism-probe",

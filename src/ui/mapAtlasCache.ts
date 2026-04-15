@@ -1,10 +1,10 @@
-import { RENDER_HEIGHT, RENDER_WIDTH } from "../config";
+import { RENDER_HEIGHT, RENDER_WIDTH } from "@fardvag/shared/config";
 import {
   createViewport,
   getViewportScaleForZoom,
-} from "../render/viewport";
-import type { RenderOptions, ViewportLike } from "../types/runtime";
-import type { World } from "../types/world";
+} from "@fardvag/render-canvas";
+import type { RenderOptions, ViewportLike } from "@fardvag/shared/types/runtime";
+import type { World } from "@fardvag/shared/types/world";
 
 interface CameraStateLike {
   zoom?: number;

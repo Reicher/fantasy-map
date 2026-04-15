@@ -1,24 +1,22 @@
-import { describePlayHud } from "../game/playViewText";
 import {
+  describePlayHud,
   canTransferInventoryItem,
+  describeHuntSituation,
+  formatDistanceWithUnit,
   isInventoryEmpty,
+  isNodeDiscovered,
   transferAllInventoryItems,
   transferInventoryItem,
-} from "../game/inventory";
-import {
-  describeHuntSituation,
   updateAbandonedLootInventory,
-} from "../game/travel";
-import { formatDistanceWithUnit } from "../game/travel/runStats";
-import { isNodeDiscovered } from "../game/travel/selectors";
-import { getNodeTitle } from "../node/model";
-import type { NodeLike } from "../node/model";
+} from "@fardvag/game-core";
+import { getNodeTitle } from "@fardvag/shared/node/model";
+import type { NodeLike } from "@fardvag/shared/node/model";
 import { createInventoryGridController } from "./inventoryGrid";
 import { setElementVisible } from "./viewState";
-import type { PlaySubViewDeps } from "../types/runtime";
-import type { InventoryDragPayload, InventoryState } from "../types/inventory";
-import type { PlayState } from "../types/play";
-import type { World } from "../types/world";
+import type { PlaySubViewDeps } from "@fardvag/shared/types/runtime";
+import type { InventoryDragPayload, InventoryState } from "@fardvag/shared/types/inventory";
+import type { PlayState } from "@fardvag/shared/types/play";
+import type { World } from "@fardvag/shared/types/world";
 
 interface JourneyPresentationSnapshot {
   viewW?: number;

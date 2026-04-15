@@ -1,0 +1,10 @@
+{
+  "name": "@fardvag/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "vite --config ../../vite.config.ts --root ../..",
+    "build": "vite build --config ../../vite.config.ts --root ../..",
+    "preview": "vite preview --config ../../vite.config.ts --host 127.0.0.1 --port 4173 --strictPort"
+  }
+}

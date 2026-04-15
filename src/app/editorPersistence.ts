@@ -1,5 +1,5 @@
-import { normalizeParams } from "../generator/worldGenerator";
-import type { WorldInputParams } from "../types/world";
+import { normalizeParams } from "@fardvag/world-gen";
+import type { WorldInputParams } from "@fardvag/shared/types/world";
 
 const EDITOR_SETTINGS_STORAGE_KEY = "fardvag.editor.settings.v1";
 

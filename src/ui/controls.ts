@@ -2,8 +2,8 @@ import {
   NUMERIC_PARAM_KEYS,
   PARAM_KEYS,
   PARAM_SCHEMA,
-} from "../config";
-import type { WorldInputParams } from "../types/world";
+} from "@fardvag/shared/config";
+import type { WorldInputParams } from "@fardvag/shared/types/world";
 
 const TAB_ORDER = ["karta", "vatten", "noder", "avancerat"] as const;
 

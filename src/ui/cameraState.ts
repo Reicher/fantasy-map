@@ -1,11 +1,11 @@
-import type { ViewportLike } from "../types/runtime";
-import type { PlayState } from "../types/play";
-import type { World } from "../types/world";
-import { MAP_HEIGHT, MAP_WIDTH } from "../config";
+import type { ViewportLike } from "@fardvag/shared/types/runtime";
+import type { PlayState } from "@fardvag/shared/types/play";
+import type { World } from "@fardvag/shared/types/world";
+import { MAP_HEIGHT, MAP_WIDTH } from "@fardvag/shared/config";
 import {
   getViewportScaleForZoom,
   getViewportVisibleWorldSize,
-} from "../render/viewport";
+} from "@fardvag/render-canvas";
 
 const EDITOR_ZOOM_LEVELS = [0.35, 0.5, 0.75, 1, 1.5, 2, 3] as const;
 

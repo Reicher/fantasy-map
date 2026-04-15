@@ -30,6 +30,24 @@ Verifiering:
 npm test
 ```
 
+Baslinje för generationsprestanda:
+
+```bash
+npm run benchmark:worldgen
+```
+
+Skriv aktuell generationsbaslinje till `baselines/worldgen-baseline.json`:
+
+```bash
+npm run baseline:worldgen
+```
+
+Visuell regressionssvit (Playwright):
+
+```bash
+npm run test:e2e:visual
+```
+
 Exempelvärldar i terminalen:
 
 ```bash
@@ -108,9 +126,19 @@ Färdvyn är medvetet enklare och mer grafisk än kartan. Den är byggd så att 
 
 ## Arkitektur
 
-Kodbasen är i praktiken uppdelad i fem huvuddelar.
+Kodbasen är i praktiken uppdelad i sex huvuddelar.
 
-### `src/generator/*`
+### Paketstruktur
+
+Projektet är nu uppdelat i workspaces med tydligare domängränser:
+
+- `apps/web`: framtida app-shell/web-entrypoint
+- `packages/shared`: delade typer, konstanter och hjälpmoduler
+- `packages/world-gen`: exportyta för världsgenerering
+- `packages/game-core`: exportyta för spelstate/logik
+- `packages/render-canvas`: exportyta för canvas-rendering
+
+### `packages/world-gen/*`
 
 Ansvarar för att bygga världen:
 
@@ -124,13 +152,13 @@ Ansvarar för att bygga världen:
 
 Några centrala filer:
 
-- [src/generator/worldGenerator.ts](./src/generator/worldGenerator.ts)
-- [src/generator/terrain.ts](./src/generator/terrain.ts)
-- [src/generator/hydrology.ts](./src/generator/hydrology.ts)
-- [src/generator/regions.ts](./src/generator/regions.ts)
-- [src/generator/compileGeometry.ts](./src/generator/compileGeometry.ts)
+- [packages/world-gen/src/worldGenerator.ts](./packages/world-gen/src/worldGenerator.ts)
+- [packages/world-gen/src/terrain.ts](./packages/world-gen/src/terrain.ts)
+- [packages/world-gen/src/hydrology.ts](./packages/world-gen/src/hydrology.ts)
+- [packages/world-gen/src/regions.ts](./packages/world-gen/src/regions.ts)
+- [packages/world-gen/src/compileGeometry.ts](./packages/world-gen/src/compileGeometry.ts)
 
-### `src/render/*`
+### `packages/render-canvas/*`
 
 Canvas-rendering av kartan:
 
@@ -144,13 +172,13 @@ Canvas-rendering av kartan:
 
 Några centrala filer:
 
-- [src/render/renderer.ts](./src/render/renderer.ts)
-- [src/render/terrainLayer.ts](./src/render/terrainLayer.ts)
-- [src/render/waterLayer.ts](./src/render/waterLayer.ts)
-- [src/render/forestLayer.ts](./src/render/forestLayer.ts)
-- [src/render/fogLayer.ts](./src/render/fogLayer.ts)
+- [packages/render-canvas/src/renderer.ts](./packages/render-canvas/src/renderer.ts)
+- [packages/render-canvas/src/terrainLayer.ts](./packages/render-canvas/src/terrainLayer.ts)
+- [packages/render-canvas/src/waterLayer.ts](./packages/render-canvas/src/waterLayer.ts)
+- [packages/render-canvas/src/forestLayer.ts](./packages/render-canvas/src/forestLayer.ts)
+- [packages/render-canvas/src/fogLayer.ts](./packages/render-canvas/src/fogLayer.ts)
 
-### `src/game/*`
+### `packages/game-core/*`
 
 Spelstate och färdlogik:
 
@@ -163,10 +191,28 @@ Spelstate och färdlogik:
 
 Några centrala filer:
 
-- [src/game/travel.ts](./src/game/travel.ts)
-- [src/game/playQueries.ts](./src/game/playQueries.ts)
-- [src/game/journeyScene.ts](./src/game/journeyScene.ts)
-- [src/game/playViewText.ts](./src/game/playViewText.ts)
+- [packages/game-core/src/travel.ts](./packages/game-core/src/travel.ts)
+- [packages/game-core/src/playQueries.ts](./packages/game-core/src/playQueries.ts)
+- [packages/game-core/src/playStateReducer.ts](./packages/game-core/src/playStateReducer.ts)
+- [packages/game-core/src/playViewText.ts](./packages/game-core/src/playViewText.ts)
+
+### `packages/shared/*`
+
+Delad domän och infrastruktur för övriga paket:
+
+- typer (`types/*`)
+- generella utilities (`utils`)
+- seedad slump (`random`)
+- globala konstanter/parametrar (`config`)
+- biomer, färgsystem och namngivning (`biomes`, `colorSystem`, `naming`)
+- nodmodell (`node/model`)
+
+Några centrala filer:
+
+- [packages/shared/src/config.ts](./packages/shared/src/config.ts)
+- [packages/shared/src/types/world.ts](./packages/shared/src/types/world.ts)
+- [packages/shared/src/random.ts](./packages/shared/src/random.ts)
+- [packages/shared/src/biomes/index.ts](./packages/shared/src/biomes/index.ts)
 
 ### `src/ui/*`
 
@@ -192,7 +238,7 @@ Några centrala filer:
 - [index.html](./index.html): primär entrypoint för både play och editor (via `mode`-query)
 - [editor/index.html](./editor/index.html): kompatibilitetsentrypoint som redirectar till `/?mode=editor`
 - [styles.css](./styles.css): gemensam styling
-- [src/config.ts](./src/config.ts): standardvärden och centrala konstanter
+- [packages/shared/src/config.ts](./packages/shared/src/config.ts): standardvärden och centrala konstanter
 
 ## Nuvarande datastruktur
 
@@ -270,9 +316,9 @@ Noder och kartnamn i spelkartan filtreras mot upptäckt mark och resbarhet, så 
 Om du ska vidareutveckla projektet är det här de bästa ingångarna:
 
 1. [src/app.ts](./src/app.ts)
-2. [src/generator/worldGenerator.ts](./src/generator/worldGenerator.ts)
-3. [src/render/renderer.ts](./src/render/renderer.ts)
+2. [packages/world-gen/src/worldGenerator.ts](./packages/world-gen/src/worldGenerator.ts)
+3. [packages/render-canvas/src/renderer.ts](./packages/render-canvas/src/renderer.ts)
 4. [src/ui/playSession.ts](./src/ui/playSession.ts)
-5. [src/game/journeyScene.ts](./src/game/journeyScene.ts)
+5. [packages/render-canvas/src/journeyScene.ts](./packages/render-canvas/src/journeyScene.ts)
 
 Det ger en ganska bra bild av hela flödet från generering till rendering och spel.

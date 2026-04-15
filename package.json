@@ -2,6 +2,10 @@
   "name": "fardvag",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "version:stamp": "node --import tsx scripts/stamp-build-meta.ts",
     "prestart": "npm run version:stamp",
@@ -15,11 +19,22 @@
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:unit:coverage": "vitest run --coverage",
+    "test:e2e:visual": "playwright test",
+    "test:e2e:visual:update": "playwright test --update-snapshots",
+    "benchmark:worldgen": "node --import tsx scripts/benchmark-worldgen.ts",
+    "baseline:worldgen": "node --import tsx scripts/benchmark-worldgen.ts --write",
     "verify:stability": "npm run typecheck && npm run typecheck:travel && npm run test:unit && npm run test && npm run build",
     "preexamples": "npm run version:stamp",
     "examples": "node --import tsx scripts/example-worlds.ts"
   },
+  "dependencies": {
+    "@fardvag/game-core": "*",
+    "@fardvag/render-canvas": "*",
+    "@fardvag/shared": "*",
+    "@fardvag/world-gen": "*"
+  },
   "devDependencies": {
+    "@playwright/test": "^1.53.0",
     "@types/node": "^25.6.0",
     "@vitest/coverage-v8": "^4.1.4",
     "fast-check": "^4.6.0",

@@ -1,6 +1,6 @@
-import { RENDER_HEIGHT, RENDER_WIDTH } from "../config";
+import { RENDER_HEIGHT, RENDER_WIDTH } from "@fardvag/shared/config";
 import { BUILD_META, formatBuildLabel } from "../buildMeta";
-import type { AppRefs } from "../types/app";
+import type { AppRefs } from "@fardvag/shared/types/app";
 
 function queryRequired<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);

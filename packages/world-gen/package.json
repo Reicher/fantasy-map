@@ -1,0 +1,11 @@
+{
+  "name": "@fardvag/world-gen",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@fardvag/shared": "*"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

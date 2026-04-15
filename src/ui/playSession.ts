@@ -1,20 +1,18 @@
 import {
+  buildVisibleRoadOverlay,
   createPlayState,
-} from "../game/travel";
-import { type TravelActionEvent } from "../game/travel/actionStateMachine";
-import { reducePlayState } from "../game/playStateReducer";
-import {
   getDiscoveredNodeIds,
-  getVisibleNodeIds,
   getValidTargetIds,
-} from "../game/travel/selectors";
-import { buildVisibleRoadOverlay } from "../game/travel/pathGeometry";
-import { sampleTravelBiomeBandPoints } from "../game/travel/biomeBands";
-import { createJourneyScene } from "../game/journeyScene";
+  getVisibleNodeIds,
+  reducePlayState,
+  sampleTravelBiomeBandPoints,
+  type TravelActionEvent,
+} from "@fardvag/game-core";
 import {
+  createJourneyScene,
   renderPlayWorldDynamic,
   renderPlayWorldStatic,
-} from "../render/renderer";
+} from "@fardvag/render-canvas";
 import { inspectWorldAt } from "../inspector";
 import {
   clampEditorCamera,
@@ -28,9 +26,9 @@ import {
   createTransitionController,
   waitForNextPaintIfActive,
 } from "./viewState";
-import type { PlaySessionDeps, RenderOptions } from "../types/runtime";
-import type { PlayState } from "../types/play";
-import type { World } from "../types/world";
+import type { PlaySessionDeps, RenderOptions } from "@fardvag/shared/types/runtime";
+import type { PlayState } from "@fardvag/shared/types/play";
+import type { World } from "@fardvag/shared/types/world";
 
 export function createPlaySession({ refs, state, syncModeUi }: PlaySessionDeps) {
   const playModeTransition = createTransitionController();

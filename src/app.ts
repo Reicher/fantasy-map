@@ -1,8 +1,8 @@
-import { DEFAULT_PARAMS } from "./config";
+import { DEFAULT_PARAMS } from "@fardvag/shared/config";
 import {
   generateWorld,
   normalizeParams,
-} from "./generator/worldGenerator";
+} from "@fardvag/world-gen";
 import {
   bindRangeLabels,
   getFormValues,
@@ -43,7 +43,7 @@ import {
   type AppState,
   type PlayHudPanelName,
   type PlayProfilerLike,
-} from "./types/app";
+} from "@fardvag/shared/types/app";
 
 const refs = createAppRefs();
 applyBuildVersionBadge(refs);
