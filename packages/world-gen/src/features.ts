@@ -149,6 +149,13 @@ function buildDedicatedSignpostNodes(world, settlementNodes) {
       .map((node) => node?.cell)
       .filter((cell) => Number.isFinite(cell)),
   );
+  const settlementAnchors = settlementNodes.map((node) => ({
+    x: Number(node?.x),
+    y: Number(node?.y),
+  }));
+  const nodeMinDistance = getEffectiveNodeMinDistance(world.params);
+  const settlementClearance = Math.max(1.35, nodeMinDistance * 0.34);
+  const signpostSpacing = Math.max(1.9, nodeMinDistance * 0.48);
 
   const junctionByCell = new Map();
   for (const node of world.network?.nodes ?? []) {
@@ -158,31 +165,122 @@ function buildDedicatedSignpostNodes(world, settlementNodes) {
   }
 
   const preferredCells = world.roads?.signpostCells ?? [];
+  const preferredCellSet = new Set(preferredCells);
   const sourceCells = [...new Set([...preferredCells, ...junctionByCell.keys()])];
-  const forcedCandidates = sourceCells
+  const candidates = sourceCells
     .map((cell) => {
       const degree = roadCellAdjacency.get(cell)?.size ?? 0;
       const [x, y] = coordsOf(cell, world.terrain.width);
       return {
+        id: cell,
         cell,
         degree,
         x,
         y,
+        score:
+          degree +
+          (preferredCellSet.has(cell) ? 1.05 : 0) +
+          clamp(degree / 8, 0, 0.45),
       };
     })
     .filter(
       (candidate) =>
         candidate.degree >= MIN_SIGNPOST_DEGREE &&
-        !settlementCellSet.has(candidate.cell),
+        !settlementCellSet.has(candidate.cell) &&
+        getNearestPointDistance(candidate.x, candidate.y, settlementAnchors) >=
+          settlementClearance,
     )
-    .sort((a, b) => a.cell - b.cell);
+    .sort((a, b) => {
+      if (Math.abs(Number(b.score) - Number(a.score)) > 1e-6) {
+        return Number(b.score) - Number(a.score);
+      }
+      return a.cell - b.cell;
+    });
 
-  if (!forcedCandidates.length) {
+  if (!candidates.length) {
     return [];
   }
 
+  const mandatoryCandidates = candidates.filter(
+    (candidate) =>
+      candidate.degree >= 4 || preferredCellSet.has(candidate.cell),
+  );
+  const optionalCandidates = candidates.filter(
+    (candidate) =>
+      !mandatoryCandidates.some((mandatory) => mandatory.cell === candidate.cell),
+  );
+
+  const targetSignpostCount = clamp(
+    Math.round(settlementNodes.length * 0.55 + Math.sqrt(roads.length) * 1.25),
+    Math.min(2, candidates.length),
+    Math.min(candidates.length, 18),
+  );
+
+  const selectedMandatory = chooseSpreadCandidates(mandatoryCandidates, {
+    target: mandatoryCandidates.length,
+    minSelectedDistance: signpostSpacing * 0.78,
+    minAnchorDistance: settlementClearance,
+    anchorPoints: settlementAnchors,
+    desiredSpacing: signpostSpacing,
+  });
+
+  const selectedMandatoryCells = new Set(
+    selectedMandatory.map((candidate) => candidate.cell),
+  );
+  const selectedOptionalPool = optionalCandidates.filter(
+    (candidate) => !selectedMandatoryCells.has(candidate.cell),
+  );
+  const optionalTarget = Math.max(0, targetSignpostCount - selectedMandatory.length);
+  const selectedOptional = chooseSpreadCandidates(selectedOptionalPool, {
+    target: optionalTarget,
+    minSelectedDistance: signpostSpacing,
+    minAnchorDistance: settlementClearance,
+    anchorPoints: [...settlementAnchors, ...selectedMandatory],
+    desiredSpacing: signpostSpacing + 0.9,
+  });
+
+  const selectedCandidates = [...selectedMandatory, ...selectedOptional]
+    .filter(
+      (candidate, index, all) =>
+        all.findIndex((other) => other.cell === candidate.cell) === index,
+    )
+    .sort((a, b) => a.cell - b.cell);
+
+  if (selectedCandidates.length < targetSignpostCount) {
+    const topUps = chooseSpreadCandidates(candidates, {
+      target: targetSignpostCount,
+      minSelectedDistance: signpostSpacing * 0.72,
+      minAnchorDistance: settlementClearance,
+      anchorPoints: settlementAnchors,
+      desiredSpacing: signpostSpacing,
+    }).sort((a, b) => a.cell - b.cell);
+
+    for (const candidate of topUps) {
+      if (selectedCandidates.some((selected) => selected.cell === candidate.cell)) {
+        continue;
+      }
+      selectedCandidates.push(candidate);
+    }
+  }
+
+  selectedCandidates.sort((a, b) => a.cell - b.cell);
+
+  if (!selectedCandidates.length) {
+    return [];
+  }
+
+  const trimmedCandidates = chooseSpreadCandidates(selectedCandidates, {
+    target: targetSignpostCount,
+    minSelectedDistance: signpostSpacing * 0.82,
+    minAnchorDistance: settlementClearance,
+    anchorPoints: settlementAnchors,
+    desiredSpacing: signpostSpacing,
+  }).sort((a, b) => a.cell - b.cell);
+
+  const finalCandidates = trimmedCandidates.length > 0 ? trimmedCandidates : selectedCandidates;
+
   const baseId = settlementNodes.length;
-  return forcedCandidates.map((entry, index) => {
+  return finalCandidates.map((entry, index) => {
     const nodeId = baseId + index;
     const { x, y } = entry;
     const networkJunction = junctionByCell.get(entry.cell);
