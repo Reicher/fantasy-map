@@ -13,6 +13,7 @@ import { renderEditorWorld } from "../render/renderer";
 import { createMapAtlasCacheManager } from "./mapAtlasCache";
 import { createPlayState } from "../game/travel";
 import { findNodeAtWorldPoint } from "../game/playQueries";
+import { getViewportVisibleWorldSize } from "../render/viewport";
 import type { AppRefs, AppState } from "../types/app";
 
 interface EditorSessionDeps {
@@ -53,8 +54,7 @@ export function createEditorSession({ refs, state, syncViewUi }: EditorSessionDe
     },
     getAtlasPadding(world, cameraState) {
       const zoom = cameraState?.zoom ?? 1;
-      const visibleWidth = world.terrain.width / zoom;
-      const visibleHeight = world.terrain.height / zoom;
+      const { visibleWidth, visibleHeight } = getViewportVisibleWorldSize(zoom);
       return {
         x: Math.max(12, visibleWidth * 0.24),
         y: Math.max(10, visibleHeight * 0.24),

@@ -598,5 +598,5 @@ function getFrequency01(value, fallback) {
 function getEffectiveNodeMinDistance(params) {
   const numeric = Number(params?.nodeMinDistance);
   const safe = Number.isFinite(numeric) ? numeric : DEFAULT_NODE_MIN_DISTANCE;
-  return clamp(safe, 2, 14);
+  return clamp(safe, 2, 22);
 }

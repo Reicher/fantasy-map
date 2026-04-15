@@ -1,6 +1,8 @@
 import type { World } from "../types/world";
 
 export interface WorldStatsSummary {
+  Världsyta: string;
+  Landrutor: string;
   Landandel: string;
   Noder: string;
   Vägar: string;
@@ -26,6 +28,8 @@ export function buildWorldStats(world: World): WorldStatsSummary {
   const features = (world.features ?? {}) as WorldFeaturesStatsLike;
 
   return {
+    Världsyta: `${world.terrain.width} x ${world.terrain.height}`,
+    Landrutor: `${landTiles}`,
     Landandel: `${Math.round((landTiles / totalTiles) * 100)}%`,
     Noder: String(features.nodes?.length ?? 0),
     Vägar: String(features.roads?.length ?? 0),

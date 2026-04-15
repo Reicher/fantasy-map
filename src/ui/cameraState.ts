@@ -1,8 +1,13 @@
 import type { ViewportLike } from "../types/runtime";
 import type { PlayState } from "../types/play";
 import type { World } from "../types/world";
+import { MAP_HEIGHT, MAP_WIDTH } from "../config";
+import {
+  getViewportScaleForZoom,
+  getViewportVisibleWorldSize,
+} from "../render/viewport";
 
-const EDITOR_ZOOM_LEVELS = [1, 2, 3] as const;
+const EDITOR_ZOOM_LEVELS = [0.35, 0.5, 0.75, 1, 1.5, 2, 3] as const;
 
 export interface CameraState {
   zoom: number;
@@ -12,8 +17,10 @@ export interface CameraState {
 }
 
 export function createEditorCamera(world: World | null | undefined): CameraState {
+  const minZoom = getEditorMinZoom(world);
+  const startZoom = getEditorStartZoom(world, minZoom);
   return {
-    zoom: EDITOR_ZOOM_LEVELS[0],
+    zoom: startZoom,
     centerX: world?.terrain.width ? world.terrain.width * 0.5 : 150,
     centerY: world?.terrain.height ? world.terrain.height * 0.5 : 110,
   };
@@ -45,13 +52,13 @@ export function clampEditorCamera(
     return camera;
   }
 
+  const minZoom = getEditorMinZoom(world);
   const zoom = clampNumber(
     camera.zoom,
-    EDITOR_ZOOM_LEVELS[0],
+    minZoom,
     EDITOR_ZOOM_LEVELS[EDITOR_ZOOM_LEVELS.length - 1],
   );
-  const visibleWidth = world.terrain.width / zoom;
-  const visibleHeight = world.terrain.height / zoom;
+  const { visibleWidth, visibleHeight } = getViewportVisibleWorldSize(zoom);
   const oceanPadX = Math.max(12, visibleWidth * 0.24);
   const oceanPadY = Math.max(10, visibleHeight * 0.24);
 
@@ -82,10 +89,12 @@ export function zoomCameraAroundPoint(
   const margin = viewport.margin;
   const innerWidth = viewport.innerWidth;
   const innerHeight = viewport.innerHeight;
-  const scaleX = (innerWidth / world.terrain.width) * zoom;
-  const scaleY = (innerHeight / world.terrain.height) * zoom;
-  const visibleWidth = innerWidth / scaleX;
-  const visibleHeight = innerHeight / scaleY;
+  const { scaleX, scaleY } = getViewportScaleForZoom(zoom, innerWidth, innerHeight);
+  const { visibleWidth, visibleHeight } = getViewportVisibleWorldSize(
+    zoom,
+    innerWidth,
+    innerHeight,
+  );
   const leftWorld = worldX + 0.5 - (canvasX - margin) / scaleX;
   const topWorld = worldY + 0.5 - (canvasY - margin) / scaleY;
 
@@ -109,6 +118,10 @@ export function isDefaultEditorCamera(
 }
 
 function getNearestEditorZoomIndex(zoom: number): number {
+  if (zoom <= EDITOR_ZOOM_LEVELS[0]) {
+    return 0;
+  }
+
   let nearestIndex = 0;
   let nearestDistance = Number.POSITIVE_INFINITY;
 
@@ -128,9 +141,17 @@ export function getNearestEditorZoom(zoom: number): number {
 }
 
 export function getAdjacentEditorZoom(currentZoom: number, direction: number): number {
+  const signedDirection = Math.sign(direction || 0);
+  if (signedDirection === 0) {
+    return currentZoom;
+  }
+
+  if (currentZoom < EDITOR_ZOOM_LEVELS[0]) {
+    return signedDirection > 0 ? EDITOR_ZOOM_LEVELS[0] : currentZoom;
+  }
   const currentIndex = getNearestEditorZoomIndex(currentZoom);
   const nextIndex = clampNumber(
-    currentIndex + Math.sign(direction || 0),
+    currentIndex + signedDirection,
     0,
     EDITOR_ZOOM_LEVELS.length - 1,
   );
@@ -139,4 +160,38 @@ export function getAdjacentEditorZoom(currentZoom: number, direction: number): n
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function getEditorMinZoom(world: World | null | undefined): number {
+  const fitZoom = getEditorFitZoom(world);
+  if (!Number.isFinite(fitZoom)) {
+    return 1;
+  }
+  return Math.min(EDITOR_ZOOM_LEVELS[0], fitZoom);
+}
+
+function getEditorStartZoom(
+  world: World | null | undefined,
+  minZoom: number,
+): number {
+  const fitZoom = getEditorFitZoom(world);
+  if (!Number.isFinite(fitZoom)) {
+    return 1;
+  }
+  return clampNumber(fitZoom, minZoom, 1);
+}
+
+function getEditorFitZoom(world: World | null | undefined): number {
+  const worldWidth = Number(world?.terrain?.width);
+  const worldHeight = Number(world?.terrain?.height);
+  if (
+    !Number.isFinite(worldWidth) ||
+    !Number.isFinite(worldHeight) ||
+    worldWidth <= 0 ||
+    worldHeight <= 0
+  ) {
+    return Number.NaN;
+  }
+
+  return Math.min(MAP_WIDTH / worldWidth, MAP_HEIGHT / worldHeight);
 }

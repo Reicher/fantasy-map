@@ -45,20 +45,42 @@ export function generateSettlements(world: World, names: SettlementNameSource) {
     rng,
     inlandPreference: params.inlandPreference,
   });
-  const densityMultiplier = 0.18 + density * 3.8;
-  const minCountByArea = clamp(Math.round(habitableArea / 1900), 2, 8);
-  const maxCountByArea = clamp(Math.round(habitableArea / 300), 18, 76);
+  const densityPower = Math.pow(density, 1.85);
+  const habitableBase = (habitableArea / 900) * (0.64 + density * 2.9);
+  const candidateBonus = (candidates.length / 115) * densityPower;
+  const minCountByArea = clamp(
+    Math.round(habitableArea / (2200 - density * 900)),
+    2,
+    18,
+  );
+  const maxCountByArea = clamp(
+    Math.round(candidates.length / (46 - density * 18)),
+    18,
+    190,
+  );
   const desiredCount = clamp(
-    Math.round((habitableArea / 760) * densityMultiplier),
+    Math.round(habitableBase + candidateBonus),
     minCountByArea,
     maxCountByArea,
   );
-  const minSpacing = clamp(18 - density * 8.4, 8.5, 18);
+  const spacingControl = clamp(Number(params.nodeMinDistance ?? 5), 2, 22);
+  const spreadControl = clamp(
+    Number(params.settlementRandomness ?? 20) / 140,
+    0,
+    1,
+  );
+  const densitySpacing = clamp(17.2 - density * 10.8, 5.8, 17.2);
+  const spacingFloorByControl =
+    clamp(spacingControl, 2, 22) * (0.64 + spreadControl * 0.34);
+  const minSpacing = Math.max(densitySpacing, spacingFloorByControl);
   const settlements = selectSettlements({
     width,
+    size,
     candidates,
     desiredCount,
     minSpacing,
+    settlementDensity: params.settlementDensity,
+    spacingControl,
     randomness: params.settlementRandomness,
     inlandPreference: params.inlandPreference,
     rng,

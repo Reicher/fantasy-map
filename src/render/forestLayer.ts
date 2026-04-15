@@ -20,7 +20,7 @@ export function collectForestRenderGlyphs(
         ?.biomeRegions ?? [])
     ).map((region) => [region.id, region]),
   );
-  const roadSegments = buildCanvasRoadSegments(world.geometry.roads, viewport);
+  const roadSegments = buildCanvasRoadSegments(world.geometry?.roads ?? [], viewport);
   const entries = [];
 
   for (const region of world.geometry.biomes) {
@@ -58,7 +58,9 @@ function getVegetationStyle(biomeKey) {
 function collectForestGlyphs(cells, region, style, world, viewport, roadSegments, showSnow) {
   const glyphs = [];
   const symbolScale = getVegetationZoomScale(viewport);
-  const spacingPx = style.minSpacing * Math.max(1, viewport.zoom * 0.92);
+  const zoom = Number(viewport?.zoom);
+  const safeZoom = Number.isFinite(zoom) ? zoom : 1;
+  const spacingPx = style.minSpacing * Math.max(1, safeZoom * 0.92);
   const startX = viewport.leftWorld - 1;
   const endX = viewport.leftWorld + viewport.visibleWidth + 1;
   const startY = viewport.topWorld - 1;
@@ -81,7 +83,7 @@ function collectForestGlyphs(cells, region, style, world, viewport, roadSegments
     }
 
     const point = viewport.worldToCanvas(x, y);
-    if (isNearRoad(point.x, point.y, roadSegments, style.type === "tree" ? 6.5 : 4.2)) {
+    if (isNearRoad(point.x, point.y, roadSegments, getRoadAvoidanceThreshold(style.type, 0))) {
       continue;
     }
     if (glyphs.some((glyph) => Math.hypot(glyph.x - point.x, glyph.y - point.y) < spacingPx)) {
@@ -123,7 +125,8 @@ function collectForestGlyphs(cells, region, style, world, viewport, roadSegments
 }
 
 function getVegetationZoomScale(viewport) {
-  return Math.max(1, Math.min(4.2, viewport.zoom));
+  const zoom = Number(viewport?.zoom);
+  return Math.max(1, Math.min(4.2, Number.isFinite(zoom) ? zoom : 1));
 }
 
 function shouldSuppressBiomeGlyphNearMountains(world, x, y, type, biomeKey) {
@@ -140,6 +143,11 @@ function shouldSuppressBiomeGlyphNearMountains(world, x, y, type, biomeKey) {
 }
 
 function shouldSuppressTreeNearMountains(world, x, y, biomeKey) {
+  if (biomeKey === BIOME_KEYS.HIGHLANDS) {
+    const stats = getMountainBandStats(world, x, y, 1, 0.36);
+    return stats.max >= 0.62 && stats.count >= 4;
+  }
+
   const stats =
     biomeKey === BIOME_KEYS.FOREST || biomeKey === BIOME_KEYS.RAINFOREST
       ? getMountainBandStats(world, x, y, 2, 0.28)
@@ -201,12 +209,15 @@ export function drawForestEntry(ctx, entry) {
       drawCactusGlyph(ctx, glyph, style);
       break;
     default:
-      drawTreeGlyph(ctx, glyph);
+      drawTreeGlyph(ctx, glyph, style);
       break;
   }
 }
 
 function buildCanvasRoadSegments(roads, viewport) {
+  if (!Array.isArray(roads)) {
+    return [];
+  }
   const segments = [];
   for (const road of roads) {
     if (road.type !== "road" || !road.points || road.points.length < 2) {
@@ -253,7 +264,7 @@ function distanceToSegmentSquared(px, py, a, b) {
 }
 
 function treeGlyphNearRoad(glyph, type, roadSegments) {
-  const threshold = type === "tree" ? Math.max(6.8, glyph.size * 0.34) : Math.max(4.2, glyph.size * 0.28);
+  const threshold = getRoadAvoidanceThreshold(type, glyph.size);
   const probePoints = [
     [glyph.x, glyph.y],
     [glyph.x, glyph.y + glyph.size * 0.08]
@@ -262,9 +273,21 @@ function treeGlyphNearRoad(glyph, type, roadSegments) {
   return probePoints.some(([x, y]) => isNearRoad(x, y, roadSegments, threshold));
 }
 
-function drawTreeGlyph(ctx, glyph) {
+function getRoadAvoidanceThreshold(type, size) {
+  if (type === "tree") {
+    return Math.max(6.8, size * 0.34);
+  }
+  if (type === "tuft") {
+    return Math.max(3.1, size * 0.2);
+  }
+  return Math.max(4, size * 0.26);
+}
+
+function drawTreeGlyph(ctx, glyph, style) {
   const height = glyph.size;
-  const lineColor = glyph.snowSurface ? "rgba(214, 214, 214, 0.98)" : "rgba(18, 18, 18, 0.98)";
+  const lineColor = glyph.snowSurface
+    ? "rgba(128, 124, 116, 0.96)"
+    : style?.stroke ?? "rgba(18, 18, 18, 0.98)";
   const trunkX = glyph.x + height * glyph.lean * 0.04;
   const trunkTopY = glyph.y - height * 0.9;
   const trunkBottomY = glyph.y + height * 0.08;

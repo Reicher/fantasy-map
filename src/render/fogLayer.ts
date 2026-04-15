@@ -5,7 +5,6 @@ import type { World } from "../types/world";
 
 let fogCanvas: HTMLCanvasElement | null = null;
 let fogCtx: CanvasRenderingContext2D | null = null;
-let textureSeedKey = "";
 
 export function drawFogOfWar(
   ctx: CanvasRenderingContext2D,
@@ -77,11 +76,7 @@ function clearDiscoveredArea(
 
 function drawFogTexture(overlayCtx: CanvasRenderingContext2D, seed: string): void {
   const seedKey = String(seed);
-  if (textureSeedKey !== seedKey) {
-    textureSeedKey = seedKey;
-  }
-
-  let hash = hashSeed(`${textureSeedKey}-fog-texture`);
+  let hash = hashSeed(`${seedKey}-fog-texture`);
   overlayCtx.fillStyle = "rgba(82, 80, 76, 0.18)";
   for (let y = 16; y < RENDER_HEIGHT; y += 34) {
     for (let x = 14; x < RENDER_WIDTH; x += 38) {
@@ -97,7 +92,7 @@ function drawFogTexture(overlayCtx: CanvasRenderingContext2D, seed: string): voi
     }
   }
 
-  hash = hashSeed(`${textureSeedKey}-fog-specks`);
+  hash = hashSeed(`${seedKey}-fog-specks`);
   overlayCtx.fillStyle = "rgba(228, 226, 220, 0.06)";
   for (let index = 0; index < 280; index += 1) {
     hash = nextHash(hash);

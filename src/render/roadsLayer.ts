@@ -8,11 +8,17 @@ interface RoadPoint {
 interface RoadLike {
   id?: number;
   type?: string;
-  points: RoadPoint[];
+  points?: RoadPoint[];
 }
 
 interface GeometryLike {
   roads?: RoadLike[];
+}
+
+interface RenderRoad {
+  id?: number;
+  type?: string;
+  points: RoadPoint[];
 }
 
 export function drawRoads(
@@ -126,7 +132,7 @@ function getRoadWobblePoints(
   });
 }
 
-function collectLockedRoadPointKeys(roads: RoadLike[]): Set<string> {
+function collectLockedRoadPointKeys(roads: RenderRoad[]): Set<string> {
   const usageByKey = new Map<string, number>();
   for (const road of roads) {
     for (const point of road.points ?? []) {
@@ -166,10 +172,41 @@ function getRoadZoomScale(viewport: { zoom?: number }): number {
   return Math.max(1, Math.min(4.2, viewport?.zoom ?? 1));
 }
 
-function resolveRoads(geometry: GeometryLike, options: RoadOverlay): RoadLike[] {
-  const explicitRoads = options?.roads;
-  if (Array.isArray(explicitRoads)) {
-    return explicitRoads as RoadLike[];
+function resolveRoads(geometry: GeometryLike, options: RoadOverlay): RenderRoad[] {
+  const sourceRoads = Array.isArray(options?.roads)
+    ? options.roads
+    : (geometry?.roads ?? []);
+  const roads: RenderRoad[] = [];
+
+  for (const road of sourceRoads) {
+    const points = normalizeRoadPoints(road?.points);
+    if (points.length < 2) {
+      continue;
+    }
+    roads.push({
+      id: Number.isFinite(road?.id) ? Number(road.id) : undefined,
+      type: typeof road?.type === "string" ? road.type : undefined,
+      points,
+    });
   }
-  return (geometry?.roads ?? []) as RoadLike[];
+
+  return roads;
+}
+
+function normalizeRoadPoints(points: unknown): RoadPoint[] {
+  if (!Array.isArray(points)) {
+    return [];
+  }
+
+  const normalized: RoadPoint[] = [];
+  for (const point of points) {
+    const x = Number((point as { x?: unknown })?.x);
+    const y = Number((point as { y?: unknown })?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      continue;
+    }
+    normalized.push({ x, y });
+  }
+
+  return normalized;
 }

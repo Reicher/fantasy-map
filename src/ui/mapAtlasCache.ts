@@ -1,5 +1,8 @@
 import { RENDER_HEIGHT, RENDER_WIDTH } from "../config";
-import { createViewport } from "../render/renderer";
+import {
+  createViewport,
+  getViewportScaleForZoom,
+} from "../render/viewport";
 import type { RenderOptions, ViewportLike } from "../types/runtime";
 import type { World } from "../types/world";
 
@@ -188,8 +191,11 @@ function createMapAtlas(
   // around the world so any camera center can be cropped from the same image.
   const margin = 0;
   const zoom = cameraState?.zoom ?? 1;
-  const scaleX = (RENDER_WIDTH / world.terrain.width) * zoom;
-  const scaleY = (RENDER_HEIGHT / world.terrain.height) * zoom;
+  const { scaleX, scaleY } = getViewportScaleForZoom(
+    zoom,
+    RENDER_WIDTH,
+    RENDER_HEIGHT,
+  );
   const maxVisibleWidth = RENDER_WIDTH / scaleX;
   const maxVisibleHeight = RENDER_HEIGHT / scaleY;
   const padX = Math.max(0, atlasPadding?.x ?? 0);

@@ -269,8 +269,9 @@ function collapseDiagonalLakeSingletons(context, passes = 1) {
   }
 }
 
-// Maximum steps prevents infinite loops on flat or cyclic terrain (~1.5× the map diagonal)
-const MAX_RIVER_STEPS = 340;
+// Keep a floor so small maps retain prior behavior, but scale on larger maps.
+const MIN_RIVER_STEPS = 340;
+const RIVER_STEPS_DIAGONAL_FACTOR = 1.5;
 
 function traceRiver(context, sourceIndex, sourceScore) {
   let current = sourceIndex;
@@ -278,8 +279,9 @@ function traceRiver(context, sourceIndex, sourceScore) {
   const visited = new Set<number>();
   const cells: number[] = [];
   let joinsRiver = false;
+  const maxRiverSteps = resolveMaxRiverSteps(context.width, context.height);
 
-  for (let step = 0; step < MAX_RIVER_STEPS; step += 1) {
+  for (let step = 0; step < maxRiverSteps; step += 1) {
     if (visited.has(current)) {
       break;
     }
@@ -333,10 +335,13 @@ function chooseNextFlowCell(context, current, previous) {
   const {
     width,
     height,
+    params,
     oceanMask,
     lakeIdByCell,
     elevation,
     mountainField,
+    oceanDistance,
+    coastDistance,
     riverCellOwner,
   } = context;
   const [x, y] = coordsOf(current, width);
@@ -355,13 +360,17 @@ function chooseNextFlowCell(context, current, previous) {
   forEachNeighbor(width, height, x, y, true, (nx, ny, ox, oy) => {
     const neighbor = indexOf(nx, ny, width);
     if (oceanMask[neighbor]) {
-      best = neighbor;
-      bestScore = -1;
+      if (-1 < bestScore) {
+        best = neighbor;
+        bestScore = -1;
+      }
       return;
     }
     if (lakeIdByCell[neighbor] >= 0) {
-      best = neighbor;
-      bestScore = -0.5;
+      if (-0.5 < bestScore) {
+        best = neighbor;
+        bestScore = -0.5;
+      }
       return;
     }
 
@@ -370,23 +379,53 @@ function chooseNextFlowCell(context, current, previous) {
       const nextX = nx - x;
       const nextY = ny - y;
       const dot = forwardPenaltyX * nextX + forwardPenaltyY * nextY;
-      previousBias = dot >= 0 ? -0.01 : 0.02;
+      previousBias = dot > 0 ? -0.003 : dot < 0 ? 0.032 : 0.006;
     }
+    const drop = currentHeight - elevation[neighbor];
+    const downhillBias = drop >= 0 ? -drop * 0.16 : (-drop) * 0.34;
+    const coastGradient = coastDistance[neighbor] - coastDistance[current];
+    const oceanGradient = oceanDistance[neighbor] - oceanDistance[current];
+    const coastPull = coastGradient * 0.006 + oceanGradient * 0.003;
+    const meanderNoise =
+      (fractalNoise2D(
+        nx * 0.14 + 1.3,
+        ny * 0.14 - 2.7,
+        `${params.seed}::river-meander`,
+        {
+          octaves: 2,
+          gain: 0.6,
+        },
+      ) -
+        0.5) *
+      0.028;
     const riverBias = riverCellOwner[neighbor] >= 0 ? -0.06 : 0;
     const score =
       elevation[neighbor] +
       mountainField[neighbor] * 0.02 +
+      downhillBias +
+      coastPull +
+      meanderNoise +
       previousBias +
       riverBias +
-      (Math.abs(ox) + Math.abs(oy) === 2 ? 0.004 : 0);
+      (Math.abs(ox) + Math.abs(oy) === 2 ? 0.009 : 0);
 
-    if (score < bestScore && score <= currentHeight + 0.02) {
+    if (score < bestScore && score <= currentHeight + 0.014) {
       bestScore = score;
       best = neighbor;
     }
   });
 
   return best;
+}
+
+function resolveMaxRiverSteps(width, height) {
+  if (width <= 0 || height <= 0) {
+    return MIN_RIVER_STEPS;
+  }
+  return Math.max(
+    MIN_RIVER_STEPS,
+    Math.round(Math.hypot(width, height) * RIVER_STEPS_DIAGONAL_FACTOR),
+  );
 }
 
 function createLake(context, anchor, sourceScore) {
@@ -641,13 +680,20 @@ function selectRiverSources({
   coastDistance,
 }) {
   const candidateSources: Array<{ index: number; score: number }> = [];
+  let landTiles = 0;
+  let inlandTiles = 0;
+  const fragmentationFactor = sliderFactor(params.fragmentation ?? 52, 0.86);
 
   for (let index = 0; index < size; index += 1) {
     if (!isLand[index]) {
       continue;
     }
+    landTiles += 1;
 
     const inlandBias = clamp(coastDistance[index] / 14, 0, 1);
+    if (coastDistance[index] > 6) {
+      inlandTiles += 1;
+    }
     const deepInlandBias = clamp(oceanDistance[index] / 20, 0, 1);
     const score =
       elevation[index] * 0.32 +
@@ -665,14 +711,27 @@ function selectRiverSources({
   candidateSources.sort((a, b) => b.score - a.score);
   const selectedSources: Array<{ index: number; score: number }> = [];
   const riverAmountFactor = sliderFactor(params.riverAmount, 0.78);
+  const inlandShare = landTiles > 0 ? inlandTiles / landTiles : 0;
+  const scaleDamping = clamp(Math.pow(size / 66000, 0.18), 0.85, 1.35);
+  const sourceBase =
+    (landTiles / 3000) * (0.45 + riverAmountFactor * 1.45);
+  const connectivity =
+    clamp(0.5 + inlandShare * 0.95 - fragmentationFactor * 0.2, 0.35, 1.25);
   const targetSources = clamp(
     Math.round(
-      (candidateSources.length / 1500) * (1.4 + riverAmountFactor * 15.5),
+      sourceBase * connectivity * scaleDamping,
     ),
     1,
-    40,
+    36,
   );
-  const minSourceSpacing = Math.max(4, Math.round(12 - riverAmountFactor * 7));
+  const minSourceSpacing = Math.max(
+    4,
+    Math.round(
+      (8 - riverAmountFactor * 3.2) *
+        Math.pow(size / 66000, 0.36) *
+        (0.84 + fragmentationFactor * 0.24),
+    ),
+  );
 
   for (const candidate of candidateSources) {
     if (selectedSources.length >= targetSources) {

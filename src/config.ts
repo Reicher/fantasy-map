@@ -7,6 +7,9 @@ export const RENDER_HEIGHT = 840;
 
 export const DEFAULT_PARAMS: WorldParams = {
   seed: "saltwind-01",
+  worldAspect: 1,
+  worldScale: 100,
+  fragmentation: 52,
   mapSize: 58,
   mountainousness: 54,
   settlementDensity: 20,
@@ -26,7 +29,24 @@ export const DEFAULT_PARAMS: WorldParams = {
   nodeMinDistance: 5,
 };
 
-const PARAM_LABELS: Record<Exclude<keyof WorldParams, "seed">, (value: number) => string> = {
+type NumericWorldParamKey = {
+  [K in keyof WorldParams]: WorldParams[K] extends number ? K : never;
+}[keyof WorldParams];
+
+const PARAM_LABELS: Record<NumericWorldParamKey, (value: number) => string> = {
+  worldAspect: (value: number) => {
+    const shapeRatio = 1 + Math.max(0, value - 1) * 6.6667;
+    return `${value.toFixed(2)} (ca ${shapeRatio.toFixed(1)}:1)`;
+  },
+  worldScale: (value: number) => `${Math.round(value)}%`,
+  fragmentation: (value: number) =>
+    value < 20
+      ? "Sammanhängande"
+      : value < 45
+        ? "Sprucken"
+        : value < 70
+          ? "Fragmenterad"
+          : "Arkipelagisk",
   mapSize: (value: number) => `${value}%`,
   mountainousness: (value: number) => `${value}%`,
   settlementDensity: (value: number) => `${value}%`,
@@ -79,7 +99,9 @@ const PARAM_LABELS: Record<Exclude<keyof WorldParams, "seed">, (value: number) =
           ? "Blandat"
           : value < 85
             ? "Hög variation"
-            : "Mycket variation",
+            : value < 110
+              ? "Mycket variation"
+              : "Extrem spridning",
   abandonedFrequency: (value: number) =>
     value < 15
       ? "Nästan inga"
@@ -97,6 +119,48 @@ export const PARAM_SCHEMA = {
   seed: {
     type: "string",
   },
+  worldAspect: {
+    type: "number",
+    min: 1,
+    max: 1.6,
+    step: 0.05,
+    formatLabel: PARAM_LABELS.worldAspect,
+    ui: {
+      label: "Avlång värld",
+      tab: "karta",
+      section: "Terrängform",
+      order: 5,
+      hint: "Öka för bredare värld i horisontell riktning. 1.30 motsvarar ungefär 3:1.",
+    },
+  },
+  worldScale: {
+    type: "number",
+    min: 70,
+    max: 220,
+    step: 1,
+    formatLabel: PARAM_LABELS.worldScale,
+    ui: {
+      label: "Världsyta",
+      tab: "karta",
+      section: "Terrängform",
+      order: 8,
+      hint: "Skalar upp hela kartans yta och avstånd (fler celler). Med samma landmängd ger högre värde mer vatten runt landmassorna.",
+    },
+  },
+  fragmentation: {
+    type: "number",
+    min: 0,
+    max: 100,
+    step: 1,
+    formatLabel: PARAM_LABELS.fragmentation,
+    ui: {
+      label: "Fragmentering",
+      tab: "karta",
+      section: "Terrängform",
+      order: 9,
+      hint: "Lågt värde = mer sammanhängande land. Högt värde = mer uppsplittrat i öar och sund.",
+    },
+  },
   mapSize: {
     type: "number",
     min: 10,
@@ -104,11 +168,11 @@ export const PARAM_SCHEMA = {
     step: 1,
     formatLabel: PARAM_LABELS.mapSize,
     ui: {
-      label: "Kontinentstorlek",
+      label: "Landmängd",
       tab: "karta",
       section: "Terrängform",
       order: 10,
-      hint: "Styr skalan på landmassor och avstånd.",
+      hint: "Styr hur mycket land som skapas inom världsytan (fler/större landmassor). Ändrar inte världens totala utsträckning.",
     },
   },
   mountainousness: {
@@ -142,7 +206,7 @@ export const PARAM_SCHEMA = {
   minBiomeSize: {
     type: "number",
     min: 0,
-    max: 20,
+    max: 40,
     step: 1,
     formatLabel: PARAM_LABELS.minBiomeSize,
     ui: {
@@ -226,7 +290,7 @@ export const PARAM_SCHEMA = {
   settlementRandomness: {
     type: "number",
     min: 0,
-    max: 100,
+    max: 140,
     step: 1,
     formatLabel: PARAM_LABELS.settlementRandomness,
     ui: {
@@ -234,7 +298,7 @@ export const PARAM_SCHEMA = {
       tab: "noder",
       section: "Bosättningar",
       order: 20,
-      hint: "Högre värde ger mer oväntade placeringar.",
+      hint: "Högre värde prioriterar jämnare spridning och mer varierade placeringar.",
     },
   },
   renderScale: {
@@ -324,7 +388,7 @@ export const PARAM_SCHEMA = {
   nodeMinDistance: {
     type: "number",
     min: 2,
-    max: 14,
+    max: 22,
     step: 0.5,
     formatLabel: PARAM_LABELS.nodeMinDistance,
     ui: {

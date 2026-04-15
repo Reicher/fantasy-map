@@ -16,28 +16,39 @@ export function drawRivers(ctx, geometry, viewport) {
   ctx.lineJoin = "round";
 
   for (const river of rivers) {
-    const points = buildRiverRenderPoints(river.points, viewport, `river:${river.id}`, river.width);
+    const points = buildRiverRenderPoints(
+      river?.points,
+      viewport,
+      `river:${river?.id ?? "unknown"}`,
+      river?.width,
+    );
     if (points.length < 2) {
       continue;
     }
 
-    const lineWidth = clamp(1.7 + river.width * 0.82 + river.cellCount / 34, 1.7, 6.4);
+    const riverWidth = Number(river?.width ?? 1);
+    const riverCellCount = Number(river?.cellCount ?? 0);
+    const lineWidth = clamp(1.7 + riverWidth * 0.82 + riverCellCount / 34, 1.7, 6.4);
     ctx.strokeStyle = "rgba(138, 160, 168, 0.98)";
     ctx.lineWidth = lineWidth;
     strokeRiverPath(ctx, points, Math.max(8, lineWidth * 2.8));
 
-    for (const branch of river.deltaBranches ?? []) {
+    for (const branch of river?.deltaBranches ?? []) {
       const branchPoints = buildRiverRenderPoints(
-        branch.points,
+        branch?.points,
         viewport,
-        `river:${river.id}:branch`,
-        branch.width
+        `river:${river?.id ?? "unknown"}:branch`,
+        branch?.width,
       );
       if (branchPoints.length < 2) {
         continue;
       }
 
-      const branchWidth = clamp(1.3 + branch.width * 0.68 + river.cellCount / 58, 1.2, 4.2);
+      const branchWidth = clamp(
+        1.3 + Number(branch?.width ?? 1) * 0.68 + riverCellCount / 58,
+        1.2,
+        4.2,
+      );
       ctx.strokeStyle = "rgba(138, 160, 168, 0.96)";
       ctx.lineWidth = branchWidth;
       strokeRiverPath(ctx, branchPoints, Math.max(6, branchWidth * 2.4));
@@ -89,13 +100,31 @@ function strokeRiverPath(ctx, points, cornerRadius = 10) {
 }
 
 function buildRiverRenderPoints(worldPoints, viewport, seedKey, width = 1) {
-  const normalized = worldPoints.map((point) => ({ x: point.x - 0.5, y: point.y - 0.5 }));
+  if (!Array.isArray(worldPoints) || worldPoints.length === 0) {
+    return [];
+  }
+  const normalized = worldPoints
+    .map((point) => {
+      const x = Number(point?.x);
+      const y = Number(point?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return null;
+      }
+      return { x: x - 0.5, y: y - 0.5 };
+    })
+    .filter((point) => point != null);
+  if (normalized.length < 2) {
+    return [];
+  }
   const simplified = simplifyRiverRenderPoints(dedupeRiverPoints(normalized));
   const meandered = meanderRiverPoints(simplified, seedKey, width);
   return meandered.map((point) => viewport.worldToCanvas(point.x, point.y));
 }
 
 function dedupeRiverPoints(points) {
+  if (!Array.isArray(points) || points.length === 0) {
+    return [];
+  }
   const deduped = [points[0]];
   for (let index = 1; index < points.length; index += 1) {
     const previous = deduped[deduped.length - 1];

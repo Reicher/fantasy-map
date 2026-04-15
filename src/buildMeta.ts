@@ -9,10 +9,10 @@ export type BuildMeta = {
 };
 
 export const BUILD_META: Readonly<BuildMeta> = Object.freeze({
-  "commitHash": "596fc3475a364633e505a58c3378ae84af6ced46",
-  "shortHash": "596fc34",
-  "committedAtIso": "2026-04-14T11:23:41+02:00",
-  "commitCount": 55
+  "commitHash": "78bb2acd7c7ffe3c4dde2f54eafde2e45a52757f",
+  "shortHash": "78bb2ac",
+  "committedAtIso": "2026-04-14T14:03:56+02:00",
+  "commitCount": 57
 });
 
 export function formatBuildLabel(meta: Partial<BuildMeta> = BUILD_META): string {

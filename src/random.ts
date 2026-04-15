@@ -42,7 +42,15 @@ function sfc32(a: number, b: number, c: number, d: number): () => number {
 }
 
 export function hashString(value: string): number {
-  return xmur3(value)();
+  let h = 1779033703 ^ value.length;
+  for (let i = 0; i < value.length; i += 1) {
+    h = Math.imul(h ^ value.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  h = Math.imul(h ^ (h >>> 16), 2246822507);
+  h = Math.imul(h ^ (h >>> 13), 3266489909);
+  h ^= h >>> 16;
+  return h >>> 0;
 }
 
 export function createRng(seed: string): RandomGenerator {

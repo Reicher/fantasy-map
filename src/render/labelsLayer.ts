@@ -11,6 +11,9 @@ export function drawLabels(
   viewport,
   options: RenderOptions = {},
 ) {
+  if (!world?.geometry?.labels) {
+    return;
+  }
   const {
     showBiomeLabels = false,
     showNodeLabels = false,
@@ -24,10 +27,10 @@ export function drawLabels(
     options,
     visibleNodeIds,
   );
-  const opasettlement = 0.9;
+  const labelOpacity = 0.9;
 
   ctx.save();
-  ctx.globalAlpha = opasettlement;
+  ctx.globalAlpha = labelOpacity;
 
   if (showBiomeLabels) {
     const mapPlacedBoxes = [...placedBoxes];
@@ -136,7 +139,9 @@ function reserveNodeCollisionBoxesForMapNames(
 }
 
 function getNodeCollisionScale(viewport) {
-  return Math.max(2.1, Math.min(6.2, viewport.zoom * 1.32));
+  const zoom = Number(viewport?.zoom);
+  const safeZoom = Number.isFinite(zoom) ? zoom : 1;
+  return Math.max(2.1, Math.min(6.2, safeZoom * 1.32));
 }
 
 function resolveVisibleNodeIdsForLabels(options: RenderOptions = {}) {
@@ -493,7 +498,8 @@ function intersectsPlacedBox(box, placedBoxes) {
 }
 
 function getRegionLabelSettings(viewport) {
-  const zoom = Math.max(1, Math.min(3.2, viewport.zoom));
+  const rawZoom = Number(viewport?.zoom);
+  const zoom = Math.max(1, Math.min(3.2, Number.isFinite(rawZoom) ? rawZoom : 1));
   const zoomPower = Math.pow(zoom, 1.18);
 
   return {
@@ -522,7 +528,15 @@ function getMountainLabelStyle(fontSize) {
 }
 
 function getBiomeLabelStyle(biome, fontSize) {
-  const style = getBiomeDefinitionById(biome).labels.mapRegion;
+  const style = getBiomeDefinitionById(biome)?.labels?.mapRegion;
+  if (!style) {
+    return {
+      font: `600 italic ${fontSize}px Baskerville, "Palatino Linotype", Georgia, serif`,
+      fillStyle: "rgba(88, 78, 68, 0.9)",
+      strokeStyle: "rgba(244, 235, 214, 0.92)",
+      lineWidth: 4.2,
+    };
+  }
   return {
     font: `${style.fontWeight} ${style.fontStyle} ${fontSize}px ${style.fontFamily}`,
     fillStyle: style.fillStyle,

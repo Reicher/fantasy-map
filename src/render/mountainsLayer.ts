@@ -7,6 +7,7 @@ import { glyphNoise } from "./hash";
 const MOUNTAIN_ROAD_ANCHOR_EXCLUSION_RADIUS = 1.12;
 const MOUNTAIN_ROAD_GLYPH_EXCLUSION_MIN_PX = 5.7;
 const MOUNTAIN_ROAD_GLYPH_EXCLUSION_WIDTH_FACTOR = 0.18;
+const MOUNTAIN_ROAD_CELL_SAMPLE_STEP_WORLD = 0.22;
 
 interface MountainRenderOptions {
   showSnow?: boolean;
@@ -26,10 +27,20 @@ export function collectMountainRenderGlyphs(
   const glyphHits = [];
   const roadSegments = buildRoadSegments(geometry?.roads ?? []);
   const canvasRoadSegments = buildCanvasRoadSegments(geometry?.roads ?? [], viewport);
+  const roadCellMask = buildRoadCellMask(
+    geometry?.roads ?? [],
+    terrain.width,
+    terrain.height,
+  );
 
   for (const region of regions.mountainRegions) {
     const cells = region.cells
-      .filter((cell) => terrain.isLand[cell] === 1 && climate.biome[cell] !== BIOME_KEYS.LAKE)
+      .filter(
+        (cell) =>
+          terrain.isLand[cell] === 1 &&
+          climate.biome[cell] !== BIOME_KEYS.LAKE &&
+          roadCellMask[cell] === 0,
+      )
       .sort((a, b) => terrain.mountainField[b] - terrain.mountainField[a]);
 
     if (cells.length === 0) {
@@ -115,8 +126,10 @@ function buildMountainAnchors(cells, terrain, climate, targetAnchors, anchorSpac
     .slice(0, Math.max(targetAnchors * 3, 24));
   const desiredSpacing = Math.max(
     anchorSpacingWorld * 1.3,
-    Math.sqrt(cells.length / Math.max(1, targetAnchors)) * 0.72
+    Math.sqrt(cells.length / Math.max(1, targetAnchors)) * 0.92
   );
+  const minSpacingFloor = Math.max(0.9, desiredSpacing * 0.66);
+  let hardMinSpacing = Math.max(1, desiredSpacing * 0.92);
   const anchors = [candidatePool[0]];
   const selected = new Uint8Array(candidatePool.length);
   selected[0] = 1;
@@ -132,10 +145,13 @@ function buildMountainAnchors(cells, terrain, climate, targetAnchors, anchorSpac
       if (selected[index] === 1) {
         continue;
       }
+      if (minDistance[index] < hardMinSpacing) {
+        continue;
+      }
       const spacingRatio = minDistance[index] / Math.max(0.001, desiredSpacing);
       const spreadScore = Math.min(2.4, spacingRatio);
       const crowdPenalty = Math.exp(-(spacingRatio * spacingRatio) * 3.1);
-      const score = candidatePool[index].value * 2.7 + spreadScore * 1.7 - crowdPenalty * 2.05;
+      const score = candidatePool[index].value * 2.7 + spreadScore * 1.75 - crowdPenalty * 2.1;
       if (score > bestScore) {
         bestScore = score;
         bestIndex = index;
@@ -143,6 +159,10 @@ function buildMountainAnchors(cells, terrain, climate, targetAnchors, anchorSpac
     }
 
     if (bestIndex < 0) {
+      if (hardMinSpacing > minSpacingFloor + 0.001) {
+        hardMinSpacing = Math.max(minSpacingFloor, hardMinSpacing * 0.88);
+        continue;
+      }
       break;
     }
 
@@ -195,16 +215,18 @@ function buildMountainGlyph(anchor, regionId, anchorIndex, regionStyle, viewport
 function getMountainRegionStyle(regionId, aspect = 1) {
   const profile = glyphNoise(regionId * 941 + 17);
   const shape = glyphNoise(regionId * 569 + 91);
-  const narrowBoost = aspect > 2.2 ? 0.84 : aspect > 1.6 ? 0.92 : 1;
-  const densityDivisor = (aspect > 2.2 ? 3.9 : aspect > 1.6 ? 4.8 : 5.9) / narrowBoost;
-  const densitySpacing = (aspect > 2.2 ? 1.18 : aspect > 1.6 ? 1.24 : 1.3) * narrowBoost;
+  const elongated = clamp((aspect - 1) / 2.4, 0, 1);
+  const widthStretch = 1 + elongated * 0.1;
+  const heightCompression = 1 - elongated * 0.06;
+  const densityDivisor = 5.8;
+  const densitySpacing = 1.3;
 
   if (profile < 0.34) {
     return {
       anchorDivisor: densityDivisor,
       anchorSpacingWorld: densitySpacing,
-      widthBias: (1.28 + shape * 0.18) * narrowBoost,
-      heightBias: 0.82 + shape * 0.1,
+      widthBias: (1.28 + shape * 0.18) * widthStretch,
+      heightBias: (0.82 + shape * 0.1) * heightCompression,
       leanAmount: 0.2,
       positionJitter: 0.7 + shape * 0.4
     };
@@ -214,8 +236,8 @@ function getMountainRegionStyle(regionId, aspect = 1) {
     return {
       anchorDivisor: densityDivisor,
       anchorSpacingWorld: densitySpacing,
-      widthBias: (0.92 + shape * 0.12) * narrowBoost,
-      heightBias: 1.15 + shape * 0.18,
+      widthBias: (0.92 + shape * 0.12) * widthStretch,
+      heightBias: (1.15 + shape * 0.18) * heightCompression,
       leanAmount: 0.28,
       positionJitter: 0.55 + shape * 0.25
     };
@@ -224,8 +246,8 @@ function getMountainRegionStyle(regionId, aspect = 1) {
   return {
     anchorDivisor: densityDivisor,
     anchorSpacingWorld: densitySpacing,
-    widthBias: (1.05 + shape * 0.14) * narrowBoost,
-    heightBias: 0.98 + shape * 0.14,
+    widthBias: (1.05 + shape * 0.14) * widthStretch,
+    heightBias: (0.98 + shape * 0.14) * heightCompression,
     leanAmount: 0.24,
     positionJitter: 0.62 + shape * 0.3
   };
@@ -251,6 +273,9 @@ function updateCandidateDistances(candidatePool, selected, minDistance, anchor) 
 }
 
 function buildRoadSegments(roads) {
+  if (!Array.isArray(roads)) {
+    return [];
+  }
   const segments = [];
   for (const road of roads) {
     if (road.type !== "road" || !road.points || road.points.length < 2) {
@@ -266,7 +291,49 @@ function buildRoadSegments(roads) {
   return segments;
 }
 
+function buildRoadCellMask(roads, width, height) {
+  const mask = new Uint8Array(Math.max(0, width * height));
+  if (!roads?.length || width <= 0 || height <= 0) {
+    return mask;
+  }
+
+  const markRoadCell = (x, y) => {
+    const cellX = Math.floor(x);
+    const cellY = Math.floor(y);
+    if (cellX < 0 || cellY < 0 || cellX >= width || cellY >= height) {
+      return;
+    }
+    mask[cellY * width + cellX] = 1;
+  };
+
+  for (const road of roads) {
+    if (road.type !== "road" || !road.points || road.points.length < 2) {
+      continue;
+    }
+    for (let index = 0; index < road.points.length - 1; index += 1) {
+      const a = road.points[index];
+      const b = road.points[index + 1];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const distance = Math.hypot(dx, dy);
+      const samples = Math.max(
+        1,
+        Math.ceil(distance / MOUNTAIN_ROAD_CELL_SAMPLE_STEP_WORLD),
+      );
+      for (let sample = 0; sample <= samples; sample += 1) {
+        const t = sample / samples;
+        markRoadCell(a.x + dx * t, a.y + dy * t);
+      }
+    }
+  }
+
+  return mask;
+}
+
 function buildCanvasRoadSegments(roads, viewport) {
+  if (!Array.isArray(roads)) {
+    return [];
+  }
   const segments = [];
   for (const road of roads) {
     if (road.type !== "road" || !road.points || road.points.length < 2) {
@@ -544,7 +611,8 @@ function getCellBounds(cells, width) {
 }
 
 function getMountainZoomScale(viewport) {
-  return clamp(viewport.zoom, 1, 4.5);
+  const zoom = Number(viewport?.zoom);
+  return clamp(Number.isFinite(zoom) ? zoom : 1, 1, 4.5);
 }
 
 function pointOnSegment(a, b, t) {

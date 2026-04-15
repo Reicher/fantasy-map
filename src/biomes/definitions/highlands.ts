@@ -14,12 +14,12 @@ export const highlandsBiome: BiomeDefinition = {
     ],
     vegetation: {
       type: "tree",
-      density: 0.022,
-      minSpacing: 15.5,
-      minSize: 7.4,
-      sizeRange: 3.2,
-      fill: "rgba(92, 94, 80, 0.68)",
-      stroke: "rgba(68, 60, 47, 0.82)",
+      density: 0.052,
+      minSpacing: 11.6,
+      minSize: 7.8,
+      sizeRange: 3.7,
+      fill: "rgba(92, 94, 80, 0.74)",
+      stroke: "rgba(64, 58, 46, 0.9)",
     },
   },
   labels: {

@@ -1,6 +1,5 @@
 import { coordsOf } from "../utils";
 
-const JUNCTION_NODE_MERGE_RADIUS = 0;
 const JUNCTION_CLUSTER_RADIUS = 5.2;
 
 export function buildWorldNetwork(world) {
@@ -55,25 +54,11 @@ export function buildRoadNetwork({
     nodeIdByCell.set(cell, node.id);
   }
 
-  const mergeAnchorNodes = nodes.filter(
-    (node) => node?.type === "settlement" || node?.type === "abandoned",
-  );
-
   const { representativeCells, representativeByCell } =
     collectLandRoadJunctionCells(roads, width);
 
   for (const cell of representativeCells) {
     if (nodeIdByCell.has(cell)) {
-      continue;
-    }
-    const mergeTargetNodeId = findNearestNodeIdWithinRadius(
-      cell,
-      width,
-      mergeAnchorNodes,
-      JUNCTION_NODE_MERGE_RADIUS,
-    );
-    if (mergeTargetNodeId != null) {
-      nodeIdByCell.set(cell, mergeTargetNodeId);
       continue;
     }
     const [x, y] = coordsOf(cell, width);
@@ -100,7 +85,11 @@ export function buildRoadNetwork({
   }
 
   for (const road of roads) {
-    for (const endpoint of [road.cells[0], road.cells[road.cells.length - 1]]) {
+    const cells = road?.cells ?? [];
+    if (cells.length < 1) {
+      continue;
+    }
+    for (const endpoint of [cells[0], cells[cells.length - 1]]) {
       if (nodeIdByCell.has(endpoint)) {
         continue;
       }
@@ -282,38 +271,6 @@ function buildNetworkComponents(nodes, links) {
     components,
     adjacencyByNodeId: adjacency,
   };
-}
-
-function findNearestNodeIdWithinRadius(
-  cell: number,
-  width: number,
-  nodes: Array<{ id: number; x: number; y: number }> | null | undefined,
-  radius: number,
-) {
-  if (!nodes?.length || !Number.isFinite(cell) || width <= 0 || radius <= 0) {
-    return null;
-  }
-  const [x, y] = coordsOf(cell, width);
-  let bestNodeId = null;
-  let bestDistanceSq = radius * radius;
-
-  for (const node of nodes) {
-    if (!node || !Number.isFinite(node.x) || !Number.isFinite(node.y)) {
-      continue;
-    }
-    const dx = x - node.x;
-    const dy = y - node.y;
-    const distanceSq = dx * dx + dy * dy;
-    if (distanceSq > bestDistanceSq) {
-      continue;
-    }
-    if (bestNodeId == null || distanceSq < bestDistanceSq) {
-      bestNodeId = node.id;
-      bestDistanceSq = distanceSq;
-    }
-  }
-
-  return bestNodeId;
 }
 
 function clusterNearbyJunctionCells(

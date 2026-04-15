@@ -1,5 +1,8 @@
 export interface WorldParams {
   seed: string;
+  worldAspect: number;
+  worldScale: number;
+  fragmentation: number;
   mapSize: number;
   mountainousness: number;
   settlementDensity: number;

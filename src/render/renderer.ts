@@ -104,6 +104,10 @@ function renderScene(
   const viewport =
     (options.viewport as ViewportLike | undefined) ??
     createViewport(world, options.cameraState);
+  const viewportWithZoom = ensureViewportWithZoom(
+    viewport,
+    options.cameraState?.zoom,
+  );
   const { terrain, hydrology, climate, regions, geometry } = world;
   const nodes = getWorldNodes(world);
   const renderWidth = options.renderWidth ?? RENDER_WIDTH;
@@ -144,12 +148,12 @@ function renderScene(
   );
   ctx.clip();
   drawOcean(ctx, renderWidth, renderHeight);
-  drawTerrainRaster(ctx, world, viewport, options);
+  drawTerrainRaster(ctx, world, viewportWithZoom, options);
   if (showOceanWaves) {
-    drawOceanWaves(ctx, terrain, climate, geometry, viewport);
+    drawOceanWaves(ctx, terrain, climate, geometry, viewportWithZoom);
   }
   if (showTerrainTextures) {
-    drawTerrainTextures(ctx, world, viewport, options);
+    drawTerrainTextures(ctx, world, viewportWithZoom, options);
   }
   if (showLakeWaves) {
     drawLakeWaves(
@@ -158,25 +162,25 @@ function renderScene(
       climate,
       terrain,
       geometry,
-      viewport,
+      viewportWithZoom,
       terrain.width,
     );
   }
   if (showBiomeBorders) {
-    drawBiomeBorders(ctx, geometry, viewport);
+    drawBiomeBorders(ctx, geometry, viewportWithZoom);
   }
   if (showShorelines) {
-    drawShorelines(ctx, geometry, viewport);
+    drawShorelines(ctx, geometry, viewportWithZoom);
   }
-  drawRivers(ctx, geometry, viewport);
+  drawRivers(ctx, geometry, viewportWithZoom);
   if (showRoads) {
-    drawRoads(ctx, geometry, viewport, options.roadOverlay);
+    drawRoads(ctx, geometry, viewportWithZoom, options.roadOverlay);
   }
   let mountainGlyphHits: unknown[] = [];
   if (showEnvironmentGlyphs) {
     const forestEntries = collectForestRenderGlyphs(
       world,
-      viewport,
+      viewportWithZoom,
       options,
     ).map((entry) => ({
       type: "forest" as const,
@@ -188,7 +192,7 @@ function renderScene(
       climate,
       regions,
       geometry,
-      viewport,
+      viewportWithZoom,
       options,
     );
     mountainGlyphHits = glyphHits;
@@ -215,15 +219,15 @@ function renderScene(
     drawNodes(
       ctx,
       nodes,
-      viewport,
+      viewportWithZoom,
       options.nodeOverlay ?? {},
     );
   }
   if (showFogOfWar && options.fogOfWar?.enabled) {
-    drawFogOfWar(ctx, world, viewport, options.fogOfWar);
+    drawFogOfWar(ctx, world, viewportWithZoom, options.fogOfWar);
   }
   if (showLabels) {
-    drawLabels(ctx, world, viewport, options);
+    drawLabels(ctx, world, viewportWithZoom, options);
   }
   ctx.restore();
   if (showFrame) {
@@ -250,6 +254,10 @@ function renderDynamicOverlays(
   const viewport =
     (options.viewport as ViewportLike | undefined) ??
     createViewport(world, options.cameraState);
+  const viewportWithZoom = ensureViewportWithZoom(
+    viewport,
+    options.cameraState?.zoom,
+  );
   const geometry = world.geometry;
   const nodes = getWorldNodes(world);
   const renderWidth = options.renderWidth ?? RENDER_WIDTH;
@@ -264,6 +272,7 @@ function renderDynamicOverlays(
     showFogOfWar = false,
   } = scene;
 
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.save();
   ctx.scale(scaleX, scaleY);
   ctx.filter = options.showMonochrome ? "grayscale(1)" : "none";
@@ -276,36 +285,25 @@ function renderDynamicOverlays(
     viewport.innerHeight,
   );
   ctx.clip();
-  ctx.restore();
-
   if (showFogOfWar && options.fogOfWar?.enabled) {
-    drawFogOfWar(ctx, world, viewport, options.fogOfWar);
+    drawFogOfWar(ctx, world, viewportWithZoom, options.fogOfWar);
   }
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(
-    viewport.margin,
-    viewport.margin,
-    viewport.innerWidth,
-    viewport.innerHeight,
-  );
-  ctx.clip();
   if (showRoads) {
-    drawRoads(ctx, geometry, viewport, options.roadOverlay);
+    drawRoads(ctx, geometry, viewportWithZoom, options.roadOverlay);
   }
   if (showPlayerMarker) {
-    drawPlayerMarker(ctx, options.playerStart ?? null, viewport);
+    drawPlayerMarker(ctx, options.playerStart ?? null, viewportWithZoom);
   }
   if (showNodes) {
     drawNodes(
       ctx,
       nodes,
-      viewport,
+      viewportWithZoom,
       options.nodeOverlay ?? {},
     );
   }
   if (showLabels) {
-    drawLabels(ctx, world, viewport, options);
+    drawLabels(ctx, world, viewportWithZoom, options);
   }
   ctx.restore();
   if (options.travelDebug?.enabled) {
@@ -337,4 +335,19 @@ function getWorldNodes(world: World): RenderNode[] {
       y: Number(node?.y),
       marker: typeof node?.marker === "string" ? node.marker : undefined,
     }));
+}
+
+function ensureViewportWithZoom(
+  viewport: ViewportLike,
+  fallbackZoom: unknown,
+): ViewportLike & { zoom: number } {
+  const currentZoom = (viewport as { zoom?: unknown })?.zoom;
+  const numericZoom = Number(
+    Number.isFinite(Number(currentZoom)) ? currentZoom : fallbackZoom,
+  );
+  const zoom = Number.isFinite(numericZoom) && numericZoom > 0 ? numericZoom : 1;
+  return {
+    ...(viewport as ViewportLike & { [key: string]: unknown }),
+    zoom,
+  };
 }

@@ -131,8 +131,9 @@ export function getFormValues(form: HTMLFormElement): WorldInputParams {
       continue;
     }
 
-    if (schema.type === "number") {
+    if ((schema as { type?: string })?.type === "number") {
       values[key as NumericParamKey] = Number(raw);
+      continue;
     }
   }
 

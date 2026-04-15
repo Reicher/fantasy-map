@@ -14,12 +14,12 @@ export const plainsBiome: BiomeDefinition = {
     ],
     vegetation: {
       type: "tuft",
-      density: 0.052,
-      minSpacing: 12.2,
-      minSize: 2.4,
-      sizeRange: 1.5,
-      fill: "rgba(126, 116, 76, 0.42)",
-      stroke: "rgba(102, 90, 58, 0.52)",
+      density: 0.078,
+      minSpacing: 9.8,
+      minSize: 2.7,
+      sizeRange: 1.9,
+      fill: "rgba(126, 116, 76, 0.56)",
+      stroke: "rgba(96, 84, 53, 0.68)",
     },
   },
   labels: {
