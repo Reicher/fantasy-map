@@ -448,6 +448,9 @@ async function generateAndRender() {
     state.currentViewport = null;
   }
   playSession.renderPlayWorld();
+  if (state.currentMode === "play") {
+    playSession.ensureAnimation();
+  }
   updateStats(refs.statsContainer, state.currentWorld.stats);
   syncViewUi();
 
@@ -508,6 +511,7 @@ function restartPlayAfterGameOver() {
   state.playState = playSession.createInitialPlayState(state.currentWorld);
   clearHover(refs.playTooltip);
   playSession.renderPlayWorld();
+  playSession.ensureAnimation();
 }
 
 function runPrimaryActionButton() {

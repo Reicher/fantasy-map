@@ -30,6 +30,9 @@ interface ArrivalCueOptions {
 const PLAYER_INVENTORY_GRID_ID = "player-inventory";
 const LOOT_INVENTORY_GRID_ID = "journey-loot";
 const GAME_OVER_RECORD_STORAGE_KEY = "fardvag.play.run-record.v1";
+const HUD_STAMINA_PER_TRAVEL_HOUR = 3;
+const HUD_STAMINA_PER_REST_HOUR = 9;
+const HUD_STAMINA_PER_HUNT_HOUR = 6;
 
 export function createPlaySubViewController({
   refs,
@@ -40,6 +43,7 @@ export function createPlaySubViewController({
   let lastJourneyVisible = null;
   let lastBottomHudVisible = null;
   let lastLocationLine = null;
+  let lastLocationProgress = null;
   let lastJourneyVitalsSignature = null;
   let lastCharacterPanelSignature = null;
   let lastModeButtonLabel = null;
@@ -121,6 +125,7 @@ export function createPlaySubViewController({
     lastJourneyVisible = null;
     lastBottomHudVisible = null;
     lastLocationLine = null;
+    lastLocationProgress = null;
     lastJourneyVitalsSignature = null;
     lastCharacterPanelSignature = null;
     lastModeButtonLabel = null;
@@ -189,6 +194,10 @@ export function createPlaySubViewController({
     syncHudPanelsVisibility(showBottomHud, state.playActivePanels, refs);
 
     if (!isPlay || !world || !playState) {
+      if (refs.playHudLocationProgress && lastLocationProgress !== "0.000") {
+        refs.playHudLocationProgress.style.width = "0%";
+        lastLocationProgress = "0.000";
+      }
       hideArrivalCue();
       hideJourneyEventDialog();
       hideRestDialog();
@@ -203,10 +212,21 @@ export function createPlaySubViewController({
       refs.playLocationLine.textContent = hud.locationLine;
       lastLocationLine = hud.locationLine;
     }
+    const locationTooltip = describeLocationTooltip(playState);
+    const locationProgress = getLocationProgressRatio(playState);
+    const locationProgressKey = locationProgress.toFixed(3);
+    if (refs.playHudLocationProgress && locationProgressKey !== lastLocationProgress) {
+      refs.playHudLocationProgress.style.width = `${(locationProgress * 100).toFixed(1)}%`;
+      lastLocationProgress = locationProgressKey;
+    }
+    if (refs.playLocationLine?.parentElement) {
+      refs.playLocationLine.parentElement.setAttribute("title", locationTooltip);
+    }
     lastJourneyVitalsSignature = syncJourneyVitals(
       refs.playJourneyHearts,
       refs.playJourneyStamina,
       refs.playJourneyFoodCount,
+      refs.playHudBulletsCount,
       playState,
       lastJourneyVitalsSignature,
     );
@@ -912,16 +932,28 @@ function syncBottomHudButtons(
     return lastModeButtonLabel;
   }
   syncShortcutTip(
-    refs.playPanelToggleCharacterButton,
-    "Öppna/stäng karaktär (C)",
+    refs.playPanelToggleInventoryButton,
+    formatHudTooltip(
+      "Inventarie",
+      "Öppna vänsterpanelen med utrustning och föremål.",
+      "I",
+    ),
   );
   syncShortcutTip(
-    refs.playPanelToggleInventoryButton,
-    "Öppna/stäng inventarie (I)",
+    refs.playPanelToggleCharacterButton,
+    formatHudTooltip(
+      "Karaktär",
+      "Öppna mittenpanelen med dina stats och status.",
+      "C",
+    ),
   );
   syncShortcutTip(
     refs.playPanelToggleSettingsButton,
-    "Öppna/stäng inställningar (S)",
+    formatHudTooltip(
+      "Inställningar",
+      "Öppna högerpanelen med kart- och HUD-val.",
+      "S",
+    ),
   );
   setToggleState(
     refs.playPanelToggleCharacterButton,
@@ -935,18 +967,21 @@ function syncBottomHudButtons(
     refs.playPanelToggleSettingsButton,
     isPlayHudPanelOpen(playActivePanels, "settings"),
   );
-  const nextModeLabel = playState?.viewMode === "journey" ? "Karta" : "Resa";
-  const tooltipText = `Växla till ${nextModeLabel.toLowerCase()}läge (M)`;
+  const nextModeLabel = playState?.viewMode === "journey" ? "Karta" : "Spelläge";
+  const modeDescription =
+    playState?.viewMode === "journey"
+      ? "Byt till kartläge för överblick."
+      : "Byt till spelläge för att fortsätta resa.";
+  const tooltipText = formatHudTooltip(nextModeLabel, modeDescription, "M");
   if (refs.playSwitchModeButton.dataset.tooltip !== tooltipText) {
     refs.playSwitchModeButton.dataset.tooltip = tooltipText;
     refs.playSwitchModeButton.title = tooltipText;
   }
+  refs.playSwitchModeButton.dataset.nextMode =
+    playState?.viewMode === "journey" ? "map" : "journey";
+  refs.playSwitchModeButton.setAttribute("aria-label", `${nextModeLabel} (M)`);
   refs.playSwitchModeButton.disabled = false;
-  if (lastModeButtonLabel !== nextModeLabel) {
-    refs.playSwitchModeButton.textContent = nextModeLabel;
-    return nextModeLabel;
-  }
-  return lastModeButtonLabel;
+  return nextModeLabel === lastModeButtonLabel ? lastModeButtonLabel : nextModeLabel;
 }
 
 function syncTravelToggleButton(playState, playActionMenuOpen, button, lastSignature) {
@@ -967,35 +1002,40 @@ function syncTravelToggleButton(playState, playActionMenuOpen, button, lastSigna
     normalizeStamina(playState?.stamina, 0) > 0;
   let isDisabled = false;
   let label = "Handlingar";
-  let tooltip = "Öppna/stäng handlingar (A)";
+  let description = "Öppna eller stäng handlingar i noder.";
   let isActive = Boolean(playActionMenuOpen && inNode);
 
   if (isResting) {
     isDisabled = true;
-    label = "Vilar...";
-    tooltip = "Vilan pågår";
+    label = "Vilar";
+    description = "Vilan pågår och kan avbrytas i dialogen.";
     isActive = true;
   } else if (isHunting) {
     isDisabled = true;
-    label = "Jagar...";
-    tooltip = "Jakten pågår";
+    label = "Jagar";
+    description = "Jakten pågår och kan avbrytas i dialogen.";
     isActive = true;
   } else if (hasTravel) {
     if (isPaused) {
       label = "Fortsätt";
-      tooltip = canResume ? "Fortsätt resan" : "Vila krävs innan du kan fortsätta";
+      description = canResume
+        ? "Fortsätt resan från paus."
+        : "Vila krävs innan resan kan fortsätta.";
       isDisabled = !canResume;
       isActive = true;
     } else {
       label = "Pausa";
-      tooltip = "Pausa resan och öppna handlingar";
+      description = "Pausa resan och öppna handlingar.";
       isDisabled = false;
       isActive = false;
     }
   } else if (!inNode) {
     isDisabled = true;
-    tooltip = "Handlingar är tillgängliga i noder";
+    label = "Låst";
+    description = "Handlingar är tillgängliga i noder.";
   }
+
+  const tooltip = formatHudTooltip(label, description, "A");
 
   const signature = [
     hasTravel ? "travel" : "idle",
@@ -1005,15 +1045,15 @@ function syncTravelToggleButton(playState, playActionMenuOpen, button, lastSigna
     isDisabled ? "disabled" : "enabled",
     isActive ? "active" : "inactive",
     label,
-    tooltip,
+    description,
   ].join("|");
   if (signature === lastSignature) {
     return lastSignature;
   }
 
-  button.textContent = label;
   button.title = tooltip;
   button.dataset.tooltip = tooltip;
+  button.setAttribute("aria-label", `${label} (A)`);
   button.disabled = isDisabled;
   button.dataset.active = isActive ? "true" : "false";
   return signature;
@@ -1058,54 +1098,77 @@ function syncShortcutTip(element, tooltipText) {
   }
 }
 
+function formatHudTooltip(
+  name: string,
+  description: string,
+  hotkey: string,
+): string {
+  return `${name}\n${description}\nHotkey: ${hotkey}`;
+}
+
 function syncJourneyVitals(
   heartsElement,
   staminaElement,
   foodCountElement,
+  bulletsCountElement,
   playState,
   lastSignature,
 ) {
   if (!heartsElement || !staminaElement || !foodCountElement) {
     return lastSignature;
   }
-  const maxHealth = normalizeHealth(playState?.maxHealth, 3);
+  const maxHealth = normalizeHealth(playState?.maxHealth, 12);
   const health = Math.min(maxHealth, normalizeHealth(playState?.health, maxHealth));
-  const maxStamina = normalizeStamina(playState?.maxStamina, 10);
+  const maxStamina = normalizeStamina(playState?.maxStamina, 60);
   const stamina = Math.min(
     maxStamina,
     normalizeStamina(playState?.stamina, maxStamina),
   );
-  const staminaUnitMax = Math.max(1, Math.ceil(maxStamina / 5));
-  const staminaUnitFill = Math.min(staminaUnitMax, Math.ceil(stamina / 5));
   const foodCount = getInventoryTypeCount(playState?.inventory, "meat");
-  const signature = `${health}/${maxHealth}|stamina:${stamina}/${maxStamina}|food:${foodCount}`;
+  const bulletsCount = getInventoryTypeCount(playState?.inventory, "bullets");
+  const visualHealth = getInterpolatedHealthValue(
+    playState,
+    health,
+    maxHealth,
+    foodCount,
+  );
+  const visualStamina = getInterpolatedStaminaValue(playState, stamina, maxStamina);
+  const healthRatio = maxHealth > 0 ? Math.max(0, Math.min(1, visualHealth / maxHealth)) : 0;
+  const staminaRatio =
+    maxStamina > 0 ? Math.max(0, Math.min(1, visualStamina / maxStamina)) : 0;
+  const signature = [
+    `h:${visualHealth.toFixed(2)}/${maxHealth}`,
+    `s:${visualStamina.toFixed(2)}/${maxStamina}`,
+    `f:${foodCount}`,
+    `b:${bulletsCount}`,
+  ].join("|");
   if (signature === lastSignature) {
     return lastSignature;
   }
-  heartsElement.innerHTML = "";
-  staminaElement.innerHTML = "";
-  heartsElement.setAttribute("aria-label", `Hälsa: ${health} av ${maxHealth}`);
+  const healthFill = heartsElement.querySelector(".play-hud-status-fill");
+  const staminaFill = staminaElement.querySelector(".play-hud-status-fill");
+  if (healthFill) {
+    healthFill.style.width = `${(healthRatio * 100).toFixed(2)}%`;
+  }
+  if (staminaFill) {
+    staminaFill.style.width = `${(staminaRatio * 100).toFixed(2)}%`;
+  }
+  heartsElement.dataset.tone = getStatusTone(healthRatio);
+  staminaElement.dataset.tone = getStatusTone(staminaRatio);
+  heartsElement.setAttribute(
+    "aria-label",
+    `Hälsa: ${Math.round(visualHealth)} av ${maxHealth}`,
+  );
   staminaElement.setAttribute(
     "aria-label",
-    `Stamina: ${stamina} av ${maxStamina}`,
+    `Stamina: ${Math.round(visualStamina)} av ${maxStamina}`,
   );
-  for (let index = 0; index < maxHealth; index += 1) {
-    const heart = document.createElement("span");
-    heart.className = "play-character-heart";
-    heart.dataset.filled = index < health ? "true" : "false";
-    heart.setAttribute("aria-hidden", "true");
-    heart.textContent = "♥";
-    heartsElement.appendChild(heart);
-  }
-  for (let index = 0; index < staminaUnitMax; index += 1) {
-    const orb = document.createElement("span");
-    orb.className = "play-character-stamina-orb";
-    orb.dataset.filled = index < staminaUnitFill ? "true" : "false";
-    orb.setAttribute("aria-hidden", "true");
-    staminaElement.appendChild(orb);
-  }
-  foodCountElement.textContent = `${foodCount} Mat`;
+  foodCountElement.textContent = String(foodCount);
   foodCountElement.setAttribute("aria-label", `Mat: ${foodCount}`);
+  if (bulletsCountElement) {
+    bulletsCountElement.textContent = String(bulletsCount);
+    bulletsCountElement.setAttribute("aria-label", `Kulor: ${bulletsCount}`);
+  }
   return signature;
 }
 
@@ -1128,9 +1191,9 @@ function syncCharacterPanel(refs, playState, lastSignature) {
   const initiative = normalizeStat(playState?.initiative, 0);
   const vitality = normalizeHealth(
     playState?.vitality,
-    normalizeHealth(playState?.maxHealth, 3),
+    normalizeHealth(playState?.maxHealth, 12),
   );
-  const maxStamina = normalizeStamina(playState?.maxStamina, 10);
+  const maxStamina = normalizeStamina(playState?.maxStamina, 60);
   const stamina = Math.min(
     maxStamina,
     normalizeStamina(playState?.stamina, maxStamina),
@@ -1158,6 +1221,102 @@ function syncCharacterPanel(refs, playState, lastSignature) {
   accuracyElement.textContent = `Vapenträffsäkerhet: ${vapenTraffsakerhet}%`;
   statusElement.textContent = `Status: ${statusLine}`;
   return signature;
+}
+
+function describeLocationTooltip(playState): string {
+  if (!playState?.travel) {
+    return "";
+  }
+  const totalDistance = Number(playState.travel.totalLength);
+  const travelledDistance = Number(playState.travel.progress);
+  if (!Number.isFinite(totalDistance) || totalDistance <= 0) {
+    return "";
+  }
+  const clampedTravelled = Math.max(0, Math.min(totalDistance, travelledDistance || 0));
+  const remainingDistance = Math.max(0, totalDistance - clampedTravelled);
+  return [
+    "Resinformation",
+    `Rest: ${formatDistanceWithUnit(clampedTravelled)}`,
+    `Kvar: ${formatDistanceWithUnit(remainingDistance)}`,
+  ].join("\n");
+}
+
+function getLocationProgressRatio(playState): number {
+  if (!playState?.travel) {
+    return 0;
+  }
+  const totalDistance = Number(playState.travel.totalLength);
+  const travelledDistance = Number(playState.travel.progress);
+  if (!Number.isFinite(totalDistance) || totalDistance <= 0) {
+    return 0;
+  }
+  return Math.max(0, Math.min(1, (travelledDistance || 0) / totalDistance));
+}
+
+function getInterpolatedHealthValue(
+  playState,
+  health: number,
+  maxHealth: number,
+  foodCount: number,
+): number {
+  const clampedHealth = Math.max(0, Math.min(maxHealth, health));
+  if (foodCount > 0) {
+    return clampedHealth;
+  }
+  const fractionalHour = getFractionalWorldHourProgress(playState);
+  if (fractionalHour <= 0 || !isWorldTimeRunning(playState)) {
+    return clampedHealth;
+  }
+  return Math.max(0, clampedHealth - fractionalHour);
+}
+
+function getInterpolatedStaminaValue(
+  playState,
+  stamina: number,
+  maxStamina: number,
+): number {
+  const clampedStamina = Math.max(0, Math.min(maxStamina, stamina));
+  const fractionalHour = getFractionalWorldHourProgress(playState);
+  if (fractionalHour <= 0) {
+    return clampedStamina;
+  }
+  if (playState?.travel && !playState?.isTravelPaused && !playState?.rest && !playState?.hunt) {
+    return Math.max(0, clampedStamina - fractionalHour * HUD_STAMINA_PER_TRAVEL_HOUR);
+  }
+  if (playState?.rest) {
+    return Math.min(maxStamina, clampedStamina + fractionalHour * HUD_STAMINA_PER_REST_HOUR);
+  }
+  if (playState?.hunt) {
+    return Math.max(0, clampedStamina - fractionalHour * HUD_STAMINA_PER_HUNT_HOUR);
+  }
+  return clampedStamina;
+}
+
+function getFractionalWorldHourProgress(playState): number {
+  const renderedElapsed = Number(playState?.renderElapsedWorldHours);
+  const committedElapsed = Number(playState?.journeyElapsedHours);
+  if (!Number.isFinite(renderedElapsed) || !Number.isFinite(committedElapsed)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(0.999, renderedElapsed - committedElapsed));
+}
+
+function isWorldTimeRunning(playState): boolean {
+  return Boolean(
+    (playState?.travel && !playState?.isTravelPaused && !playState?.rest && !playState?.hunt) ||
+      playState?.rest ||
+      playState?.hunt,
+  );
+}
+
+function getStatusTone(ratio: number): "normal" | "low" | "critical" {
+  if (ratio <= 0.18) {
+    return "critical";
+  }
+  if (ratio <= 0.38) {
+    return "low";
+  }
+  return "normal";
 }
 
 function getVisibleNodeTitle(playState, node, fallbackTitle = "") {

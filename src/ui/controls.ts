@@ -203,16 +203,12 @@ export function randomSeed(): string {
 function buildRangeField(key: ParamKey, schema: NumberParamSchema): string {
   const label = schema.ui?.label ?? key;
   const step = schema.step ?? 1;
-  const hint = schema.ui?.hint
-    ? `<div class="field-hint">${schema.ui.hint}</div>`
-    : "";
 
   return `<div class="field">
     <div class="field-header">
       <span class="field-label">${label}</span>
       <span id="${key}-value" class="field-value"></span>
     </div>
-    ${hint}
     <input
       id="${key}"
       name="${key}"

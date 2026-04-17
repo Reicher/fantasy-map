@@ -42,6 +42,8 @@ export interface AppRefs {
   playJourneyHearts: HTMLElement | null;
   playJourneyStamina: HTMLElement | null;
   playJourneyFoodCount: HTMLElement | null;
+  playHudBulletsCount: HTMLElement | null;
+  playHudLocationProgress: HTMLElement | null;
   playPanelCharacter: HTMLElement | null;
   playPanelInventory: HTMLElement | null;
   playPanelSettings: HTMLElement | null;

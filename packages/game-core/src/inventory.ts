@@ -4,10 +4,14 @@ import type {
   InventoryState,
   InventoryTransferResult,
 } from "@fardvag/shared/types/inventory";
+import { createRng } from "@fardvag/shared/random";
 
 const DEFAULT_COLUMNS = 4;
 const DEFAULT_ROWS = 4;
 const STARTING_MEAT_COUNT = 11;
+const STARTING_BULLETS_MIN = 3;
+const STARTING_BULLETS_MAX = 6;
+const STARTING_BULLETS_FALLBACK = 4;
 const DEFAULT_MAX_STACK_COUNT = 10;
 const STACK_MAX_COUNT_BY_TYPE: Readonly<Record<string, number>> = Object.freeze({
   meat: 12,
@@ -17,11 +21,14 @@ const STACK_MAX_COUNT_BY_TYPE: Readonly<Record<string, number>> = Object.freeze(
   coffee: 12,
 });
 
-export function createInitialInventory(): InventoryState {
+export function createInitialInventory(
+  options: { seed?: string } = {},
+): InventoryState {
+  const startingBullets = resolveStartingBulletsCount(options.seed);
   return {
     columns: DEFAULT_COLUMNS,
     rows: DEFAULT_ROWS,
-    items: createStartingMeatItems(),
+    items: createStartingItems(startingBullets),
   };
 }
 
@@ -730,7 +737,7 @@ function ensureUniqueItemId(
   return `${baseId}-${suffix}`;
 }
 
-function createStartingMeatItems(): InventoryItem[] {
+function createStartingItems(startingBullets: number): InventoryItem[] {
   return [
     {
       id: "meat-1",
@@ -743,5 +750,25 @@ function createStartingMeatItems(): InventoryItem[] {
       column: 0,
       row: 0,
     },
+    {
+      id: "bullets-1",
+      type: "bullets",
+      name: "Kulor",
+      symbol: "bullets",
+      width: 1,
+      height: 1,
+      count: startingBullets,
+      column: 1,
+      row: 0,
+    },
   ];
+}
+
+function resolveStartingBulletsCount(seed: string | null | undefined): number {
+  const safeSeed = String(seed ?? "").trim();
+  if (!safeSeed) {
+    return STARTING_BULLETS_FALLBACK;
+  }
+  const rng = createRng(`${safeSeed}:starting-bullets`);
+  return rng.int(STARTING_BULLETS_MIN, STARTING_BULLETS_MAX);
 }

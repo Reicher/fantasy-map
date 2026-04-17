@@ -63,6 +63,7 @@ export function normalizeParams(input: WorldInputParams = {}): WorldParams {
     ),
     abandonedFrequency: clamp(asNumber(input.abandonedFrequency, 50), 0, 100),
     nodeMinDistance: clamp(asNumber(input.nodeMinDistance, 5), 2, 22),
+    startTimeOfDayHours: clamp(asNumber(input.startTimeOfDayHours, 12), 0, 23),
   };
 }
 

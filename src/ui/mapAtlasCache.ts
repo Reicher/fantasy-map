@@ -35,6 +35,8 @@ interface AtlasCacheState {
   mountainGlyphHits: MountainHit[];
   renderWidth: number;
   renderHeight: number;
+  sourceScaleX: number;
+  sourceScaleY: number;
 }
 
 interface MapAtlasCacheManagerDeps {
@@ -49,6 +51,8 @@ interface MapAtlasCacheManagerDeps {
   getStaticKey?: (renderOptions?: RenderOptions) => string;
   getAtlasPadding?: (world: World, cameraState: CameraStateLike) => AtlasPadding;
 }
+
+const MAX_ATLAS_CACHE_PIXELS = 9_000_000;
 
 export function createMapAtlasCacheManager({
   canvas,
@@ -66,6 +70,8 @@ export function createMapAtlasCacheManager({
     mountainGlyphHits: [],
     renderWidth: 0,
     renderHeight: 0,
+    sourceScaleX: 1,
+    sourceScaleY: 1,
   };
 
   return {
@@ -129,8 +135,8 @@ export function createMapAtlasCacheManager({
       const sourceYLogical =
         (currentViewport.topWorld - cache.viewport.topWorld) *
         cache.viewport.scaleY;
-      const sourceScaleX = cache.canvas.width / cache.renderWidth;
-      const sourceScaleY = cache.canvas.height / cache.renderHeight;
+      const sourceScaleX = cache.sourceScaleX;
+      const sourceScaleY = cache.sourceScaleY;
 
       const ctx = canvas.getContext("2d");
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -170,14 +176,22 @@ function getOrCreateCacheCanvas(
 
   const scaleX = canvas.width / RENDER_WIDTH;
   const scaleY = canvas.height / RENDER_HEIGHT;
-  const width = Math.max(1, Math.round(atlas.renderWidth * scaleX));
-  const height = Math.max(1, Math.round(atlas.renderHeight * scaleY));
+  let width = Math.max(1, Math.round(atlas.renderWidth * scaleX));
+  let height = Math.max(1, Math.round(atlas.renderHeight * scaleY));
+  const pixelCount = width * height;
+  if (pixelCount > MAX_ATLAS_CACHE_PIXELS) {
+    const downscale = Math.sqrt(MAX_ATLAS_CACHE_PIXELS / pixelCount);
+    width = Math.max(1, Math.round(width * downscale));
+    height = Math.max(1, Math.round(height * downscale));
+  }
 
   if (cache.canvas.width !== width || cache.canvas.height !== height) {
     cache.canvas.width = width;
     cache.canvas.height = height;
     cache.key = null;
   }
+  cache.sourceScaleX = width / Math.max(1, atlas.renderWidth);
+  cache.sourceScaleY = height / Math.max(1, atlas.renderHeight);
 
   return cache.canvas;
 }

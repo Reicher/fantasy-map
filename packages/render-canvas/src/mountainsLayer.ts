@@ -8,6 +8,8 @@ const MOUNTAIN_ROAD_ANCHOR_EXCLUSION_RADIUS = 1.12;
 const MOUNTAIN_ROAD_GLYPH_EXCLUSION_MIN_PX = 5.7;
 const MOUNTAIN_ROAD_GLYPH_EXCLUSION_WIDTH_FACTOR = 0.18;
 const MOUNTAIN_ROAD_CELL_SAMPLE_STEP_WORLD = 0.22;
+const MOUNTAIN_MAX_ANCHORS_PER_REGION = 360;
+const MOUNTAIN_MAX_CANDIDATE_POOL = 1500;
 
 interface MountainRenderOptions {
   showSnow?: boolean;
@@ -40,8 +42,7 @@ export function collectMountainRenderGlyphs(
           terrain.isLand[cell] === 1 &&
           climate.biome[cell] !== BIOME_KEYS.LAKE &&
           roadCellMask[cell] === 0,
-      )
-      .sort((a, b) => terrain.mountainField[b] - terrain.mountainField[a]);
+      );
 
     if (cells.length === 0) {
       continue;
@@ -50,7 +51,11 @@ export function collectMountainRenderGlyphs(
     const bounds = getCellBounds(cells, terrain.width);
     const aspect = Math.max(bounds.width, bounds.height) / Math.max(1, Math.min(bounds.width, bounds.height));
     const regionStyle = getMountainRegionStyle(region.id, aspect);
-    const targetAnchors = getTargetMountainAnchorCount(region.size, regionStyle.anchorDivisor);
+    const targetAnchors = getTargetMountainAnchorCount(
+      region.size,
+      regionStyle.anchorDivisor,
+      zoomScale,
+    );
     const anchors = buildMountainAnchors(
       cells,
       terrain,
@@ -121,9 +126,16 @@ function buildMountainAnchors(cells, terrain, climate, targetAnchors, anchorSpac
     return [];
   }
 
-  const candidatePool = [...candidates]
-    .sort((a, b) => b.value - a.value)
-    .slice(0, Math.max(targetAnchors * 3, 24));
+  const candidatePool = pickTopMountainCandidates(
+    candidates,
+    Math.max(
+      24,
+      Math.min(
+        MOUNTAIN_MAX_CANDIDATE_POOL,
+        Math.round(targetAnchors * 3.5),
+      ),
+    ),
+  );
   const desiredSpacing = Math.max(
     anchorSpacingWorld * 1.3,
     Math.sqrt(cells.length / Math.max(1, targetAnchors)) * 0.92
@@ -253,10 +265,16 @@ function getMountainRegionStyle(regionId, aspect = 1) {
   };
 }
 
-function getTargetMountainAnchorCount(regionSize, anchorDivisor) {
+function getTargetMountainAnchorCount(regionSize, anchorDivisor, zoomScale = 1) {
   const packingSpacing = Math.max(1.15, anchorDivisor * 0.45);
   const areaPerAnchor = Math.PI * packingSpacing * packingSpacing;
-  return clamp(Math.round(regionSize / areaPerAnchor), 3, Math.max(10, regionSize));
+  const baseCount = Math.max(3, Math.round(regionSize / areaPerAnchor));
+  const zoomDensity = clamp(0.3 + clamp(zoomScale, 0.35, 1) * 0.7, 0.35, 1);
+  return clamp(
+    Math.round(baseCount * zoomDensity),
+    2,
+    MOUNTAIN_MAX_ANCHORS_PER_REGION,
+  );
 }
 
 function updateCandidateDistances(candidatePool, selected, minDistance, anchor) {
@@ -612,7 +630,7 @@ function getCellBounds(cells, width) {
 
 function getMountainZoomScale(viewport) {
   const zoom = Number(viewport?.zoom);
-  return clamp(Number.isFinite(zoom) ? zoom : 1, 1, 4.5);
+  return clamp(Number.isFinite(zoom) ? zoom : 1, 0.45, 4.5);
 }
 
 function pointOnSegment(a, b, t) {
@@ -620,4 +638,43 @@ function pointOnSegment(a, b, t) {
     x: a.x + (b.x - a.x) * t,
     y: a.y + (b.y - a.y) * t
   };
+}
+
+function pickTopMountainCandidates(candidates, limit) {
+  if (!Array.isArray(candidates) || candidates.length === 0 || limit <= 0) {
+    return [];
+  }
+  if (candidates.length <= limit) {
+    return [...candidates].sort((a, b) => b.value - a.value);
+  }
+
+  const bucketCount = 64;
+  const buckets = Array.from({ length: bucketCount }, () => []);
+  for (const candidate of candidates) {
+    const bucket = clamp(
+      Math.floor(clamp(candidate.value, 0, 1) * (bucketCount - 1)),
+      0,
+      bucketCount - 1,
+    );
+    buckets[bucket].push(candidate);
+  }
+
+  const selected = [];
+  for (let bucket = bucketCount - 1; bucket >= 0; bucket -= 1) {
+    const entries = buckets[bucket];
+    if (!entries.length) {
+      continue;
+    }
+    if (selected.length + entries.length <= limit) {
+      selected.push(...entries);
+      continue;
+    }
+    entries.sort((a, b) => b.value - a.value);
+    const remaining = limit - selected.length;
+    selected.push(...entries.slice(0, Math.max(0, remaining)));
+    break;
+  }
+
+  selected.sort((a, b) => b.value - a.value);
+  return selected;
 }

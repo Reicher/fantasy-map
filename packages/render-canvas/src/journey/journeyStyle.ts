@@ -28,10 +28,11 @@ const JOURNEY_PLAYER_SPRITESHEET = {
 };
 const JOURNEY_PLAYER_VISUAL_HEIGHT_PX = 112;
 const JOURNEY_PLAYER_VERTICAL_OFFSET_PX = 6;
+const JOURNEY_SETTLEMENT_ANIMATION_FRAME_MS = 140;
 const JOURNEY_SIGNPOST_MIN_HEIGHT_PX = 104;
 const JOURNEY_SIGNPOST_VERTICAL_OFFSET_PX = 18;
 const JOURNEY_NODE_MIN_HEIGHT_BY_MARKER = {
-  settlement: 118,
+  settlement: 56,
   abandoned: 108,
 };
 const JOURNEY_NODE_WIDTH_SCALE_BY_MARKER = {
@@ -40,10 +41,12 @@ const JOURNEY_NODE_WIDTH_SCALE_BY_MARKER = {
 };
 const JOURNEY_NODE_SPRITESHEET_BY_MARKER = {
   settlement: createJourneySpritesheet(
-    new URL("../../../../src/assets/journey/settlement-nodes.png", import.meta.url).href,
+    new URL("../../../../src/assets/journey/campfire.png", import.meta.url).href,
+    "settlement",
   ),
   abandoned: createJourneySpritesheet(
     new URL("../../../../src/assets/journey/crash-site-nodes.png", import.meta.url).href,
+    "abandoned",
   ),
 };
 const JOURNEY_NODE_VARIANT_COUNT_BY_MARKER = {
@@ -86,6 +89,7 @@ const JOURNEY_NEAR_LIGHTEN_FRAC = {
 const SILHOUETTE_BIOME_SMOOTHING_BY_BIOME = Object.freeze({
   forest: 1.34,
   rainforest: 1.4,
+  mountain: 0.74,
 });
 const journeyNodeVariantsByMarker = new Map();
 const journeyTreeVariantsByFamily = new Map();
@@ -216,9 +220,11 @@ function getSilhouetteSpec(biomeKey, layerDepth) {
   const p1 = hash01(`${biomeKey}:${layerDepth}:p1`) * 1000;
   const p2 = hash01(`${biomeKey}:${layerDepth}:p2`) * 600;
   const base = getBiomeBaseSpec(biomeKey);
-  const biomeSmoothing = Math.max(
-    1,
+  const biomeSmoothing = clamp(
     Number(SILHOUETTE_BIOME_SMOOTHING_BY_BIOME[biomeKey] ?? 1),
+    0.6,
+    1.8,
+    1,
   );
   // smoothing < 1 → shorter wavelengths + bigger amplitude (more detail)
   // smoothing > 1 → longer wavelengths + smaller amplitude (smoother)
@@ -429,13 +435,13 @@ function drawFallbackJourneyTree(
     ctx.fillRect(Math.round(x - trunkW / 2), trunkTop, trunkW, h);
     ctx.fillRect(
       Math.round(x - trunkW / 2 - armW),
-      Math.round(trunkTop + h * 0.34),
+      Math.round(trunkTop + h * 0.46),
       armW,
       armH,
     );
     ctx.fillRect(
       Math.round(x + trunkW / 2),
-      Math.round(trunkTop + h * 0.46),
+      Math.round(trunkTop + h * 0.34),
       armW,
       armH,
     );
@@ -560,11 +566,14 @@ function drawJourneyNodeImage(
   const variants = getJourneyNodeVariants(normalizedMarker);
   if (!variants?.length) return false;
 
-  const variantIndex = resolveJourneyNodeVariantIndex(
-    normalizedMarker,
-    variantSeed,
-    variants.length,
-  );
+  const variantIndex =
+    normalizedMarker === "settlement"
+      ? resolveJourneyNodeAnimationFrame(normalizedMarker, variants.length)
+      : resolveJourneyNodeVariantIndex(
+          normalizedMarker,
+          variantSeed,
+          variants.length,
+        );
   const sprite = variants[variantIndex] ?? variants[0];
   if (!sprite || sprite.width <= 0 || sprite.height <= 0) return false;
 
@@ -701,17 +710,33 @@ function getJourneyPlayerMovingFrame(nowMs) {
   return frames[frameIndex] ?? frames[0];
 }
 
-function createJourneySpritesheet(src) {
+function createJourneySpritesheet(src, marker = null) {
   if (typeof Image !== "function") return null;
   const image = new Image();
   image.decoding = "async";
+  if (marker === "settlement" || marker === "abandoned") {
+    image.addEventListener("load", () => {
+      journeyNodeVariantsByMarker.delete(marker);
+    });
+  }
   image.src = src;
   return image;
 }
 
 function getJourneyNodeVariants(marker) {
   if (journeyNodeVariantsByMarker.has(marker)) {
-    return journeyNodeVariantsByMarker.get(marker);
+    const cachedVariants = journeyNodeVariantsByMarker.get(marker);
+    const expectedVariantCount = Math.max(
+      1,
+      Number(JOURNEY_NODE_VARIANT_COUNT_BY_MARKER[marker] ?? 1),
+    );
+    if (
+      Array.isArray(cachedVariants) &&
+      cachedVariants.length === expectedVariantCount
+    ) {
+      return cachedVariants;
+    }
+    journeyNodeVariantsByMarker.delete(marker);
   }
   const sheet = JOURNEY_NODE_SPRITESHEET_BY_MARKER[marker];
   const variantCount = JOURNEY_NODE_VARIANT_COUNT_BY_MARKER[marker];
@@ -802,11 +827,51 @@ function sliceJourneyVariants(sheetImage, variantCount, chromaTolerance = 24) {
   return variants;
 }
 
+function sliceJourneySpriteStripVariants(sheetImage, variantCount) {
+  if (typeof document === "undefined") return null;
+  const sourceW = sheetImage.naturalWidth;
+  const sourceH = sheetImage.naturalHeight;
+  const safeVariantCount = Math.max(1, Math.floor(variantCount));
+  if (sourceW <= 0 || sourceH <= 0 || safeVariantCount <= 0) return null;
+
+  const variants = [];
+  const baseFrameW = Math.floor(sourceW / safeVariantCount);
+  if (baseFrameW <= 0) return null;
+
+  for (let index = 0; index < safeVariantCount; index += 1) {
+    const sx = index * baseFrameW;
+    const sw =
+      index === safeVariantCount - 1
+        ? Math.max(1, sourceW - sx)
+        : baseFrameW;
+    if (sw <= 0) continue;
+
+    const canvas = document.createElement("canvas") as SpriteCanvas;
+    canvas.width = sw;
+    canvas.height = sourceH;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) continue;
+
+    ctx.drawImage(sheetImage, sx, 0, sw, sourceH, 0, 0, sw, sourceH);
+    const imageData = ctx.getImageData(0, 0, sw, sourceH);
+    canvas.groundAnchorFrac = computeSpriteGroundAnchorFrac(imageData, sourceH);
+    variants.push(canvas);
+  }
+
+  return variants.length ? variants : null;
+}
+
 function sliceJourneyNodeVariants(sheetImage, variantCount, marker) {
   if (typeof document === "undefined") return null;
   const sourceW = sheetImage.naturalWidth;
   const sourceH = sheetImage.naturalHeight;
   if (sourceW <= 0 || sourceH <= 0 || variantCount <= 0) return null;
+
+  if (marker === "settlement") {
+    // Campfire uses real alpha and a fixed frame strip. Avoid chroma-key
+    // processing so flame tones are preserved and frames stay distinct.
+    return sliceJourneySpriteStripVariants(sheetImage, variantCount);
+  }
 
   const sourceCanvas = document.createElement("canvas");
   sourceCanvas.width = sourceW;
@@ -1025,6 +1090,17 @@ function resolveJourneyNodeVariantIndex(marker, variantSeed, variantCount) {
       ? `${markerKey}:default`
       : `${markerKey}:${variantSeed}`;
   return hashString(seedKey) % Math.max(1, variantCount);
+}
+
+function resolveJourneyNodeAnimationFrame(marker, frameCount) {
+  const safeFrameCount = Math.max(1, Math.floor(frameCount));
+  const nowMs =
+    typeof performance !== "undefined" && Number.isFinite(performance.now())
+      ? performance.now()
+      : Date.now();
+  const frameSpanMs =
+    marker === "settlement" ? JOURNEY_SETTLEMENT_ANIMATION_FRAME_MS : 180;
+  return Math.floor(Math.max(0, nowMs) / frameSpanMs) % safeFrameCount;
 }
 
 // ---------------------------------------------------------------------------

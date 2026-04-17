@@ -27,6 +27,7 @@ export const DEFAULT_PARAMS: WorldParams = {
   settlementRandomness: 20,
   abandonedFrequency: 50,
   nodeMinDistance: 5,
+  startTimeOfDayHours: 12,
 };
 
 type NumericWorldParamKey = {
@@ -113,6 +114,10 @@ const PARAM_LABELS: Record<NumericWorldParamKey, (value: number) => string> = {
             ? "Många"
             : "Väldigt många",
   nodeMinDistance: (value: number) => `${value.toFixed(1)} celler`,
+  startTimeOfDayHours: (value: number) => {
+    const normalized = ((Math.round(value) % 24) + 24) % 24;
+    return `${String(normalized).padStart(2, "0")}:00`;
+  },
 };
 
 export const PARAM_SCHEMA = {
@@ -397,6 +402,20 @@ export const PARAM_SCHEMA = {
       section: "Nodtyper",
       order: 15,
       hint: "Öka för jämnare spridning och färre kluster.",
+    },
+  },
+  startTimeOfDayHours: {
+    type: "number",
+    min: 0,
+    max: 23,
+    step: 1,
+    formatLabel: PARAM_LABELS.startTimeOfDayHours,
+    ui: {
+      label: "Starttid (spel)",
+      tab: "avancerat",
+      section: "Spelkänsla",
+      order: 20,
+      hint: "Välj klockslag när ett nytt spel börjar i färdläget.",
     },
   },
 };

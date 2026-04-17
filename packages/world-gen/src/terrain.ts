@@ -22,15 +22,18 @@ import {
 export function generateTerrain(params) {
   const baseWidth = clamp(Math.round(params.edgeDetail ?? 300), 180, 520);
   const worldScale = clamp(Number(params.worldScale ?? 100), 70, 220) / 100;
-  const width = clamp(Math.round(baseWidth * worldScale), 160, 1200);
-  const height = Math.max(120, Math.round(width * (MAP_HEIGHT / MAP_WIDTH)));
+  const horizontalStretch = resolveHorizontalStretch(params.worldAspect);
+  const { width, height } = resolveTerrainDimensions(
+    baseWidth,
+    worldScale,
+    horizontalStretch,
+  );
   const size = width * height;
   const rng = createRng(`${params.seed}::terrain`);
   const sizeFactor = sliderFactor(params.mapSize, 0.78);
   const coastFactor = sliderFactor(params.coastComplexity, 0.72);
   const mountainFactor = sliderFactor(params.mountainousness, 0.72);
   const fragmentationFactor = sliderFactor(params.fragmentation ?? 52, 0.86);
-  const horizontalStretch = resolveHorizontalStretch(params.worldAspect);
   const style = createRandomTerrainStyle(
     rng.fork("terrain-style"),
     sizeFactor,
@@ -931,6 +934,38 @@ function buildMountainChains(seed, style, mountainFactor, terrainProvinces) {
 function resolveHorizontalStretch(rawValue) {
   const setting = clamp(Number(rawValue ?? 1), 1, 1.6);
   return 1 + (setting - 1) * 6.6667;
+}
+
+function resolveTerrainDimensions(baseWidth, worldScale, horizontalStretch) {
+  const baselineWidth = clamp(Math.round(baseWidth * worldScale), 160, 1200);
+  const baselineHeight = Math.max(
+    120,
+    Math.round(baselineWidth * (MAP_HEIGHT / MAP_WIDTH)),
+  );
+  const baselineArea = baselineWidth * baselineHeight;
+  const targetAspect = clamp(horizontalStretch, 1, 5);
+
+  let width = Math.round(Math.sqrt(baselineArea * targetAspect));
+  let height = Math.max(72, Math.round(width / targetAspect));
+
+  // Keep extreme aspect values practical while preserving area-driven scaling.
+  if (width > 2400) {
+    width = 2400;
+    height = Math.max(72, Math.round(width / targetAspect));
+  }
+
+  // Large grids can stall editor generation on the main thread, especially
+  // when land amount and world size are both high. Keep the simulation budget
+  // bounded so high-end settings stay responsive.
+  const maxCells = 350_000;
+  const currentCells = width * height;
+  if (currentCells > maxCells) {
+    const downscale = Math.sqrt(maxCells / currentCells);
+    width = Math.max(160, Math.round(width * downscale));
+    height = Math.max(72, Math.round(width / targetAspect));
+  }
+
+  return { width, height };
 }
 
 function resolveTargetLandRatio(baseRatio, worldScale) {

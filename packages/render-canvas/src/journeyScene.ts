@@ -53,6 +53,8 @@ const PLAYER_X_FRAC = 0.22;
 // Should sit slightly below the ground top edge.
 const PLAYER_FEET_Y_FRAC = 0.83;
 const IDLE_CLOUD_DRIFT_HOURS_PER_REAL_SECOND = 0.035;
+const CAMPFIRE_FLICKER_FRAME_MS = 140;
+const CAMPFIRE_FLICKER_SCALE_BY_FRAME = [0.84, 1.08, 0.92];
 
 /**
  * @param {{ canvas: HTMLCanvasElement, getWorld?: () => object | null }} options
@@ -77,6 +79,8 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       startMarkerCanvasX: null,
       destMarkerCanvasX: null,
     },
+    nightVeilCanvas: null,
+    nightVeilCtx: null,
   };
 
   return {
@@ -360,12 +364,134 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     drawPlayerFigure(ctx, playerX, playerFeetY, isTraveling);
 
     drawForegroundCanopyTrees(ctx, strip, scrollX, playerX, viewW, viewH);
-    drawNightVeil(ctx, viewW, viewH, skyState);
+    drawNightVeilWithCampfireCutout(
+      ctx,
+      state,
+      viewW,
+      viewH,
+      skyState,
+      markerSnapshot.settlementLightAnchors ?? [],
+    );
 
     if (debug) {
       drawDebugOverlay(ctx, strip, scrollX, playerX, viewW, viewH);
     }
   }
+}
+
+function drawNightVeilWithCampfireCutout(
+  ctx,
+  sceneState,
+  viewW,
+  viewH,
+  skyState,
+  anchors,
+) {
+  const overlay = ensureNightVeilOverlay(sceneState, viewW, viewH);
+  if (!overlay) {
+    drawNightVeil(ctx, viewW, viewH, skyState);
+    return;
+  }
+
+  overlay.clearRect(0, 0, viewW, viewH);
+  drawNightVeil(overlay, viewW, viewH, skyState);
+  carveCampfireVisibilityInVeil(overlay, anchors, skyState);
+  ctx.drawImage(sceneState.nightVeilCanvas, 0, 0);
+}
+
+function carveCampfireVisibilityInVeil(overlayCtx, anchors, skyState) {
+  if (!anchors?.length) return;
+  const nightFactor = clamp01(
+    (Number(skyState?.night) || 0) * 1.2 +
+      (Number(skyState?.twilight) || 0) * 0.32 -
+      (Number(skyState?.daylight) || 0) * 0.2,
+  );
+  if (nightFactor <= 0.01) return;
+
+  const nowMs =
+    typeof performance !== "undefined" && Number.isFinite(performance.now())
+      ? performance.now()
+      : Date.now();
+  const frameIndex =
+    Math.floor(Math.max(0, nowMs) / CAMPFIRE_FLICKER_FRAME_MS) %
+    CAMPFIRE_FLICKER_SCALE_BY_FRAME.length;
+  const frameScale =
+    CAMPFIRE_FLICKER_SCALE_BY_FRAME[frameIndex] ??
+    CAMPFIRE_FLICKER_SCALE_BY_FRAME[0];
+  const jitter = 0.9 + 0.1 * Math.sin(nowMs / 95);
+  const flickerScale = frameScale * jitter;
+
+  const innerCutAlpha = 0.5 + nightFactor * 0.56;
+  const outerCutAlpha = 0.26 + nightFactor * 0.4;
+  const innerRadius = (56 + nightFactor * 38) * flickerScale;
+  const outerRadius = (126 + nightFactor * 96) * flickerScale;
+
+  overlayCtx.save();
+  overlayCtx.globalCompositeOperation = "destination-out";
+
+  for (const anchor of anchors) {
+    if (!anchor || !Number.isFinite(anchor.x) || !Number.isFinite(anchor.y)) {
+      continue;
+    }
+
+    const outerCut = overlayCtx.createRadialGradient(
+      anchor.x,
+      anchor.y,
+      0,
+      anchor.x,
+      anchor.y,
+      outerRadius,
+    );
+    outerCut.addColorStop(0, `rgba(0, 0, 0, ${outerCutAlpha})`);
+    outerCut.addColorStop(0.58, `rgba(0, 0, 0, ${outerCutAlpha * 0.56})`);
+    outerCut.addColorStop(1, "rgba(0, 0, 0, 0)");
+    overlayCtx.fillStyle = outerCut;
+    overlayCtx.beginPath();
+    overlayCtx.arc(anchor.x, anchor.y, outerRadius, 0, Math.PI * 2);
+    overlayCtx.fill();
+
+    const innerCut = overlayCtx.createRadialGradient(
+      anchor.x,
+      anchor.y,
+      0,
+      anchor.x,
+      anchor.y,
+      innerRadius,
+    );
+    innerCut.addColorStop(0, `rgba(0, 0, 0, ${innerCutAlpha})`);
+    innerCut.addColorStop(0.52, `rgba(0, 0, 0, ${innerCutAlpha * 0.62})`);
+    innerCut.addColorStop(1, "rgba(0, 0, 0, 0)");
+    overlayCtx.fillStyle = innerCut;
+    overlayCtx.beginPath();
+    overlayCtx.arc(anchor.x, anchor.y, innerRadius, 0, Math.PI * 2);
+    overlayCtx.fill();
+  }
+
+  overlayCtx.restore();
+}
+
+function ensureNightVeilOverlay(sceneState, viewW, viewH) {
+  if (typeof document === "undefined") return null;
+  if (!sceneState.nightVeilCanvas) {
+    const overlayCanvas = document.createElement("canvas");
+    const overlayCtx = overlayCanvas.getContext("2d");
+    if (!overlayCtx) return null;
+    sceneState.nightVeilCanvas = overlayCanvas;
+    sceneState.nightVeilCtx = overlayCtx;
+  }
+  if (
+    sceneState.nightVeilCanvas.width !== viewW ||
+    sceneState.nightVeilCanvas.height !== viewH
+  ) {
+    sceneState.nightVeilCanvas.width = viewW;
+    sceneState.nightVeilCanvas.height = viewH;
+  }
+  return sceneState.nightVeilCtx;
+}
+
+function clamp01(value) {
+  if (!Number.isFinite(value)) return 0;
+  return value <= 0 ? 0 : value >= 1 ? 1 : value;
 }
 
 function snapScrollXToNearestLand(strip, scrollX) {

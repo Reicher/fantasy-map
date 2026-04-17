@@ -11,9 +11,10 @@ import {
 } from "./journeySceneMath";
 
 const NODE_MARKER_SCALE = 1.35;
-const SETTLEMENT_VISUAL_HEIGHT_PX = 472;
+const SETTLEMENT_VISUAL_HEIGHT_PX = 60;
 const ABANDONED_VISUAL_HEIGHT_PX = 216;
-const SETTLEMENT_UPWARD_OFFSET_PX = 30;
+const SETTLEMENT_UPWARD_OFFSET_PX = 24;
+const SETTLEMENT_LIGHT_CENTER_UPWARD_PX = 34;
 const ABANDONED_UPWARD_OFFSET_PX = 13;
 const SIGNPOST_VISUAL_HEIGHT_PX = 104;
 const SIGNPOST_UPWARD_OFFSET_PX = 18;
@@ -441,6 +442,7 @@ export function drawNodeMarkers({
     return {
       startMarkerCanvasX: null,
       destMarkerCanvasX: null,
+      settlementLightAnchors: [],
     };
   }
 
@@ -477,6 +479,7 @@ export function drawNodeMarkers({
   const destSignpost = destMarker === "signpost";
   const startRenderStripX = startCanvasX + layerStripLeft;
   const destRenderStripX = destCanvasX + layerStripLeft;
+  const settlementLightAnchors = [];
 
   drawNodeLandSockel(
     ctx,
@@ -514,6 +517,12 @@ export function drawNodeMarkers({
         ? ABANDONED_UPWARD_OFFSET_PX
         : SETTLEMENT_UPWARD_OFFSET_PX,
   });
+  if (startMarker === "settlement") {
+    settlementLightAnchors.push({
+      x: startCanvasX,
+      y: playerFeetY - SETTLEMENT_LIGHT_CENTER_UPWARD_PX,
+    });
+  }
   if (showDestMarker) {
     drawNodeMarkerOnCanvas(ctx, destCanvasX, markerY, {
       marker: destMarker,
@@ -532,11 +541,18 @@ export function drawNodeMarkers({
           ? ABANDONED_UPWARD_OFFSET_PX
           : SETTLEMENT_UPWARD_OFFSET_PX,
     });
+    if (destMarker === "settlement") {
+      settlementLightAnchors.push({
+        x: destCanvasX,
+        y: playerFeetY - SETTLEMENT_LIGHT_CENTER_UPWARD_PX,
+      });
+    }
   }
 
   return {
     startMarkerCanvasX: startCanvasX,
     destMarkerCanvasX: showDestMarker ? destCanvasX : null,
+    settlementLightAnchors,
   };
 }
 

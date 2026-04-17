@@ -33,6 +33,8 @@ export function createAppRefs(): AppRefs {
     playJourneyHearts: queryOptional<HTMLElement>("#play-journey-hearts"),
     playJourneyStamina: queryOptional<HTMLElement>("#play-journey-stamina"),
     playJourneyFoodCount: queryOptional<HTMLElement>("#play-journey-food-count"),
+    playHudBulletsCount: queryOptional<HTMLElement>("#play-hud-bullets-count"),
+    playHudLocationProgress: queryOptional<HTMLElement>("#play-hud-location-progress"),
     playPanelCharacter: queryOptional<HTMLElement>("#play-panel-character"),
     playPanelInventory: queryOptional<HTMLElement>("#play-panel-inventory"),
     playPanelSettings: queryOptional<HTMLElement>("#play-panel-settings"),

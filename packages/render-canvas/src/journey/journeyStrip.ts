@@ -145,6 +145,22 @@ const PLAINS_TREE_SPAWN_TUNING_BY_LAYER = Object.freeze({
     maxCount: 7,
   }),
 });
+const HIGHLANDS_TREE_SPAWN_TUNING_BY_LAYER = Object.freeze({
+  near1: Object.freeze({
+    segmentChance: 0.82,
+    countScale: 0.42,
+    maxCount: 3,
+  }),
+  near2: Object.freeze({
+    segmentChance: 0.9,
+    countScale: 0.5,
+    maxCount: 3,
+  }),
+});
+const HIGHLANDS_TREE_HEIGHT_SCALE_BY_LAYER = Object.freeze({
+  near1: 0.48,
+  near2: 0.58,
+});
 const TREE_LAYER_CONFIG = {
   far: {
     minSpacingPx: 24,
@@ -1068,7 +1084,14 @@ function buildLayerTreeDecorations(layerSegments, layerName, strip = null) {
           Math.round(cursor - segment.stripX),
         ),
       );
-      const heightPx = lerp(config.minHeightPx, config.maxHeightPx, rng());
+      const heightScale = getLayerTreeHeightScaleForBiome(
+        layerName,
+        segment.biomeKey,
+      );
+      const heightPx = Math.max(
+        14,
+        lerp(config.minHeightPx, config.maxHeightPx, rng()) * heightScale,
+      );
       trees.push({
         stripX: cursor,
         treeFamily: treeVisual.treeFamily,
@@ -1182,7 +1205,20 @@ function getTreeSpawnTuningForBiome(layerName, biomeKey) {
       PLAINS_TREE_SPAWN_TUNING_BY_LAYER[layerName] ?? DEFAULT_TREE_SPAWN_TUNING
     );
   }
+  if (biomeKey === "highlands") {
+    return (
+      HIGHLANDS_TREE_SPAWN_TUNING_BY_LAYER[layerName] ??
+      DEFAULT_TREE_SPAWN_TUNING
+    );
+  }
   return DEFAULT_TREE_SPAWN_TUNING;
+}
+
+function getLayerTreeHeightScaleForBiome(layerName, biomeKey) {
+  if (biomeKey === "highlands") {
+    return HIGHLANDS_TREE_HEIGHT_SCALE_BY_LAYER[layerName] ?? 1;
+  }
+  return 1;
 }
 
 function getGroundDetailSpacing(biomeKey, isSnow) {

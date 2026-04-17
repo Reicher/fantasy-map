@@ -4,7 +4,10 @@ import {
 } from "./inventory";
 import { dedupePoints } from "@fardvag/shared/utils";
 import { regionAtCell, regionAtPosition } from "./playQueries";
-import { DEFAULT_TIME_OF_DAY_HOURS } from "./timeOfDay";
+import {
+  DEFAULT_TIME_OF_DAY_HOURS,
+  normalizeTimeOfDayHours,
+} from "./timeOfDay";
 import { createRng } from "@fardvag/shared/random";
 import { getNodeTitle } from "@fardvag/shared/node/model";
 import {
@@ -53,8 +56,8 @@ export {
 
 const TRAVEL_SPEED = 3.75;
 const PLAYER_INITIATIVE_RANGE = Object.freeze({ min: 5, max: 10 });
-const PLAYER_VITALITY_RANGE = Object.freeze({ min: 2, max: 5 });
-const PLAYER_STAMINA_RANGE = Object.freeze({ min: 10, max: 25 });
+const PLAYER_VITALITY_RANGE = Object.freeze({ min: 8, max: 16 });
+const PLAYER_STAMINA_RANGE = Object.freeze({ min: 36, max: 84 });
 const PLAYER_WEAPON_ACCURACY_RANGE = Object.freeze({ min: 40, max: 90 });
 const EVENT_LOOT_COLUMNS = 4;
 const EVENT_LOOT_ROWS = 4;
@@ -87,7 +90,9 @@ export function createPlayState(world): PlayState {
   return {
     graph: world.travelGraph,
     viewMode: "map",
-    timeOfDayHours: DEFAULT_TIME_OF_DAY_HOURS,
+    timeOfDayHours: normalizeTimeOfDayHours(
+      world?.params?.startTimeOfDayHours ?? DEFAULT_TIME_OF_DAY_HOURS,
+    ),
     currentNodeId,
     position: currentNode ? { x: currentNode.x, y: currentNode.y } : null,
     lastRegionId,
@@ -96,7 +101,9 @@ export function createPlayState(world): PlayState {
     travel: null,
     pendingJourneyEvent: null,
     abandonedLootByNodeId: {},
-    inventory: createInitialInventory(),
+    inventory: createInitialInventory({
+      seed: String(world?.params?.seed ?? ""),
+    }),
     hungerElapsedHours: 0,
     journeyElapsedHours: 0,
     runStats: createInitialRunStats(),

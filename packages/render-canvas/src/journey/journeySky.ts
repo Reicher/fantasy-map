@@ -149,13 +149,13 @@ export function drawOceanHorizon(ctx, viewW, viewH, skyState) {
 export function drawNightVeil(ctx, viewW, viewH, skyState) {
   const moonRelief = skyState.moonlight * (1 - skyState.cloudCover * 0.42);
   const alpha = clamp01(
-    skyState.night * (0.64 + skyState.cloudCover * 0.2 - moonRelief * 0.78) +
-      skyState.twilight * 0.07,
+    skyState.night * (0.72 + skyState.cloudCover * 0.24 - moonRelief * 0.74) +
+      skyState.twilight * 0.1,
   );
   if (alpha <= 0.01) return;
 
   const veil = ctx.createLinearGradient(0, 0, 0, viewH);
-  veil.addColorStop(0, `rgba(5, 9, 22, ${alpha * 0.76})`);
+  veil.addColorStop(0, `rgba(5, 9, 22, ${alpha * 0.82})`);
   veil.addColorStop(1, `rgba(7, 11, 24, ${alpha})`);
   ctx.fillStyle = veil;
   ctx.fillRect(0, 0, viewW, viewH);

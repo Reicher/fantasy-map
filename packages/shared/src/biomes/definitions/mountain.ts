@@ -18,11 +18,11 @@ export const mountainBiome: BiomeDefinition = {
   },
   journey: {
     silhouette: {
-      baseY: 0.15,
-      amplitude: 0.52,
-      wavelength1: 112,
-      wavelength2: 46,
-      sharpness: 3.9,
+      baseY: 0.1,
+      amplitude: 0.72,
+      wavelength1: 86,
+      wavelength2: 32,
+      sharpness: 5.8,
     },
   },
   generation: {

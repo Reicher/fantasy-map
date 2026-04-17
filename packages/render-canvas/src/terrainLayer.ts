@@ -145,6 +145,7 @@ export function drawTerrainTextures(ctx, world, viewport, options: TerrainRender
   const endX = clamp(Math.ceil(viewport.leftWorld + viewport.visibleWidth) + 2, 0, terrain.width - 1);
   const startY = clamp(Math.floor(viewport.topWorld) - 2, 0, terrain.height - 1);
   const endY = clamp(Math.ceil(viewport.topWorld + viewport.visibleHeight) + 2, 0, terrain.height - 1);
+  const sampleStride = resolveTerrainTextureStride(viewport);
   const desertLoops = geometry.biomes
     .filter((region) => region.biome === BIOME_KEYS.DESERT)
     .flatMap((region) => region.loops);
@@ -153,8 +154,8 @@ export function drawTerrainTextures(ctx, world, viewport, options: TerrainRender
   drawTerrainTexturePass(ctx, viewport, desertLoops, () => {
     ctx.strokeStyle = rgbToRgbaString([165, 136, 86], ALPHA.medium);
     ctx.lineWidth = 0.9;
-    for (let y = startY; y <= endY; y += 1) {
-      for (let x = startX; x <= endX; x += 1) {
+    for (let y = startY; y <= endY; y += sampleStride) {
+      for (let x = startX; x <= endX; x += sampleStride) {
         const cell = y * terrain.width + x;
         if (climate.biome[cell] !== BIOME_KEYS.DESERT) {
           continue;
@@ -168,8 +169,8 @@ export function drawTerrainTextures(ctx, world, viewport, options: TerrainRender
     drawTerrainTexturePass(ctx, viewport, snowLoops, () => {
       ctx.strokeStyle = rgbToRgbaString([181, 188, 196], ALPHA.strong);
       ctx.lineWidth = 0.85;
-      for (let y = startY; y <= endY; y += 1) {
-        for (let x = startX; x <= endX; x += 1) {
+      for (let y = startY; y <= endY; y += sampleStride) {
+        for (let x = startX; x <= endX; x += sampleStride) {
           const cell = y * terrain.width + x;
           const biomeKey = climate.biome[cell];
           if (
@@ -188,6 +189,20 @@ export function drawTerrainTextures(ctx, world, viewport, options: TerrainRender
       }
     });
   }
+}
+
+function resolveTerrainTextureStride(viewport) {
+  const minScale = Math.max(
+    0.001,
+    Math.min(
+      Number(viewport?.scaleX) || 0,
+      Number(viewport?.scaleY) || 0,
+    ),
+  );
+  if (minScale >= 1) {
+    return 1;
+  }
+  return clamp(Math.ceil(1 / minScale), 1, 4);
 }
 
 export function drawShorelines(ctx, geometry, viewport) {

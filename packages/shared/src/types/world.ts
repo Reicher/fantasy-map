@@ -20,6 +20,7 @@ export interface WorldParams {
   settlementRandomness: number;
   abandonedFrequency: number;
   nodeMinDistance: number;
+  startTimeOfDayHours: number;
 }
 
 export interface WorldInputParams extends Partial<WorldParams> {

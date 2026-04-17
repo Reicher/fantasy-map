@@ -70,6 +70,7 @@ export function createPlaySession({ refs, state, syncModeUi }: PlaySessionDeps) 
   return {
     createInitialPlayState,
     renderPlayWorld,
+    ensureAnimation: playController.ensureAnimation,
     setPlayViewMode,
     updatePlaySubView,
     toggleTravelPause,
