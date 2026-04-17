@@ -20,6 +20,13 @@ const STACK_MAX_COUNT_BY_TYPE: Readonly<Record<string, number>> = Object.freeze(
   tobacco: 12,
   coffee: 12,
 });
+const ITEM_METADATA_BY_TYPE = Object.freeze({
+  meat: Object.freeze({ name: "Köttbit", symbol: "meat" }),
+  bullets: Object.freeze({ name: "Kulor", symbol: "bullets" }),
+  medicine: Object.freeze({ name: "Medicin", symbol: "medicine" }),
+  tobacco: Object.freeze({ name: "Tobak", symbol: "tobacco" }),
+  coffee: Object.freeze({ name: "Kaffe", symbol: "coffee" }),
+});
 
 export function createInitialInventory(
   options: { seed?: string } = {},
@@ -284,6 +291,122 @@ export function canTransferInventoryItem(
     nextColumn,
     nextRow,
   );
+}
+
+export function countInventoryItemsByType(
+  inventory: InventoryState | null | undefined,
+  type: string,
+): number {
+  const normalizedType = String(type ?? "").trim().toLowerCase();
+  if (!inventory || !Array.isArray(inventory.items) || !normalizedType) {
+    return 0;
+  }
+  let total = 0;
+  for (const item of inventory.items) {
+    if (!item || String(item.type ?? "").trim().toLowerCase() !== normalizedType) {
+      continue;
+    }
+    total += getItemCount(item);
+  }
+  return total;
+}
+
+export function addInventoryItemsByType(
+  inventory: InventoryState | null | undefined,
+  type: string,
+  count = 1,
+  options: {
+    name?: string;
+    symbol?: string;
+    idPrefix?: string;
+  } = {},
+): {
+  inventory: InventoryState | null | undefined;
+  added: number;
+  missing: number;
+} {
+  const requestedCount = Number.isFinite(count)
+    ? Math.max(0, Math.floor(count))
+    : 0;
+  const normalizedType = String(type ?? "").trim().toLowerCase();
+  if (!inventory || requestedCount <= 0 || !normalizedType) {
+    return {
+      inventory,
+      added: 0,
+      missing: requestedCount,
+    };
+  }
+
+  const metadata = ITEM_METADATA_BY_TYPE[normalizedType] ?? null;
+  const itemName = String(options.name ?? metadata?.name ?? normalizedType).trim();
+  const itemSymbol = String(
+    options.symbol ?? metadata?.symbol ?? normalizedType,
+  ).trim();
+  const idPrefix = String(options.idPrefix ?? normalizedType).trim() || normalizedType;
+  const nextInventory: InventoryState = {
+    ...inventory,
+    columns: normalizeDimension(inventory.columns, DEFAULT_COLUMNS),
+    rows: normalizeDimension(inventory.rows, DEFAULT_ROWS),
+    items: Array.isArray(inventory.items) ? [...inventory.items] : [],
+  };
+
+  let remaining = requestedCount;
+
+  for (let index = 0; index < nextInventory.items.length && remaining > 0; index += 1) {
+    const item = nextInventory.items[index];
+    if (
+      !item ||
+      !isStackableItem(item) ||
+      String(item.type ?? "").trim().toLowerCase() !== normalizedType
+    ) {
+      continue;
+    }
+    const itemCount = getItemCount(item);
+    const stackCapacity = Math.max(0, getStackMaxCount(item) - itemCount);
+    if (stackCapacity <= 0) {
+      continue;
+    }
+    const addedToStack = Math.min(remaining, stackCapacity);
+    remaining -= addedToStack;
+    nextInventory.items[index] = {
+      ...item,
+      count: itemCount + addedToStack,
+    };
+  }
+
+  const stackMax = getStackMaxCountByType(normalizedType);
+  while (remaining > 0) {
+    const stackCount = Math.min(remaining, stackMax);
+    const draftItem: InventoryItem = {
+      id: "__inventory-add__",
+      type: normalizedType,
+      name: itemName,
+      symbol: itemSymbol,
+      width: 1,
+      height: 1,
+      count: stackCount,
+      column: 0,
+      row: 0,
+    };
+    const placement = findFirstAvailablePlacement(nextInventory, draftItem);
+    if (!placement) {
+      break;
+    }
+    const preferredId = `${idPrefix}-${nextInventory.items.length + 1}`;
+    nextInventory.items.push({
+      ...draftItem,
+      id: ensureUniqueItemId(nextInventory.items, preferredId),
+      column: placement.column,
+      row: placement.row,
+    });
+    remaining -= stackCount;
+  }
+
+  return {
+    inventory: nextInventory,
+    added: requestedCount - remaining,
+    missing: remaining,
+  };
 }
 
 export function transferInventoryItem(
@@ -660,6 +783,10 @@ function getStackMaxCount(item: InventoryItem | null | undefined): number {
     return 1;
   }
   const itemType = String(item?.type ?? "").trim().toLowerCase();
+  return getStackMaxCountByType(itemType);
+}
+
+function getStackMaxCountByType(itemType: string): number {
   const configuredMax = STACK_MAX_COUNT_BY_TYPE[itemType];
   if (Number.isFinite(configuredMax) && configuredMax > 0) {
     return Math.max(1, Math.floor(configuredMax));

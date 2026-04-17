@@ -85,6 +85,12 @@ export interface SettlementData {
   y: number;
   score: number;
   coastal?: boolean;
+  agents?: SettlementAgentData[];
+  [key: string]: unknown;
+}
+
+export interface SettlementAgentData {
+  id: string;
   [key: string]: unknown;
 }
 

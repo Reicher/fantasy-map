@@ -5,6 +5,9 @@ const DEFAULT_NODE_MIN_DISTANCE = 5;
 const DEFAULT_ABANDONED_FREQUENCY = 50;
 
 const MIN_SIGNPOST_DEGREE = 3;
+const MIN_SIGNPOST_SETTLEMENT_ROAD_STEPS = 4;
+const MIN_SIGNPOST_SETTLEMENT_CLEARANCE = 2.4;
+const SIGNPOST_SETTLEMENT_CLEARANCE_FACTOR = 0.52;
 
 const MIN_ABANDONED_ROAD_LENGTH = 22;
 const MAX_ABANDONED_PER_ROAD = 6;
@@ -154,8 +157,15 @@ function buildDedicatedSignpostNodes(world, settlementNodes) {
     y: Number(node?.y),
   }));
   const nodeMinDistance = getEffectiveNodeMinDistance(world.params);
-  const settlementClearance = Math.max(1.35, nodeMinDistance * 0.34);
+  const settlementClearance = Math.max(
+    MIN_SIGNPOST_SETTLEMENT_CLEARANCE,
+    nodeMinDistance * SIGNPOST_SETTLEMENT_CLEARANCE_FACTOR,
+  );
   const signpostSpacing = Math.max(1.9, nodeMinDistance * 0.48);
+  const settlementRoadDistanceByCell = buildRoadDistanceFromSettlementCells(
+    roadCellAdjacency,
+    settlementCellSet,
+  );
 
   const junctionByCell = new Map();
   for (const node of world.network?.nodes ?? []) {
@@ -175,6 +185,8 @@ function buildDedicatedSignpostNodes(world, settlementNodes) {
         id: cell,
         cell,
         degree,
+        settlementRoadDistance:
+          settlementRoadDistanceByCell.get(cell) ?? Number.POSITIVE_INFINITY,
         x,
         y,
         score:
@@ -187,6 +199,7 @@ function buildDedicatedSignpostNodes(world, settlementNodes) {
       (candidate) =>
         candidate.degree >= MIN_SIGNPOST_DEGREE &&
         !settlementCellSet.has(candidate.cell) &&
+        candidate.settlementRoadDistance >= MIN_SIGNPOST_SETTLEMENT_ROAD_STEPS &&
         getNearestPointDistance(candidate.x, candidate.y, settlementAnchors) >=
           settlementClearance,
     )
@@ -650,6 +663,40 @@ function buildRoadCellAdjacency(roads) {
   }
 
   return adjacency;
+}
+
+function buildRoadDistanceFromSettlementCells(roadCellAdjacency, settlementCellSet) {
+  const distanceByCell = new Map();
+  const queue = [];
+
+  for (const cell of settlementCellSet ?? []) {
+    if (!roadCellAdjacency.has(cell)) {
+      continue;
+    }
+    if (distanceByCell.has(cell)) {
+      continue;
+    }
+    distanceByCell.set(cell, 0);
+    queue.push(cell);
+  }
+
+  for (let head = 0; head < queue.length; head += 1) {
+    const current = queue[head];
+    const currentDistance = distanceByCell.get(current);
+    if (!Number.isFinite(currentDistance)) {
+      continue;
+    }
+
+    for (const neighbor of roadCellAdjacency.get(current) ?? []) {
+      if (distanceByCell.has(neighbor)) {
+        continue;
+      }
+      distanceByCell.set(neighbor, currentDistance + 1);
+      queue.push(neighbor);
+    }
+  }
+
+  return distanceByCell;
 }
 
 function getNearestPointDistance(x, y, points) {

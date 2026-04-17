@@ -21,6 +21,18 @@ const SIGNPOST_UPWARD_OFFSET_PX = 18;
 const DEST_MARKER_RENDER_LAG_PX = 24;
 const DEST_MARKER_REVEAL_PROGRESS = 0.08;
 const WATER_BIOMES = new Set(["ocean", "lake"]);
+const SETTLEMENT_AGENT_FADE_MS = 320;
+const SETTLEMENT_AGENT_BASE_HEIGHT_PX = 79.2;
+const SETTLEMENT_AGENT_ANCHOR_UPWARD_PX = -21;
+const SETTLEMENT_AGENT_OFFSET_X_SCALE = 27;
+const SETTLEMENT_AGENT_OFFSET_Y_SCALE = 1.2;
+const SETTLEMENT_AGENT_DEFAULT_OFFSET_Y = 0.1;
+const SETTLEMENT_AGENT_HIT_RADIUS_SCALE = 0.34;
+
+const SETTLEMENT_AGENT_SPRITE_URL = new URL(
+  "../../../../src/assets/journey/agent.png",
+  import.meta.url,
+).href;
 
 const LAYER_HAZE = {
   far: 0.42,
@@ -61,6 +73,11 @@ const LAYER_TOP_RIM = Object.freeze({
   near2: Object.freeze({ lineWidthPx: 1.22, alpha: 0.44, haze: 0.36, lift: 0.38 }),
   near1: Object.freeze({ lineWidthPx: 1.28, alpha: 0.48, haze: 0.28, lift: 0.4 }),
 });
+const settlementAgentSprite = createJourneySprite(SETTLEMENT_AGENT_SPRITE_URL);
+const settlementAgentAlphaById = new Map<
+  string,
+  { alpha: number; lastUpdatedAtMs: number; lastSeenAtMs: number }
+>();
 
 export function drawGroundLayer(ctx, strip, scrollX, playerX, viewW) {
   const speed = PARALLAX_SPEED.ground;
@@ -437,12 +454,15 @@ export function drawNodeMarkers({
   travelProgress,
   travelTotalLength,
   world,
+  playState,
+  nowMs,
 }) {
   if (!activeTravel) {
     return {
       startMarkerCanvasX: null,
       destMarkerCanvasX: null,
       settlementLightAnchors: [],
+      agentHits: [],
     };
   }
 
@@ -480,6 +500,7 @@ export function drawNodeMarkers({
   const startRenderStripX = startCanvasX + layerStripLeft;
   const destRenderStripX = destCanvasX + layerStripLeft;
   const settlementLightAnchors = [];
+  const agentHits = [];
 
   drawNodeLandSockel(
     ctx,
@@ -498,6 +519,27 @@ export function drawNodeMarkers({
       groundTopY,
       playerFeetY,
     );
+  }
+
+  if (startMarker === "settlement") {
+    drawSettlementAgentsAroundMarker(ctx, {
+      settlementId: startNodeId,
+      markerCanvasX: startCanvasX,
+      markerY,
+      playState,
+      nowMs,
+      hitTarget: agentHits,
+    });
+  }
+  if (showDestMarker && destMarker === "settlement") {
+    drawSettlementAgentsAroundMarker(ctx, {
+      settlementId: destNodeId,
+      markerCanvasX: destCanvasX,
+      markerY,
+      playState,
+      nowMs,
+      hitTarget: agentHits,
+    });
   }
 
   drawNodeMarkerOnCanvas(ctx, startCanvasX, markerY, {
@@ -553,7 +595,187 @@ export function drawNodeMarkers({
     startMarkerCanvasX: startCanvasX,
     destMarkerCanvasX: showDestMarker ? destCanvasX : null,
     settlementLightAnchors,
+    agentHits,
   };
+}
+
+function drawSettlementAgentsAroundMarker(
+  ctx,
+  {
+    settlementId,
+    markerCanvasX,
+    markerY,
+    playState,
+    nowMs,
+    hitTarget,
+  },
+) {
+  if (settlementId == null || !playState?.settlementStates) {
+    return;
+  }
+  const settlementState = playState.settlementStates[String(settlementId)];
+  if (!settlementState?.agents?.length) {
+    return;
+  }
+
+  const resolvedNowMs = Number.isFinite(nowMs) ? nowMs : resolveNowMs();
+  const visibleAgentIds = new Set<string>();
+  const renderables = [];
+
+  for (const agent of settlementState.agents) {
+    if (!agent?.id) {
+      continue;
+    }
+    const agentId = String(agent.id);
+    visibleAgentIds.add(agentId);
+    const targetAlpha = agent.state === "resting" ? 1 : 0;
+    const alpha = resolveSettlementAgentAlpha(agentId, targetAlpha, resolvedNowMs);
+    if (alpha <= 0.01) {
+      continue;
+    }
+
+    const offsetX = Number.isFinite(agent.campfireOffsetX)
+      ? Number(agent.campfireOffsetX) * SETTLEMENT_AGENT_OFFSET_X_SCALE
+      : 0;
+    const offsetY = Number.isFinite(agent.campfireOffsetY)
+      ? Number(agent.campfireOffsetY) * SETTLEMENT_AGENT_OFFSET_Y_SCALE
+      : SETTLEMENT_AGENT_DEFAULT_OFFSET_Y * SETTLEMENT_AGENT_OFFSET_Y_SCALE;
+    const centerX = markerCanvasX + offsetX;
+    const feetY = markerY - SETTLEMENT_AGENT_ANCHOR_UPWARD_PX + offsetY;
+    renderables.push({
+      agent,
+      centerX,
+      feetY,
+      alpha,
+    });
+  }
+
+  const sortedRenderables = renderables.sort((left, right) => left.centerX - right.centerX);
+  const separationGap = Math.max(24, SETTLEMENT_AGENT_BASE_HEIGHT_PX * 0.62);
+  const centerOffset = (sortedRenderables.length - 1) * 0.5;
+
+  for (let index = 0; index < sortedRenderables.length; index += 1) {
+    const entry = sortedRenderables[index];
+    const agent = entry.agent;
+    const alpha = entry.alpha;
+    const agentHeight = Math.max(18, SETTLEMENT_AGENT_BASE_HEIGHT_PX);
+    const agentWidth = agentHeight * 0.62;
+    const slotOffsetX = (index - centerOffset) * separationGap;
+    const centerX = entry.centerX + slotOffsetX;
+    const feetY = entry.feetY;
+    const left = centerX - agentWidth * 0.5;
+    const top = feetY - agentHeight;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    if (canDrawJourneySprite(settlementAgentSprite)) {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(settlementAgentSprite, left, top, agentWidth, agentHeight);
+    } else {
+      ctx.fillStyle = "rgba(45, 40, 36, 0.92)";
+      ctx.beginPath();
+      ctx.ellipse(
+        centerX,
+        top + agentHeight * 0.24,
+        agentWidth * 0.25,
+        agentHeight * 0.14,
+        0,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+      ctx.fillRect(
+        centerX - agentWidth * 0.16,
+        top + agentHeight * 0.32,
+        agentWidth * 0.32,
+        agentHeight * 0.56,
+      );
+    }
+    ctx.restore();
+
+    if (agent.state === "resting" && alpha >= 0.35 && Array.isArray(hitTarget)) {
+      hitTarget.push({
+        x: centerX,
+        y: top + agentHeight * 0.52,
+        radius: Math.max(8, agentHeight * SETTLEMENT_AGENT_HIT_RADIUS_SCALE),
+        settlementId,
+        agentId: String(agent.id),
+        greeting: String(agent.greeting ?? "Hej."),
+      });
+    }
+  }
+
+  cleanupSettlementAgentAlphaCache(visibleAgentIds, resolvedNowMs);
+}
+
+function resolveSettlementAgentAlpha(
+  agentId: string,
+  targetAlpha: number,
+  nowMs: number,
+): number {
+  const entry = settlementAgentAlphaById.get(agentId);
+  if (!entry) {
+    const initial = {
+      alpha: targetAlpha > 0 ? 1 : 0,
+      lastUpdatedAtMs: nowMs,
+      lastSeenAtMs: nowMs,
+    };
+    settlementAgentAlphaById.set(agentId, initial);
+    return initial.alpha;
+  }
+
+  const elapsedMs = Math.max(0, nowMs - entry.lastUpdatedAtMs);
+  const mix = Math.min(1, elapsedMs / SETTLEMENT_AGENT_FADE_MS);
+  entry.alpha = entry.alpha + (targetAlpha - entry.alpha) * mix;
+  entry.lastUpdatedAtMs = nowMs;
+  entry.lastSeenAtMs = nowMs;
+  return entry.alpha;
+}
+
+function cleanupSettlementAgentAlphaCache(
+  seenAgentIds: Set<string>,
+  nowMs: number,
+) {
+  const STALE_MS = 30_000;
+  for (const [agentId, entry] of settlementAgentAlphaById) {
+    if (seenAgentIds.has(agentId)) {
+      continue;
+    }
+    if (nowMs - entry.lastSeenAtMs > STALE_MS || entry.alpha <= 0.001) {
+      settlementAgentAlphaById.delete(agentId);
+    }
+  }
+}
+
+function resolveNowMs(): number {
+  if (
+    typeof performance !== "undefined" &&
+    Number.isFinite(performance.now())
+  ) {
+    return performance.now();
+  }
+  return Date.now();
+}
+
+function createJourneySprite(url: string): HTMLImageElement | null {
+  if (typeof Image === "undefined") {
+    return null;
+  }
+  const image = new Image();
+  image.decoding = "async";
+  image.src = url;
+  return image;
+}
+
+function canDrawJourneySprite(
+  sprite: HTMLImageElement | null,
+): sprite is HTMLImageElement {
+  return Boolean(
+    sprite &&
+      sprite.complete &&
+      Number(sprite.naturalWidth) > 0 &&
+      Number(sprite.naturalHeight) > 0,
+  );
 }
 
 export function drawTreeDecorationsForLayer(

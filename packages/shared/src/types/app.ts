@@ -69,6 +69,8 @@ export interface AppRefs {
   playJourneyEventLoot: HTMLElement | null;
   playJourneyEventLootList: HTMLElement | null;
   playJourneyEventTakeAllButton: HTMLButtonElement | null;
+  playSettlementDebug: HTMLElement | null;
+  playSettlementDebugBody: HTMLElement | null;
   playRestDialog: HTMLElement | null;
   playRestBody: HTMLElement | null;
   playHuntOutlook: HTMLElement | null;
@@ -129,6 +131,7 @@ export interface AppState {
   playProfiler: PlayProfilerLike;
   playActivePanels: PlayHudPanelName[];
   playActionMenuOpen: boolean;
+  playSettlementDebugOpen?: boolean;
   playMapCamera?: CameraState;
   [key: string]: unknown;
 }

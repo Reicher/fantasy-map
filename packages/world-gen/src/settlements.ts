@@ -18,7 +18,11 @@ interface GeneratedSettlement {
   name?: string;
   coastal?: boolean;
   river?: boolean;
+  agents?: Array<{ id: string }>;
 }
+
+const SETTLEMENT_MIN_AGENTS = 1;
+const SETTLEMENT_MAX_AGENTS = 3;
 
 export function generateSettlements(world: World, names: SettlementNameSource) {
   const { params, terrain, climate, hydrology } = world;
@@ -95,7 +99,21 @@ export function generateSettlements(world: World, names: SettlementNameSource) {
       coastal: settlement.coastal,
       river: settlement.river,
     });
+    settlement.agents = createSettlementAgents(rng, settlement.id);
   }
 
   return settlements;
+}
+
+function createSettlementAgents(rng, settlementId: number): Array<{ id: string }> {
+  const count = rng
+    .fork(`settlement:${settlementId}:agents`)
+    .int(SETTLEMENT_MIN_AGENTS, SETTLEMENT_MAX_AGENTS);
+  const agents = [];
+  for (let index = 0; index < count; index += 1) {
+    agents.push({
+      id: `settlement-${settlementId}-agent-${index + 1}`,
+    });
+  }
+  return agents;
 }

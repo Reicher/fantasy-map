@@ -78,6 +78,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       viewH: 0,
       startMarkerCanvasX: null,
       destMarkerCanvasX: null,
+      agentHits: [],
     },
     nightVeilCanvas: null,
     nightVeilCtx: null,
@@ -179,6 +180,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       isTraveling,
       options.debug ?? false,
       worldSnapshot,
+      nowMs,
     );
   }
 
@@ -199,6 +201,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       viewH: 0,
       startMarkerCanvasX: null,
       destMarkerCanvasX: null,
+      agentHits: [],
     };
     if (ctx) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -226,6 +229,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
     isTraveling,
     debug = false,
     world = null,
+    nowMs = null,
   ) {
     const strip = state.strip;
     const markerTravel = playState?.travel ?? state.lastTravel ?? state.idleTravel;
@@ -295,6 +299,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
         viewH,
         startMarkerCanvasX: null,
         destMarkerCanvasX: null,
+        agentHits: [],
       };
       return;
     }
@@ -352,6 +357,8 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       travelProgress: playState?.travel?.progress ?? null,
       travelTotalLength: playState?.travel?.totalLength ?? null,
       world,
+      playState,
+      nowMs,
     });
 
     state.presentationSnapshot = {
@@ -359,6 +366,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       viewH,
       startMarkerCanvasX: markerSnapshot.startMarkerCanvasX,
       destMarkerCanvasX: markerSnapshot.destMarkerCanvasX,
+      agentHits: markerSnapshot.agentHits ?? [],
     };
 
     drawPlayerFigure(ctx, playerX, playerFeetY, isTraveling);

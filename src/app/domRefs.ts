@@ -74,6 +74,8 @@ export function createAppRefs(): AppRefs {
     playJourneyEventTakeAllButton: queryOptional<HTMLButtonElement>(
       "#play-journey-event-take-all",
     ),
+    playSettlementDebug: queryOptional<HTMLElement>("#play-settlement-debug"),
+    playSettlementDebugBody: queryOptional<HTMLElement>("#play-settlement-debug-body"),
     playRestDialog: queryOptional<HTMLElement>("#play-rest-dialog"),
     playRestBody: queryOptional<HTMLElement>("#play-rest-body"),
     playHuntOutlook: queryOptional<HTMLElement>("#play-hunt-outlook"),

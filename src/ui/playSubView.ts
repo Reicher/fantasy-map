@@ -21,6 +21,14 @@ import type { World } from "@fardvag/shared/types/world";
 interface JourneyPresentationSnapshot {
   viewW?: number;
   destMarkerCanvasX?: number | null;
+  agentHits?: Array<{
+    x?: number;
+    y?: number;
+    radius?: number;
+    settlementId?: number;
+    agentId?: string;
+    greeting?: string;
+  }>;
 }
 
 interface ArrivalCueOptions {
@@ -52,6 +60,8 @@ export function createPlaySubViewController({
   let lastJourneyEventDialogMessage = null;
   let lastJourneyLootPanelVisible = null;
   let lastJourneyLootTakeAllEnabled = null;
+  let lastSettlementDebugVisible = null;
+  let lastSettlementDebugSignature = null;
   let lastRestDialogVisible = null;
   let lastRestDialogMessage = null;
   let lastHuntOutlookMessage = null;
@@ -116,6 +126,13 @@ export function createPlaySubViewController({
     });
   }
 
+  const journeyInteractionRoot = refs.playJourneyPanel ?? refs.playJourneyCanvas;
+  if (journeyInteractionRoot) {
+    journeyInteractionRoot.addEventListener("pointerup", (event) => {
+      handleJourneyAgentInteraction(event);
+    });
+  }
+
   return {
     reset,
     update,
@@ -134,6 +151,8 @@ export function createPlaySubViewController({
     lastJourneyEventDialogMessage = null;
     lastJourneyLootPanelVisible = null;
     lastJourneyLootTakeAllEnabled = null;
+    lastSettlementDebugVisible = null;
+    lastSettlementDebugSignature = null;
     lastRestDialogVisible = null;
     lastRestDialogMessage = null;
     lastHuntOutlookMessage = null;
@@ -158,6 +177,7 @@ export function createPlaySubViewController({
     hideRestDialog();
     hideActionResultDialog();
     hideGameOverDialog();
+    hideSettlementDebugPanel();
     inventoryGrid.reset();
     lootInventoryGrid.reset();
   }
@@ -203,6 +223,7 @@ export function createPlaySubViewController({
       hideRestDialog();
       hideActionResultDialog();
       hideGameOverDialog();
+      hideSettlementDebugPanel();
       resetTravelCueTracking();
       return;
     }
@@ -245,6 +266,7 @@ export function createPlaySubViewController({
       hideJourneyEventDialog();
       hideRestDialog();
       hideActionResultDialog();
+      hideSettlementDebugPanel();
       resetTravelCueTracking();
       return;
     }
@@ -253,6 +275,7 @@ export function createPlaySubViewController({
       hideArrivalCue();
       hideJourneyEventDialog();
       hideActionResultDialog();
+      hideSettlementDebugPanel();
       return;
     }
 
@@ -270,6 +293,7 @@ export function createPlaySubViewController({
         : {};
     maybeTriggerArrivalCue(world, playState, presentation);
     syncJourneyEventDialog(playState, isJourney);
+    syncSettlementDebugPanel(world, playState, isJourney);
     profiler.setSnapshot(journeyScene.getDebugSnapshot());
   }
 
@@ -466,6 +490,42 @@ export function createPlaySubViewController({
     lastJourneyLootPanelVisible = false;
     lastJourneyLootTakeAllEnabled = null;
     clearAutoClearJourneyEventTimer();
+  }
+
+  function syncSettlementDebugPanel(world, playState, isJourney) {
+    const panel = refs.playSettlementDebug;
+    const body = refs.playSettlementDebugBody;
+    if (!panel || !body) {
+      return;
+    }
+    const settlement = getCurrentSettlementDebugContext(world, playState);
+    const shouldShow =
+      isJourney &&
+      Boolean(state.playSettlementDebugOpen) &&
+      Boolean(settlement);
+    if (lastSettlementDebugVisible !== shouldShow) {
+      setElementVisible(panel, shouldShow, "grid");
+      lastSettlementDebugVisible = shouldShow;
+    }
+    if (!shouldShow || !settlement) {
+      lastSettlementDebugSignature = null;
+      return;
+    }
+
+    const summary = buildSettlementDebugSummary(settlement);
+    if (summary !== lastSettlementDebugSignature) {
+      body.textContent = summary;
+      lastSettlementDebugSignature = summary;
+    }
+  }
+
+  function hideSettlementDebugPanel() {
+    if (!refs.playSettlementDebug) {
+      return;
+    }
+    setElementVisible(refs.playSettlementDebug, false, "grid");
+    lastSettlementDebugVisible = false;
+    lastSettlementDebugSignature = null;
   }
 
   function syncRestDialog(playState, isPlay, world) {
@@ -777,6 +837,93 @@ export function createPlaySubViewController({
     );
     inventoryGrid.render(true);
     lootInventoryGrid.render(true);
+  }
+
+  function handleJourneyAgentInteraction(event: PointerEvent) {
+    if (
+      event.button !== 0 ||
+      event.defaultPrevented ||
+      state.currentMode !== "play" ||
+      !state.playState ||
+      state.playState.gameOver ||
+      state.playState.viewMode !== "journey" ||
+      !refs.playJourneyCanvas
+    ) {
+      return;
+    }
+
+    if (event.target instanceof Element) {
+      const interactiveTarget = event.target.closest(
+        ".play-journey-event-dialog, .play-rest-dialog, .play-action-result-dialog, .play-settlement-debug, button, a, input, textarea, select, [role='button']",
+      );
+      if (interactiveTarget) {
+        return;
+      }
+    }
+
+    const presentation =
+      typeof journeyScene.getPresentationSnapshot === "function"
+        ? journeyScene.getPresentationSnapshot()
+        : {};
+    const agentHits = Array.isArray(presentation?.agentHits)
+      ? presentation.agentHits
+      : [];
+    if (!agentHits.length) {
+      return;
+    }
+
+    const rect = refs.playJourneyCanvas.getBoundingClientRect();
+    const canvasX =
+      ((event.clientX - rect.left) / Math.max(1, rect.width)) *
+      refs.playJourneyCanvas.width;
+    const canvasY =
+      ((event.clientY - rect.top) / Math.max(1, rect.height)) *
+      refs.playJourneyCanvas.height;
+    let bestHit = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (const hit of agentHits) {
+      if (
+        !hit ||
+        !Number.isFinite(hit.x) ||
+        !Number.isFinite(hit.y) ||
+        !Number.isFinite(hit.radius)
+      ) {
+        continue;
+      }
+      const distance = Math.hypot(canvasX - Number(hit.x), canvasY - Number(hit.y));
+      if (distance > Number(hit.radius) || distance >= bestDistance) {
+        continue;
+      }
+      bestDistance = distance;
+      bestHit = hit;
+    }
+
+    if (!bestHit) {
+      return;
+    }
+
+    const currentEvent = state.playState.pendingJourneyEvent;
+    if (currentEvent && currentEvent.type !== "agent-greeting") {
+      return;
+    }
+
+    const greeting = "hej";
+    state.playState = {
+      ...state.playState,
+      latestAgentInteraction: greeting,
+      pendingJourneyEvent: {
+        type: "agent-greeting",
+        nodeId:
+          Number.isFinite(bestHit.settlementId) && bestHit.settlementId >= 0
+            ? Number(bestHit.settlementId)
+            : state.playState.currentNodeId ?? null,
+        message: greeting,
+        requiresAcknowledgement: false,
+        agentId: String(bestHit.agentId ?? ""),
+      },
+    };
+    syncJourneyEventDialog(state.playState, true);
   }
 
   function canDropAcrossInventories(
@@ -1694,8 +1841,117 @@ function buildJourneyEventKey(event) {
   return [
     String(event.type ?? ""),
     String(event.nodeId ?? ""),
+    String(event.agentId ?? ""),
     String(event.message ?? ""),
   ].join("|");
+}
+
+function getCurrentSettlementDebugContext(world, playState) {
+  if (!world || !playState || playState.currentNodeId == null) {
+    return null;
+  }
+  const features = world?.features as
+    | { nodes?: Array<(NodeLike & { id?: number }) | undefined> }
+    | null
+    | undefined;
+  const nodes = Array.isArray(features?.nodes) ? features.nodes : [];
+  const node = nodes?.[playState.currentNodeId] ?? null;
+  if (!node || node.marker !== "settlement") {
+    return null;
+  }
+  const settlementId = Number.isFinite(node.id)
+    ? Number(node.id)
+    : Number(playState.currentNodeId);
+  const settlementState = playState.settlementStates?.[String(settlementId)] ?? null;
+  if (!settlementState) {
+    return null;
+  }
+  return {
+    node,
+    settlementId,
+    settlementState,
+  };
+}
+
+function buildSettlementDebugSummary(context) {
+  const nodeName = getNodeTitle(context.node) || `Settlement ${context.settlementId + 1}`;
+  const agents = Array.isArray(context?.settlementState?.agents)
+    ? context.settlementState.agents
+    : [];
+  const inventory = context?.settlementState?.inventory ?? null;
+  const inventorySummary = summarizeInventory(inventory);
+  const residentLines = agents.length
+    ? agents.map((agent, index) => {
+        const name = String(agent?.name ?? "").trim() || `Agent ${index + 1}`;
+        const health = normalizePositiveInteger(agent?.health);
+        const maxHealth = Math.max(1, normalizePositiveInteger(agent?.maxHealth));
+        const stamina = normalizePositiveInteger(agent?.stamina);
+        const maxStamina = Math.max(1, normalizePositiveInteger(agent?.maxStamina));
+        const carriedFood = countInventoryFood(agent?.inventory);
+        const stateLabel = String(agent?.state ?? "okänd");
+        return `- ${name} (${stateLabel})\n  Hälsa: ${health}/${maxHealth}  Liv: ${health}/${maxHealth}  Stamina: ${stamina}/${maxStamina}  Mat: ${carriedFood}`;
+      })
+    : ["- Inga boende kvar."];
+
+  const inventoryLines = inventorySummary.length
+    ? inventorySummary.map((entry) => `- ${entry.label}: ${entry.count}`)
+    : ["- Tomt"];
+
+  return [
+    `${nodeName} (ID ${context.settlementId})`,
+    "",
+    `Boende (${agents.length}):`,
+    ...residentLines,
+    "",
+    "Settlement inventory:",
+    ...inventoryLines,
+  ].join("\n");
+}
+
+function summarizeInventory(inventory) {
+  if (!inventory || !Array.isArray(inventory.items)) {
+    return [];
+  }
+  const counts = new Map<string, number>();
+  for (const item of inventory.items) {
+    if (!item) {
+      continue;
+    }
+    const key = String(item.type ?? item.name ?? item.symbol ?? "okänd").trim() || "okänd";
+    const count = Number.isFinite(item.count) ? Math.max(1, Math.floor(item.count)) : 1;
+    counts.set(key, (counts.get(key) ?? 0) + count);
+  }
+  const labels = [...counts.keys()].sort((a, b) => a.localeCompare(b, "sv"));
+  return labels.map((label) => ({
+    label,
+    count: counts.get(label) ?? 0,
+  }));
+}
+
+function countInventoryFood(inventory) {
+  if (!inventory || !Array.isArray(inventory.items)) {
+    return 0;
+  }
+  let total = 0;
+  for (const item of inventory.items) {
+    if (!item) {
+      continue;
+    }
+    const type = String(item.type ?? "").trim().toLowerCase();
+    if (type !== "food" && type !== "meat") {
+      continue;
+    }
+    const count = Number.isFinite(item.count) ? Math.max(1, Math.floor(item.count)) : 1;
+    total += count;
+  }
+  return total;
+}
+
+function normalizePositiveInteger(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor(Number(value)));
 }
 
 function getLootEvent(playState) {

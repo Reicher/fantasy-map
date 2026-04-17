@@ -4,6 +4,10 @@ export {
   reducePlayStateWithMeta,
 } from "./playStateReducer";
 export {
+  collectSettlementAgentRenderEntries,
+  findRestingSettlementAgentAtWorldPoint,
+} from "./settlementAgents";
+export {
   createPlayState,
   describeHuntSituation,
   getDiscoveredNodeIds,
@@ -32,8 +36,10 @@ export {
 } from "./playQueries";
 export { describePlayHud } from "./playViewText";
 export {
+  addInventoryItemsByType,
   canMoveInventoryItem,
   canTransferInventoryItem,
+  countInventoryItemsByType,
   getInventorySignature,
   isInventoryEmpty,
   moveInventoryItem,

@@ -77,6 +77,7 @@ const state: AppState = {
   playProfiler: createPlayProfiler() as PlayProfilerLike,
   playActivePanels: [],
   playActionMenuOpen: false,
+  playSettlementDebugOpen: false,
 };
 const generateTransition = createTransitionController();
 
@@ -392,6 +393,11 @@ window.addEventListener("keydown", (event) => {
       return;
     }
     event.preventDefault();
+    if (isPlayerInSettlement(state.playState, state.currentWorld)) {
+      state.playSettlementDebugOpen = !state.playSettlementDebugOpen;
+      playSession.updatePlaySubView();
+      return;
+    }
     state.playMapOptions.debugTravelSampling =
       !state.playMapOptions.debugTravelSampling;
     playSession.renderPlayWorld();
@@ -441,6 +447,7 @@ async function generateAndRender() {
   state.playState = playSession.createInitialPlayState(state.currentWorld);
   state.playActivePanels = [];
   state.playActionMenuOpen = false;
+  state.playSettlementDebugOpen = false;
   state.cameraState = editorSession.createDefaultCamera();
   if (state.currentMode === "editor") {
     editorSession.rerenderCurrentWorld();
@@ -508,6 +515,7 @@ function restartPlayAfterGameOver() {
   playSession.resetJourney();
   state.playActivePanels = [];
   state.playActionMenuOpen = false;
+  state.playSettlementDebugOpen = false;
   state.playState = playSession.createInitialPlayState(state.currentWorld);
   clearHover(refs.playTooltip);
   playSession.renderPlayWorld();
@@ -551,6 +559,18 @@ function runPrimaryActionButton() {
     state.playActivePanels = [];
   }
   playSession.updatePlaySubView();
+}
+
+function isPlayerInSettlement(playState, world): boolean {
+  if (!playState || !world || playState.currentNodeId == null) {
+    return false;
+  }
+  const features = world.features as
+    | { nodes?: Array<{ marker?: string } | undefined> }
+    | null
+    | undefined;
+  const node = features?.nodes?.[playState.currentNodeId] ?? null;
+  return node?.marker === "settlement";
 }
 
 function syncViewUi() {

@@ -23,7 +23,12 @@ const ON_ROAD_COST_FACTOR = 0.7;
 const TOUCHING_ROAD_COST_FACTOR = 1.08;
 const PARALLEL_ROAD_PENALTY = 5.8;
 const SETTLEMENT_CLEARANCE_PENALTY = 4.8;
+const SETTLEMENT_CLEARANCE_HARD_FACTOR = 1.35;
 const SEA_ENDPOINT_LAND_ALLOWANCE = 4.2;
+const SETTLEMENT_STUB_GUARD_BASE_EDGES = 3;
+const SETTLEMENT_STUB_GUARD_FALLBACK_EDGES = 2;
+const SETTLEMENT_EARLY_MERGE_RADIUS = 4.4;
+const SETTLEMENT_EARLY_MERGE_PENALTY = 9.2;
 
 const MIN_SIGNPOST_DEGREE = 3;
 const DEFAULT_SIGNPOST_CLUSTER_DISTANCE = 1.6;
@@ -203,6 +208,20 @@ export function generateRoads(world) {
   });
 
   ensureConnectedSettlementNetwork({
+    settlements,
+    roads,
+    terrain,
+    width,
+    height,
+    size,
+    baseCost,
+    riverStrength,
+    settlementClearanceMask,
+    roadUsage,
+    settlementLandmassIds,
+  });
+
+  enforceFullyConnectedSettlementNetwork({
     settlements,
     roads,
     terrain,
@@ -759,53 +778,38 @@ function materializeLandEdge({
     return false;
   }
 
-  const strictnessPasses = [strictness, Math.max(0.72, strictness * 0.78)];
-  for (const strictnessPass of strictnessPasses) {
-    const path = findLandRoutePath({
-      from: fromSettlement.cell,
-      to: toSettlement.cell,
-      width,
-      height,
-      size,
-      baseCost,
-      riverStrength,
-      settlementClearanceMask,
-      roadUsage,
-      landRoadEdgeSet,
-      strictness: strictnessPass,
-    });
+  const path = findSettlementLandConnectionPath({
+    from: fromSettlement.cell,
+    to: toSettlement.cell,
+    width,
+    height,
+    size,
+    baseCost,
+    riverStrength,
+    settlementClearanceMask,
+    roadUsage,
+    landRoadEdgeSet,
+    strictness,
+    guardShortStubs: true,
+    allowShortStubFallback: false,
+  });
+  if (!path || path.length < 2 || countNewEdges(path, landRoadEdgeSet) <= 0) {
+    return false;
+  }
 
-    if (!path || path.length < 2) {
-      continue;
-    }
-
-    if (countNewEdges(path, landRoadEdgeSet) <= 0) {
-      continue;
-    }
-
-    const routeCost = resolveSettlementEdgeMetricCost({
+  return insertLandRoadConnection({
+    roads,
+    roadUsage,
+    landRoadEdgeSet,
+    fromSettlementId: fromSettlement.id,
+    toSettlementId: toSettlement.id,
+    path,
+    cost: resolveSettlementEdgeMetricCost({
       cost: edge.cost,
       length: path.length,
       distance: edge.distance,
-    });
-
-    const inserted = pushRoadRecord(roads, {
-      type: "road",
-      settlementId: toSettlement.id,
-      fromSettlementId: fromSettlement.id,
-      cells: path,
-      cost: routeCost,
-    });
-    if (!inserted) {
-      continue;
-    }
-
-    incrementRoadUsage(roadUsage, path);
-    registerRoadCellsToAdjacency(path, null, landRoadEdgeSet);
-    return true;
-  }
-
-  return false;
+    }),
+  });
 }
 
 function ensureAtLeastOneLandRoad({
@@ -839,7 +843,7 @@ function ensureAtLeastOneLandRoad({
       continue;
     }
 
-    const path = findLandRoutePath({
+    const path = findSettlementLandConnectionPath({
       from: fromSettlement.cell,
       to: toSettlement.cell,
       width,
@@ -851,16 +855,20 @@ function ensureAtLeastOneLandRoad({
       roadUsage,
       landRoadEdgeSet,
       strictness: 0.72,
+      guardShortStubs: true,
+      allowShortStubFallback: false,
     });
     if (!path || path.length < 2) {
       continue;
     }
 
-    const inserted = pushRoadRecord(roads, {
-      type: "road",
-      settlementId: toSettlement.id,
+    const inserted = insertLandRoadConnection({
+      roads,
+      roadUsage,
+      landRoadEdgeSet,
       fromSettlementId: fromSettlement.id,
-      cells: path,
+      toSettlementId: toSettlement.id,
+      path,
       cost: resolveSettlementEdgeMetricCost({
         cost: edge.cost,
         length: path.length,
@@ -870,9 +878,6 @@ function ensureAtLeastOneLandRoad({
     if (!inserted) {
       continue;
     }
-
-    incrementRoadUsage(roadUsage, path);
-    registerRoadCellsToAdjacency(path, null, landRoadEdgeSet);
     break;
   }
 }
@@ -969,7 +974,7 @@ function ensureNoIsolatedSettlements({
       }
 
       const targetSettlement = settlements[targetIndex];
-      const landPath = findLandRoutePath({
+      const landPath = findSettlementLandConnectionPath({
         from: source.cell,
         to: targetSettlement.cell,
         width,
@@ -981,21 +986,23 @@ function ensureNoIsolatedSettlements({
         roadUsage,
         landRoadEdgeSet,
         strictness: 0.64,
+        guardShortStubs: true,
+        allowShortStubFallback: false,
       });
       if (landPath && landPath.length >= 2) {
-        const inserted = pushRoadRecord(roads, {
-          type: "road",
-          settlementId: targetSettlement.id,
+        const inserted = insertLandRoadConnection({
+          roads,
+          roadUsage,
+          landRoadEdgeSet,
           fromSettlementId: source.id,
-          cells: landPath,
+          toSettlementId: targetSettlement.id,
+          path: landPath,
           cost: resolveSettlementEdgeMetricCost({
             distance: target.distance,
             length: landPath.length,
           }),
         });
         if (inserted) {
-          incrementRoadUsage(roadUsage, landPath);
-          registerRoadCellsToAdjacency(landPath, null, landRoadEdgeSet);
           connectedMask[sourceIndex] = 1;
           connectedMask[targetIndex] = 1;
           connected = true;
@@ -1030,19 +1037,39 @@ function ensureNoIsolatedSettlements({
         continue;
       }
 
-      const seaPath = findSeaRoutePath(terrain, source.cell, targetSettlement.cell);
-      if (!seaPath || seaPath.length < 2) {
+      const seaPath = findSeaRoutePath(
+        terrain,
+        source.cell,
+        targetSettlement.cell,
+      );
+      const coastalSeaPath =
+        seaPath?.length >= 2
+          ? seaPath
+          : findSeaRoutePathViaCoastalAccess({
+              terrain,
+              from: source.cell,
+              to: targetSettlement.cell,
+              width,
+              height,
+              size,
+              baseCost,
+              riverStrength,
+              settlementClearanceMask,
+              roadUsage,
+              landRoadEdgeSet,
+            });
+      if (!coastalSeaPath || coastalSeaPath.length < 2) {
         continue;
       }
 
-      const inserted = pushRoadRecord(roads, {
-        type: "sea-route",
-        settlementId: targetSettlement.id,
+      const inserted = insertSeaRouteConnection({
+        roads,
         fromSettlementId: source.id,
-        cells: seaPath,
+        toSettlementId: targetSettlement.id,
+        path: coastalSeaPath,
         cost: resolveSettlementEdgeMetricCost({
           distance: target.distance,
-          length: seaPath.length,
+          length: coastalSeaPath.length,
         }),
       });
       if (!inserted) {
@@ -1165,7 +1192,7 @@ function ensureConnectedSettlementNetwork({
         seaFallbackCandidates.push(pair);
       }
 
-      const landPath = findLandRoutePath({
+      const landPath = findSettlementLandConnectionPath({
         from: source.cell,
         to: target.cell,
         width,
@@ -1177,21 +1204,23 @@ function ensureConnectedSettlementNetwork({
         roadUsage,
         landRoadEdgeSet,
         strictness: 0.56,
+        guardShortStubs: true,
+        allowShortStubFallback: false,
       });
       if (landPath && landPath.length >= 2) {
-        const inserted = pushRoadRecord(roads, {
-          type: "road",
-          settlementId: target.id,
+        const inserted = insertLandRoadConnection({
+          roads,
+          roadUsage,
+          landRoadEdgeSet,
           fromSettlementId: source.id,
-          cells: landPath,
+          toSettlementId: target.id,
+          path: landPath,
           cost: resolveSettlementEdgeMetricCost({
             distance: pair.distance,
             length: landPath.length,
           }),
         });
         if (inserted) {
-          incrementRoadUsage(roadUsage, landPath);
-          registerRoadCellsToAdjacency(landPath, null, landRoadEdgeSet);
           merged = true;
           break;
         }
@@ -1222,19 +1251,35 @@ function ensureConnectedSettlementNetwork({
       }
 
       const seaPath = findSeaRoutePath(terrain, source.cell, target.cell);
-      if (!seaPath || seaPath.length < 2) {
+      const coastalSeaPath =
+        seaPath?.length >= 2
+          ? seaPath
+          : findSeaRoutePathViaCoastalAccess({
+              terrain,
+              from: source.cell,
+              to: target.cell,
+              width,
+              height,
+              size,
+              baseCost,
+              riverStrength,
+              settlementClearanceMask,
+              roadUsage,
+              landRoadEdgeSet,
+            });
+      if (!coastalSeaPath || coastalSeaPath.length < 2) {
         blockedPairs.add(pairKey);
         continue;
       }
 
-      const inserted = pushRoadRecord(roads, {
-        type: "sea-route",
-        settlementId: target.id,
+      const inserted = insertSeaRouteConnection({
+        roads,
         fromSettlementId: source.id,
-        cells: seaPath,
+        toSettlementId: target.id,
+        path: coastalSeaPath,
         cost: resolveSettlementEdgeMetricCost({
           distance: pair.distance,
-          length: seaPath.length,
+          length: coastalSeaPath.length,
         }),
       });
       if (!inserted) {
@@ -1310,6 +1355,621 @@ function buildSettlementConnectivityState(settlements, roads) {
   };
 }
 
+function findSettlementLandConnectionPath({
+  from,
+  to,
+  width,
+  height,
+  size,
+  baseCost,
+  riverStrength,
+  settlementClearanceMask,
+  roadUsage,
+  landRoadEdgeSet,
+  strictness,
+  guardShortStubs = true,
+  allowShortStubFallback = true,
+}) {
+  const passes = [
+    {
+      strictness: Math.max(0.56, strictness),
+      minFreshEdges: guardShortStubs ? SETTLEMENT_STUB_GUARD_BASE_EDGES : 0,
+      departureMergeGuard: guardShortStubs ? 1.22 : 0.86,
+    },
+    {
+      strictness: Math.max(0.56, strictness * 0.82),
+      minFreshEdges: guardShortStubs ? SETTLEMENT_STUB_GUARD_FALLBACK_EDGES : 0,
+      departureMergeGuard: guardShortStubs ? 1.38 : 0.82,
+    },
+  ];
+  if (allowShortStubFallback) {
+    passes.push({
+      strictness: Math.max(0.5, strictness * 0.68),
+      minFreshEdges: 0,
+      departureMergeGuard: 0.74,
+    });
+  }
+
+  for (const pass of passes) {
+    const path = findLandRoutePath({
+      from,
+      to,
+      width,
+      height,
+      size,
+      baseCost,
+      riverStrength,
+      settlementClearanceMask,
+      roadUsage,
+      landRoadEdgeSet,
+      strictness: pass.strictness,
+      departureMergeGuard: pass.departureMergeGuard,
+    });
+    if (!path || path.length < 2) {
+      continue;
+    }
+    if (
+      pass.minFreshEdges > 0 &&
+      hasTooShortSettlementStub(path, roadUsage, pass.minFreshEdges)
+    ) {
+      continue;
+    }
+    return path;
+  }
+
+  return null;
+}
+
+function hasTooShortSettlementStub(path, roadUsage, minFreshEdges) {
+  if (
+    !Array.isArray(path) ||
+    path.length < 2 ||
+    minFreshEdges <= 0 ||
+    !roadUsage?.length
+  ) {
+    return false;
+  }
+
+  const fromStart = countFreshSettlementEdges(path, roadUsage);
+  if (fromStart < minFreshEdges) {
+    return true;
+  }
+
+  const fromEnd = countFreshSettlementEdges([...path].reverse(), roadUsage);
+  return fromEnd < minFreshEdges;
+}
+
+function countFreshSettlementEdges(path, roadUsage) {
+  if (!Array.isArray(path) || path.length < 2) {
+    return 0;
+  }
+
+  let freshEdges = 0;
+  for (let index = 1; index < path.length - 1; index += 1) {
+    const cell = path[index];
+    if (!Number.isInteger(cell) || cell < 0 || cell >= roadUsage.length) {
+      break;
+    }
+    if (roadUsage[cell] > 0) {
+      return freshEdges;
+    }
+    freshEdges += 1;
+  }
+
+  return freshEdges;
+}
+
+function insertLandRoadConnection({
+  roads,
+  roadUsage,
+  landRoadEdgeSet,
+  fromSettlementId,
+  toSettlementId,
+  path,
+  cost,
+}) {
+  const inserted = pushRoadRecord(roads, {
+    type: "road",
+    settlementId: toSettlementId,
+    fromSettlementId,
+    cells: path,
+    cost,
+  });
+  if (!inserted) {
+    return false;
+  }
+
+  incrementRoadUsage(roadUsage, path);
+  registerRoadCellsToAdjacency(path, null, landRoadEdgeSet);
+  return true;
+}
+
+function insertSeaRouteConnection({
+  roads,
+  fromSettlementId,
+  toSettlementId,
+  path,
+  cost,
+}) {
+  return pushRoadRecord(roads, {
+    type: "sea-route",
+    settlementId: toSettlementId,
+    fromSettlementId,
+    cells: path,
+    cost,
+  });
+}
+
+function enforceFullyConnectedSettlementNetwork({
+  settlements,
+  roads,
+  terrain,
+  width,
+  height,
+  size,
+  baseCost,
+  riverStrength,
+  settlementClearanceMask,
+  roadUsage,
+  settlementLandmassIds,
+}) {
+  if (!Array.isArray(settlements) || settlements.length < 2) {
+    return;
+  }
+
+  const landRoadEdgeSet = new Set();
+  for (const road of roads) {
+    if ((road?.type ?? "road") !== "road") {
+      continue;
+    }
+    registerRoadCellsToAdjacency(road?.cells ?? [], null, landRoadEdgeSet);
+  }
+
+  const maxAttempts = Math.max(6, settlements.length * settlements.length);
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const state = buildSettlementConnectivityState(settlements, roads);
+    if (state.components.length <= 1) {
+      return;
+    }
+
+    const largest = state.components[0];
+    if (!largest?.indices?.length) {
+      return;
+    }
+
+    const candidatePairs = [];
+    for (const component of state.components.slice(1)) {
+      for (const sourceIndex of component.indices) {
+        for (const targetIndex of largest.indices) {
+          const source = settlements[sourceIndex];
+          const target = settlements[targetIndex];
+          if (!source || !target) {
+            continue;
+          }
+          candidatePairs.push({
+            sourceIndex,
+            targetIndex,
+            distance: distance(source.x, source.y, target.x, target.y),
+          });
+        }
+      }
+    }
+
+    candidatePairs.sort((a, b) => {
+      if (Math.abs(a.distance - b.distance) > 1e-6) {
+        return a.distance - b.distance;
+      }
+      if (a.sourceIndex !== b.sourceIndex) {
+        return a.sourceIndex - b.sourceIndex;
+      }
+      return a.targetIndex - b.targetIndex;
+    });
+
+    let merged = false;
+    for (const pair of candidatePairs) {
+      if (
+        connectSettlementPairWithFallback({
+          settlements,
+          roads,
+          terrain,
+          width,
+          height,
+          size,
+          baseCost,
+          riverStrength,
+          settlementClearanceMask,
+          roadUsage,
+          landRoadEdgeSet,
+          settlementLandmassIds,
+          sourceIndex: pair.sourceIndex,
+          targetIndex: pair.targetIndex,
+          distanceHint: pair.distance,
+        })
+      ) {
+        merged = true;
+        break;
+      }
+    }
+
+    if (!merged) {
+      return;
+    }
+  }
+}
+
+function connectSettlementPairWithFallback({
+  settlements,
+  roads,
+  terrain,
+  width,
+  height,
+  size,
+  baseCost,
+  riverStrength,
+  settlementClearanceMask,
+  roadUsage,
+  landRoadEdgeSet,
+  settlementLandmassIds,
+  sourceIndex,
+  targetIndex,
+  distanceHint,
+}) {
+  const source = settlements[sourceIndex];
+  const target = settlements[targetIndex];
+  if (!source || !target) {
+    return false;
+  }
+
+  const landPath = findSettlementLandConnectionPath({
+    from: source.cell,
+    to: target.cell,
+    width,
+    height,
+    size,
+    baseCost,
+    riverStrength,
+    settlementClearanceMask,
+    roadUsage,
+    landRoadEdgeSet,
+    strictness: 0.5,
+    guardShortStubs: false,
+  });
+  if (
+    landPath &&
+    landPath.length >= 2 &&
+    countNewEdges(landPath, landRoadEdgeSet) > 0 &&
+    insertLandRoadConnection({
+      roads,
+      roadUsage,
+      landRoadEdgeSet,
+      fromSettlementId: source.id,
+      toSettlementId: target.id,
+      path: landPath,
+      cost: resolveSettlementEdgeMetricCost({
+        distance: distanceHint,
+        length: landPath.length,
+      }),
+    })
+  ) {
+    return true;
+  }
+
+  if (
+    !areSettlementIndicesOnDifferentLandmasses(
+      sourceIndex,
+      targetIndex,
+      settlementLandmassIds,
+    )
+  ) {
+    return false;
+  }
+
+  const directSeaPath = findSeaRoutePath(terrain, source.cell, target.cell);
+  const seaPath =
+    directSeaPath?.length >= 2
+      ? directSeaPath
+      : findSeaRoutePathViaCoastalAccess({
+          terrain,
+          from: source.cell,
+          to: target.cell,
+          width,
+          height,
+          size,
+          baseCost,
+          riverStrength,
+          settlementClearanceMask,
+          roadUsage,
+          landRoadEdgeSet,
+        });
+  if (!seaPath || seaPath.length < 2) {
+    return false;
+  }
+
+  return insertSeaRouteConnection({
+    roads,
+    fromSettlementId: source.id,
+    toSettlementId: target.id,
+    path: seaPath,
+    cost: resolveSettlementEdgeMetricCost({
+      distance: distanceHint,
+      length: seaPath.length,
+    }),
+  });
+}
+
+function findSeaRoutePathViaCoastalAccess({
+  terrain,
+  from,
+  to,
+  width,
+  height,
+  size,
+  baseCost,
+  riverStrength,
+  settlementClearanceMask,
+  roadUsage,
+  landRoadEdgeSet,
+}) {
+  const sourceCoastPath = findLandPathToNearestCoastCell({
+    terrain,
+    from,
+    width,
+    height,
+    size,
+    baseCost,
+    riverStrength,
+  });
+  const targetCoastPath = findLandPathToNearestCoastCell({
+    terrain,
+    from: to,
+    width,
+    height,
+    size,
+    baseCost,
+    riverStrength,
+  });
+
+  if (!sourceCoastPath || !targetCoastPath) {
+    return null;
+  }
+
+  const sourceCoastCell = sourceCoastPath[sourceCoastPath.length - 1];
+  const targetCoastCell = targetCoastPath[targetCoastPath.length - 1];
+  if (!Number.isInteger(sourceCoastCell) || !Number.isInteger(targetCoastCell)) {
+    return null;
+  }
+
+  const seaCorePath = findOpenSeaRoutePath(terrain, sourceCoastCell, targetCoastCell);
+  if (!seaCorePath || seaCorePath.length < 2) {
+    return null;
+  }
+
+  const targetTail = [...targetCoastPath].reverse();
+  const combinedPath = dedupeConsecutive([
+    ...sourceCoastPath,
+    ...seaCorePath.slice(1),
+    ...targetTail.slice(1),
+  ]);
+
+  if (combinedPath.length < 2) {
+    return null;
+  }
+  if (!combinedPath.some((cell) => !terrain.isLand[cell])) {
+    return null;
+  }
+
+  // Keep inland harbor access organic and avoid creating tiny endpoint stubs.
+  if (hasTooShortSettlementStub(combinedPath, roadUsage, SETTLEMENT_STUB_GUARD_FALLBACK_EDGES)) {
+    const softenedLandHead = findSettlementLandConnectionPath({
+      from,
+      to: sourceCoastCell,
+      width,
+      height,
+      size,
+      baseCost,
+      riverStrength,
+      settlementClearanceMask,
+      roadUsage,
+      landRoadEdgeSet,
+      strictness: 0.52,
+      guardShortStubs: false,
+    });
+    const softenedLandTail = findSettlementLandConnectionPath({
+      from: to,
+      to: targetCoastCell,
+      width,
+      height,
+      size,
+      baseCost,
+      riverStrength,
+      settlementClearanceMask,
+      roadUsage,
+      landRoadEdgeSet,
+      strictness: 0.52,
+      guardShortStubs: false,
+    });
+    if (softenedLandHead && softenedLandTail) {
+      return dedupeConsecutive([
+        ...softenedLandHead,
+        ...seaCorePath.slice(1),
+        ...[...softenedLandTail].reverse().slice(1),
+      ]);
+    }
+  }
+
+  return combinedPath;
+}
+
+function findLandPathToNearestCoastCell({
+  terrain,
+  from,
+  width,
+  height,
+  size,
+  baseCost,
+  riverStrength,
+}) {
+  if (
+    width <= 0 ||
+    height <= 0 ||
+    size <= 0 ||
+    !terrain?.isLand?.length ||
+    terrain.isLand.length < size ||
+    !Number.isInteger(from) ||
+    from < 0 ||
+    from >= size ||
+    !Number.isFinite(baseCost[from]) ||
+    !terrain?.isLand?.[from]
+  ) {
+    return null;
+  }
+
+  if (isCoastalLandCell(from, terrain)) {
+    return [from];
+  }
+
+  const gScore = new Float64Array(size);
+  gScore.fill(Number.POSITIVE_INFINITY);
+  const cameFrom = new Int32Array(size);
+  cameFrom.fill(-1);
+  const heap = new MinHeap();
+
+  gScore[from] = 0;
+  heap.push(from, 0);
+
+  while (heap.size > 0) {
+    const node = heap.pop();
+    if (!node) {
+      break;
+    }
+    const current = node.index;
+    if (node.priority > gScore[current] + 1e-9) {
+      continue;
+    }
+    if (isCoastalLandCell(current, terrain)) {
+      return reconstructPath(cameFrom, current);
+    }
+
+    const [x, y] = coordsOf(current, width);
+    forEachNeighbor(width, height, x, y, false, (nx, ny) => {
+      const next = ny * width + nx;
+      if (!terrain.isLand[next] || !Number.isFinite(baseCost[next])) {
+        return;
+      }
+      const stepCost = computeBaseLandStepCost({
+        from: current,
+        to: next,
+        baseCost,
+        riverStrength,
+      });
+      if (!Number.isFinite(stepCost)) {
+        return;
+      }
+      const tentative = gScore[current] + stepCost;
+      if (tentative >= gScore[next] - 1e-9) {
+        return;
+      }
+      cameFrom[next] = current;
+      gScore[next] = tentative;
+      heap.push(next, tentative);
+    });
+  }
+
+  return null;
+}
+
+function findOpenSeaRoutePath(terrain, from, to) {
+  const { width, height, size, isLand } = terrain ?? {};
+  if (
+    width <= 0 ||
+    height <= 0 ||
+    size <= 0 ||
+    !isLand?.length ||
+    isLand.length < size ||
+    !Number.isInteger(from) ||
+    !Number.isInteger(to) ||
+    from < 0 ||
+    to < 0 ||
+    from >= size ||
+    to >= size
+  ) {
+    return null;
+  }
+
+  const gScore = new Float64Array(size);
+  gScore.fill(Number.POSITIVE_INFINITY);
+  const cameFrom = new Int32Array(size);
+  cameFrom.fill(-1);
+  const heap = new MinHeap();
+  gScore[from] = 0;
+  heap.push(from, heuristic(from, to, width));
+
+  while (heap.size > 0) {
+    const node = heap.pop();
+    if (!node) {
+      break;
+    }
+    const current = node.index;
+    if (node.priority > gScore[current] + heuristic(current, to, width) + 1e-9) {
+      continue;
+    }
+    if (current === to) {
+      return reconstructPath(cameFrom, current);
+    }
+
+    const [x, y] = coordsOf(current, width);
+    forEachNeighbor(width, height, x, y, false, (nx, ny) => {
+      const next = ny * width + nx;
+      const endpoint = next === from || next === to;
+      if (!endpoint && isLand[next]) {
+        return;
+      }
+
+      const stepCost = isLand[next] ? 2.2 : 1;
+      const tentative = gScore[current] + stepCost;
+      if (tentative >= gScore[next] - 1e-9) {
+        return;
+      }
+
+      cameFrom[next] = current;
+      gScore[next] = tentative;
+      heap.push(next, tentative + heuristic(next, to, width));
+    });
+  }
+
+  return null;
+}
+
+function isCoastalLandCell(cell, terrain) {
+  const { width, height, size, isLand } = terrain ?? {};
+  if (
+    width <= 0 ||
+    height <= 0 ||
+    size <= 0 ||
+    !isLand?.length ||
+    isLand.length < size ||
+    !Number.isInteger(cell) ||
+    cell < 0 ||
+    cell >= size ||
+    !isLand?.[cell]
+  ) {
+    return false;
+  }
+
+  const [x, y] = coordsOf(cell, width);
+  let coastal = false;
+  forEachNeighbor(width, height, x, y, false, (nx, ny) => {
+    if (coastal) {
+      return;
+    }
+    const next = ny * width + nx;
+    if (!isLand[next]) {
+      coastal = true;
+    }
+  });
+  return coastal;
+}
+
 function findLandRoutePath({
   from,
   to,
@@ -1322,6 +1982,7 @@ function findLandRoutePath({
   roadUsage,
   landRoadEdgeSet,
   strictness,
+  departureMergeGuard = 1,
 }) {
   if (
     !Number.isInteger(from) ||
@@ -1362,6 +2023,7 @@ function findLandRoutePath({
       const stepCost = computeLandAStarStepCost({
         from: current,
         to: next,
+        source: from,
         target: to,
         width,
         baseCost,
@@ -1370,6 +2032,7 @@ function findLandRoutePath({
         roadUsage,
         landRoadEdgeSet,
         strictness,
+        departureMergeGuard,
       });
       if (!Number.isFinite(stepCost)) {
         return;
@@ -1392,6 +2055,7 @@ function findLandRoutePath({
 function computeLandAStarStepCost({
   from,
   to,
+  source,
   target,
   width,
   baseCost,
@@ -1400,6 +2064,7 @@ function computeLandAStarStepCost({
   roadUsage,
   landRoadEdgeSet,
   strictness,
+  departureMergeGuard = 1,
 }) {
   let cost = computeBaseLandStepCost({ from, to, baseCost, riverStrength });
   if (!Number.isFinite(cost)) {
@@ -1409,6 +2074,7 @@ function computeLandAStarStepCost({
   const edgeExists = landRoadEdgeSet.has(edgeKey(from, to));
   const fromOnRoad = roadUsage[from] > 0;
   const toOnRoad = roadUsage[to] > 0;
+  const nearRoad = isNearRoadCell(to, roadUsage, width);
 
   if (edgeExists) {
     cost *= ON_ROAD_COST_FACTOR;
@@ -1416,12 +2082,50 @@ function computeLandAStarStepCost({
     cost *= TOUCHING_ROAD_COST_FACTOR;
   }
 
-  if (!toOnRoad && isNearRoadCell(to, roadUsage, width)) {
+  if (!toOnRoad && nearRoad) {
     cost += PARALLEL_ROAD_PENALTY * strictness;
   }
 
-  if (to !== target && settlementClearanceMask[to]) {
-    cost += SETTLEMENT_CLEARANCE_PENALTY * strictness;
+  if (to !== source && to !== target && settlementClearanceMask[to]) {
+    cost +=
+      SETTLEMENT_CLEARANCE_PENALTY *
+      SETTLEMENT_CLEARANCE_HARD_FACTOR *
+      strictness;
+  }
+
+  if (
+    departureMergeGuard > 0 &&
+    to !== source &&
+    to !== target &&
+    (edgeExists || toOnRoad || nearRoad)
+  ) {
+    const sourceDistance = distanceCell(source, to, width);
+    if (sourceDistance < SETTLEMENT_EARLY_MERGE_RADIUS) {
+      const proximity = clamp(
+        1 - sourceDistance / SETTLEMENT_EARLY_MERGE_RADIUS,
+        0,
+        1,
+      );
+      cost +=
+        SETTLEMENT_EARLY_MERGE_PENALTY *
+        strictness *
+        departureMergeGuard *
+        (0.45 + proximity);
+    }
+
+    const targetDistance = distanceCell(to, target, width);
+    if (targetDistance < SETTLEMENT_EARLY_MERGE_RADIUS) {
+      const proximity = clamp(
+        1 - targetDistance / SETTLEMENT_EARLY_MERGE_RADIUS,
+        0,
+        1,
+      );
+      cost +=
+        SETTLEMENT_EARLY_MERGE_PENALTY *
+        strictness *
+        departureMergeGuard *
+        (0.32 + proximity * 0.68);
+    }
   }
 
   return cost;
@@ -1503,11 +2207,11 @@ function materializeSeaRouteEdge({
     distance: edge.distance,
   });
 
-  const inserted = pushRoadRecord(roads, {
-    type: "sea-route",
-    settlementId: toSettlement.id,
+  const inserted = insertSeaRouteConnection({
+    roads,
     fromSettlementId: fromSettlement.id,
-    cells: path,
+    toSettlementId: toSettlement.id,
+    path,
     cost: routeCost,
   });
 

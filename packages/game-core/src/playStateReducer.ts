@@ -12,6 +12,7 @@ import {
 } from "./travel/actionStateMachine";
 import { normalizeRunStats } from "./travel/runStats";
 import { normalizeTimeOfDayHours } from "./timeOfDay";
+import { advanceSettlementAgentsOneHour } from "./settlementAgents";
 import type { PlayState } from "@fardvag/shared/types/play";
 import type { World } from "@fardvag/shared/types/world";
 
@@ -178,6 +179,7 @@ function advancePlayWorldHours(
       nextState = advanceHunt(nextState, world, 1);
     }
     nextState = finalizeHourlySurvival(nextState);
+    nextState = advanceSettlementAgentsOneHour(nextState, world);
 
     processedHours += 1;
     if (nextState?.gameOver) {

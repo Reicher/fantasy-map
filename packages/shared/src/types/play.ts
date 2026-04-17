@@ -135,15 +135,50 @@ export interface PlayJourneyEventSignpostDirections
   neighborNodeIds?: number[];
 }
 
+export interface PlayJourneyEventAgentGreeting extends PlayJourneyEventBase {
+  type: "agent-greeting";
+  agentId?: string;
+}
+
 export type PlayJourneyEvent =
   | PlayJourneyEventAbandonedLoot
   | PlayJourneyEventAbandonedEmpty
-  | PlayJourneyEventSignpostDirections;
+  | PlayJourneyEventSignpostDirections
+  | PlayJourneyEventAgentGreeting;
 
 export interface PlayPosition {
   x: number;
   y: number;
   nodeId?: number;
+}
+
+export type SettlementAgentState = "resting" | "hunting";
+
+export interface PlaySettlementAgent {
+  id: string;
+  name?: string;
+  settlementId: number;
+  state: SettlementAgentState;
+  greeting?: string;
+  initiative?: number;
+  vitality?: number;
+  vapenTraffsakerhet?: number;
+  maxHealth?: number;
+  health?: number;
+  maxStamina?: number;
+  stamina?: number;
+  staminaElapsedHours?: number;
+  hungerElapsedHours?: number;
+  restHoursRemaining?: number;
+  campfireOffsetX?: number;
+  campfireOffsetY?: number;
+  inventory?: InventoryState;
+}
+
+export interface PlaySettlementState {
+  settlementId: number;
+  inventory: InventoryState;
+  agents: PlaySettlementAgent[];
 }
 
 export interface PlayState {
@@ -161,6 +196,7 @@ export interface PlayState {
   hoveredNodeId?: number | null;
   pressedNodeId?: number | null;
   latestHuntFeedback?: PlayHuntFeedback | null;
+  latestAgentInteraction?: string | null;
   position?: PlayPosition | null;
   discoveredCells?: Uint8Array;
   discoveredNodeIds?: Uint8Array;
@@ -185,4 +221,5 @@ export interface PlayState {
   staminaElapsedHours?: number;
   huntAreaStates?: Record<string, PlayHuntAreaState>;
   nextHuntRunId?: number;
+  settlementStates?: Record<string, PlaySettlementState>;
 }

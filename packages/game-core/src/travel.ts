@@ -1,7 +1,8 @@
 import {
-  createInitialInventory,
   isInventoryEmpty,
 } from "./inventory";
+import { createGeneratedAgentProfile } from "./agentFactory";
+import { createInitialSettlementStates } from "./settlementAgents";
 import { dedupePoints } from "@fardvag/shared/utils";
 import { regionAtCell, regionAtPosition } from "./playQueries";
 import {
@@ -55,15 +56,14 @@ export {
 } from "./travel/hunt";
 
 const TRAVEL_SPEED = 3.75;
-const PLAYER_INITIATIVE_RANGE = Object.freeze({ min: 5, max: 10 });
-const PLAYER_VITALITY_RANGE = Object.freeze({ min: 8, max: 16 });
-const PLAYER_STAMINA_RANGE = Object.freeze({ min: 36, max: 84 });
-const PLAYER_WEAPON_ACCURACY_RANGE = Object.freeze({ min: 40, max: 90 });
 const EVENT_LOOT_COLUMNS = 4;
 const EVENT_LOOT_ROWS = 4;
 
 export function createPlayState(world): PlayState {
-  const playerStats = createPlayerStats(world);
+  const playerProfile = createGeneratedAgentProfile(world, "player", {
+    inventorySeedSuffix: "player",
+  });
+  const settlementStates = createInitialSettlementStates(world);
   const currentNodeId =
     world.playerStart?.nodeId ?? world.features?.nodes?.[0]?.id ?? null;
   const currentNode =
@@ -101,28 +101,28 @@ export function createPlayState(world): PlayState {
     travel: null,
     pendingJourneyEvent: null,
     abandonedLootByNodeId: {},
-    inventory: createInitialInventory({
-      seed: String(world?.params?.seed ?? ""),
-    }),
-    hungerElapsedHours: 0,
+    inventory: playerProfile.inventory,
+    hungerElapsedHours: playerProfile.hungerElapsedHours,
     journeyElapsedHours: 0,
     runStats: createInitialRunStats(),
-    initiative: playerStats.initiative,
-    vitality: playerStats.vitality,
-    vapenTraffsakerhet: playerStats.vapenTraffsakerhet,
-    maxHealth: playerStats.vitality,
-    health: playerStats.vitality,
-    maxStamina: playerStats.maxStamina,
-    stamina: playerStats.maxStamina,
-    staminaElapsedHours: 0,
+    initiative: playerProfile.initiative,
+    vitality: playerProfile.vitality,
+    vapenTraffsakerhet: playerProfile.vapenTraffsakerhet,
+    maxHealth: playerProfile.maxHealth,
+    health: playerProfile.health,
+    maxStamina: playerProfile.maxStamina,
+    stamina: playerProfile.stamina,
+    staminaElapsedHours: playerProfile.staminaElapsedHours,
     isTravelPaused: false,
     travelPauseReason: null,
     pendingRestChoice: false,
     rest: null,
     hunt: null,
     latestHuntFeedback: null,
+    latestAgentInteraction: null,
     huntAreaStates: {},
     nextHuntRunId: 1,
+    settlementStates,
     gameOver: null,
     discoveredCells,
     discoveredNodeIds,
@@ -740,30 +740,6 @@ function revealNeighborNodes(revealedNodeIds, graph, nodeId) {
   for (const neighborNodeId of neighborNodeIds) {
     markNodeRevealed(revealedNodeIds, neighborNodeId);
   }
-}
-
-function createPlayerStats(world) {
-  const baseSeed = String(world?.params?.seed ?? "seed");
-  const rng = createRng(`${baseSeed}:player-stats`);
-  const vitality = rng
-    .fork("vitality")
-    .int(PLAYER_VITALITY_RANGE.min, PLAYER_VITALITY_RANGE.max);
-
-  return {
-    initiative: rng
-      .fork("initiative")
-      .int(PLAYER_INITIATIVE_RANGE.min, PLAYER_INITIATIVE_RANGE.max),
-    vitality,
-    maxStamina: rng
-      .fork("stamina")
-      .int(PLAYER_STAMINA_RANGE.min, PLAYER_STAMINA_RANGE.max),
-    vapenTraffsakerhet: rng
-      .fork("weapon-accuracy")
-      .int(
-        PLAYER_WEAPON_ACCURACY_RANGE.min,
-        PLAYER_WEAPON_ACCURACY_RANGE.max,
-      ),
-  };
 }
 
 function revealAroundPosition(world, discoveredCells, position) {

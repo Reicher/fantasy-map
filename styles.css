@@ -762,6 +762,43 @@ canvas[data-dragging="true"] {
   pointer-events: auto;
 }
 
+.play-settlement-debug {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 14;
+  width: min(46vw, 520px);
+  max-width: calc(100% - 24px);
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--play-ui-border-strong);
+  background: rgba(24, 20, 14, 0.9);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(6px) saturate(1.1);
+  pointer-events: none;
+}
+
+.play-settlement-debug-title {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 236, 191, 0.95);
+}
+
+.play-settlement-debug-body {
+  margin: 0;
+  max-height: min(34vh, 280px);
+  overflow: auto;
+  font-size: 0.78rem;
+  line-height: 1.28;
+  white-space: pre-wrap;
+  color: rgba(252, 242, 220, 0.98);
+}
+
 .play-journey-event-dialog {
   top: 58%;
 }
@@ -1633,6 +1670,18 @@ canvas[data-dragging="true"] {
     top: 60%;
   }
 
+  .play-settlement-debug {
+    top: 8px;
+    right: 8px;
+    width: min(92%, 500px);
+    padding: 10px 11px;
+  }
+
+  .play-settlement-debug-body {
+    max-height: min(30vh, 220px);
+    font-size: 0.74rem;
+  }
+
   .play-journey-event-body {
     font-size: 0.98rem;
   }
@@ -1703,6 +1752,7 @@ canvas[data-dragging="true"] {
   #play-view .play-journey-event-dialog,
   #play-view .play-rest-dialog,
   #play-view .play-action-result-dialog,
+  #play-view .play-settlement-debug,
   #play-view .play-arrival-cue,
   #play-view .play-bottom-hud {
     display: none !important;
