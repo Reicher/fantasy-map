@@ -35,7 +35,8 @@ export function normalizeParams(input: WorldInputParams = {}): WorldParams {
     fragmentation: clamp(asNumber(input.fragmentation, 52), 0, 100),
     mapSize: clamp(asNumber(input.mapSize, 58), 10, 100),
     mountainousness: clamp(asNumber(input.mountainousness, 54), 0, 100),
-    settlementDensity: clamp(asNumber(input.settlementDensity, 20), 0, 100),
+    // settlementDensity now represents requested settlement count.
+    settlementDensity: clamp(asNumber(input.settlementDensity, 30), 10, 100),
     riverAmount: clamp(asNumber(input.riverAmount, 56), 0, 100),
     lakeAmount: clamp(asNumber(input.lakeAmount, legacyWater), 0, 100),
     lakeSize: clamp(asNumber(input.lakeSize, legacyWater), 0, 100),
@@ -46,14 +47,23 @@ export function normalizeParams(input: WorldInputParams = {}): WorldParams {
     fogVisionRadius: clamp(asNumber(input.fogVisionRadius, 18), 6, 40),
     temperatureBias: clamp(asNumber(input.temperatureBias, 50), 0, 100),
     moistureBias: clamp(asNumber(input.moistureBias, 50), 0, 100),
-    // inlandPreference: 0 = fully water-oriented, 100 = fully inland.
-    // Legacy: if only coastalBias is provided, invert it.
+    // inlandPreference is currently used as "water affinity":
+    // 0 = weak preference for water proximity, 100 = strong preference.
+    // Legacy compatibility: support both waterAffinity and coastalBias.
     inlandPreference: clamp(
       asNumber(
-        input.inlandPreference ?? 100 - asNumber(input.coastalBias, 50),
-        50,
+        input.inlandPreference ??
+          input.waterAffinity ??
+          asNumber(input.coastalBias, 62),
+        62,
       ),
       0,
+      100,
+    ),
+    roadConnectivity: clamp(asNumber(input.roadConnectivity, 2), 1, 5),
+    abandonedMaxSegmentLength: clamp(
+      asNumber(input.abandonedMaxSegmentLength, 36),
+      5,
       100,
     ),
     settlementRandomness: clamp(
@@ -97,8 +107,14 @@ export function generateWorld(inputParams: WorldInputParams = {}): World {
 
   world.surface = buildSurfaceGeometry(world) as World["surface"];
   world.settlements = generateSettlements(world, names) as SettlementData[];
-  world.playerStart = selectPlayerStart(world.settlements);
   world.roads = generateRoads(world) as World["roads"];
+  world.playerStart = selectPlayerStart(world.settlements);
+  // Pass 1: build network without abandoned sites so signposts and links are
+  // established first.
+  world.crashSiteCells = [];
+  world.network = buildWorldNetwork(world) as World["network"];
+  // Pass 2: place abandoned sites on already split links (after signposts),
+  // then rebuild network with those abandoned nodes inserted.
   world.crashSiteCells = preselectCrashSiteCells(world) as number[];
   world.network = buildWorldNetwork(world) as World["network"];
   world.features = buildFeatureCatalog(world, names) as World["features"];

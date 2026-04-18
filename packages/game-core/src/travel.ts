@@ -16,6 +16,7 @@ import {
   createEmptyTravelBiomeBands,
   samplePath,
 } from "./travel/biomeBands";
+import { withPlayActionMode } from "./travel/actionMode";
 import { normalizeStaminaValue } from "./travel/normalizers";
 import {
   createInitialRunStats,
@@ -87,7 +88,7 @@ export function createPlayState(world): PlayState {
     currentNode ? { x: currentNode.x, y: currentNode.y } : null,
   );
 
-  return {
+  return withPlayActionMode({
     graph: world.travelGraph,
     viewMode: "map",
     timeOfDayHours: normalizeTimeOfDayHours(
@@ -128,12 +129,12 @@ export function createPlayState(world): PlayState {
     discoveredNodeIds,
     revealedNodeIds,
     fogDirty: true,
-  };
+  }, { force: true });
 }
 
 export function beginTravel(playState, targetNodeId, world = null) {
   if (!playState) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   if (
@@ -142,7 +143,7 @@ export function beginTravel(playState, targetNodeId, world = null) {
     playState.rest ||
     playState.hunt
   ) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   const availableStamina = normalizeStaminaValue(
@@ -150,7 +151,7 @@ export function beginTravel(playState, targetNodeId, world = null) {
     playState.maxStamina,
   );
   if (availableStamina <= 0) {
-    return {
+    return withPlayActionMode({
       ...playState,
       viewMode: "journey",
       isTravelPaused: true,
@@ -161,19 +162,19 @@ export function beginTravel(playState, targetNodeId, world = null) {
       latestHuntFeedback: null,
       hoveredNodeId: null,
       pressedNodeId: null,
-    };
+    });
   }
 
   const path = playState.graph.get(playState.currentNodeId)?.get(targetNodeId);
   if (!path) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   const biomeBandSegments = world
     ? buildTravelBiomeBandSegments(world, path.points)
     : createEmptyTravelBiomeBands();
 
-  return {
+  return withPlayActionMode({
     ...playState,
     travel: createTravel(
       playState.currentNodeId,
@@ -191,7 +192,7 @@ export function beginTravel(playState, targetNodeId, world = null) {
     rest: null,
     hunt: null,
     latestHuntFeedback: null,
-  };
+  });
 }
 
 export function advanceTravel(playState, world, deltaMs) {
@@ -202,7 +203,7 @@ export function advanceTravel(playState, world, deltaMs) {
     playState.rest ||
     playState.hunt
   ) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   const nextProgress = Math.min(
@@ -262,7 +263,7 @@ export function advanceTravel(playState, world, deltaMs) {
       playState.graph,
       playState,
     );
-    return {
+    return withPlayActionMode({
       ...playState,
       currentNodeId: targetNodeId,
       position: finalPosition,
@@ -284,10 +285,10 @@ export function advanceTravel(playState, world, deltaMs) {
       discoveredNodeIds,
       revealedNodeIds,
       fogDirty: playState.fogDirty || revealed || finalReveal,
-    };
+    });
   }
 
-  return {
+  return withPlayActionMode({
     ...playState,
     position: sample.point,
     lastRegionId,
@@ -300,17 +301,17 @@ export function advanceTravel(playState, world, deltaMs) {
       ...playState.travel,
       progress: nextProgress,
     },
-  };
+  });
 }
 
 export function updateAbandonedLootInventory(playState, nextLootInventory) {
   if (!playState) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   const lootEvent = getPendingAbandonedLootEvent(playState);
   if (!lootEvent) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   const nextAbandonedLootByNodeId = setAbandonedLootInventoryForNode(
@@ -319,21 +320,21 @@ export function updateAbandonedLootInventory(playState, nextLootInventory) {
     nextLootInventory,
   );
   if (!nextLootInventory || isInventoryEmpty(nextLootInventory)) {
-    return {
+    return withPlayActionMode({
       ...playState,
       pendingJourneyEvent: null,
       abandonedLootByNodeId: nextAbandonedLootByNodeId,
-    };
+    });
   }
 
-  return {
+  return withPlayActionMode({
     ...playState,
     pendingJourneyEvent: {
       ...lootEvent,
       inventory: cloneInventorySnapshot(nextLootInventory),
     },
     abandonedLootByNodeId: nextAbandonedLootByNodeId,
-  };
+  });
 }
 
 function createNodeArrivalResult(nodeId, world, graph = null, playState = null) {

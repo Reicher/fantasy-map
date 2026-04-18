@@ -50,12 +50,14 @@ export function renderEditorWorld(
   world: World,
   options: RenderOptions = {},
 ) {
+  const showRoads = options?.showRoads !== false;
   return renderScene(canvas, world, options, {
     showPaper: true,
     showTerrainTextures: true,
     showLabels: true,
     showFrame: false,
     showPlayerMarker: true,
+    showRoads,
   });
 }
 

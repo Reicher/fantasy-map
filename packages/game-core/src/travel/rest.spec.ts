@@ -70,7 +70,7 @@ describe("travel rest transitions", () => {
     const cancelled = cancelRest(progressed);
 
     expect(cancelled.rest).toBeNull();
-    expect(cancelled.stamina).toBe(10);
+    expect(cancelled.stamina).toBe(12);
     expect(cancelled.latestHuntFeedback?.text).toContain("Vila avbruten");
   });
 });

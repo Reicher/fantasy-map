@@ -23,6 +23,7 @@ interface ParamUiSchema {
   section?: string;
   order?: number;
   hint?: string;
+  hidden?: boolean;
 }
 
 interface NumberParamSchema {
@@ -65,6 +66,9 @@ export function renderControlsFromSchema(
     }
 
     const schema = rawSchema as NumberParamSchema;
+    if (schema.ui?.hidden) {
+      continue;
+    }
     const tab = schema.ui?.tab ?? "avancerat";
     if (!entriesByTab.has(tab)) {
       entriesByTab.set(tab, []);
@@ -132,6 +136,9 @@ export function getFormValues(form: HTMLFormElement): WorldInputParams {
     }
 
     if ((schema as { type?: string })?.type === "number") {
+      if (raw == null) {
+        continue;
+      }
       values[key as NumericParamKey] = Number(raw);
       continue;
     }

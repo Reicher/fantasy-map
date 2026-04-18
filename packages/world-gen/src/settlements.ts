@@ -1,5 +1,5 @@
 import { createRng } from "@fardvag/shared/random";
-import { clamp, sliderFactor } from "@fardvag/shared/utils";
+import { clamp } from "@fardvag/shared/utils";
 import {
   buildSettlementCandidates,
   selectSettlements,
@@ -31,7 +31,12 @@ export function generateSettlements(world: World, names: SettlementNameSource) {
   const { coastDistance, waterDistance, riverStrength, lakeIdByCell } =
     hydrology;
 
-  const density = sliderFactor(params.settlementDensity, 1.06);
+  const requestedSettlementCount = clamp(
+    Math.round(Number(params.settlementDensity ?? 30)),
+    10,
+    100,
+  );
+  const waterAffinity = clamp(Number(params.inlandPreference ?? 62), 0, 100);
   const rng = createRng(`${params.seed}::settlements`);
   const { candidates, habitableArea } = buildSettlementCandidates({
     width,
@@ -47,46 +52,30 @@ export function generateSettlements(world: World, names: SettlementNameSource) {
     riverStrength,
     lakeIdByCell,
     rng,
-    inlandPreference: params.inlandPreference,
+    waterAffinity,
   });
-  const densityPower = Math.pow(density, 1.85);
-  const habitableBase = (habitableArea / 900) * (0.64 + density * 2.9);
-  const candidateBonus = (candidates.length / 115) * densityPower;
-  const minCountByArea = clamp(
-    Math.round(habitableArea / (2200 - density * 900)),
-    2,
-    18,
+
+  const effectiveDesiredCount = Math.min(
+    requestedSettlementCount,
+    Math.max(0, candidates.length),
   );
-  const maxCountByArea = clamp(
-    Math.round(candidates.length / (46 - density * 18)),
-    18,
-    190,
-  );
-  const desiredCount = clamp(
-    Math.round(habitableBase + candidateBonus),
-    minCountByArea,
-    maxCountByArea,
-  );
+  if (effectiveDesiredCount <= 0) {
+    return [];
+  }
+  const areaBasedSpacing = Math.sqrt(
+    Math.max(1, habitableArea) / Math.max(1, effectiveDesiredCount),
+  ) * 0.28;
   const spacingControl = clamp(Number(params.nodeMinDistance ?? 5), 2, 22);
-  const spreadControl = clamp(
-    Number(params.settlementRandomness ?? 20) / 140,
-    0,
-    1,
-  );
-  const densitySpacing = clamp(17.2 - density * 10.8, 5.8, 17.2);
-  const spacingFloorByControl =
-    clamp(spacingControl, 2, 22) * (0.64 + spreadControl * 0.34);
-  const minSpacing = Math.max(densitySpacing, spacingFloorByControl);
+  const spacingFloor = clamp(spacingControl * 0.34, 1.6, 8.5);
+  const minSpacing = clamp(Math.max(areaBasedSpacing, spacingFloor), 1.5, 9.5);
+
   const settlements = selectSettlements({
     width,
     size,
     candidates,
-    desiredCount,
+    desiredCount: effectiveDesiredCount,
     minSpacing,
-    settlementDensity: params.settlementDensity,
-    spacingControl,
-    randomness: params.settlementRandomness,
-    inlandPreference: params.inlandPreference,
+    waterAffinity,
     rng,
   }) as GeneratedSettlement[];
 

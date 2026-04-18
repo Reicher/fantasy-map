@@ -17,6 +17,8 @@ export interface WorldParams {
   temperatureBias: number;
   moistureBias: number;
   inlandPreference: number;
+  roadConnectivity: number;
+  abandonedMaxSegmentLength: number;
   settlementRandomness: number;
   abandonedFrequency: number;
   nodeMinDistance: number;
@@ -26,6 +28,7 @@ export interface WorldParams {
 export interface WorldInputParams extends Partial<WorldParams> {
   waterRichness?: number;
   coastalBias?: number;
+  waterAffinity?: number;
 }
 
 export interface TerrainData {

@@ -116,11 +116,22 @@
             </div>
           </div>
           <div class="canvas-wrap">
-            <div id="editor-loading" class="editor-loading" hidden>
+            <div id="editor-loading" class="editor-loading" data-stage="0" hidden>
               <div class="editor-loading-copy">
                 <div class="editor-loading-title">Genererar karta</div>
                 <div class="editor-loading-subtitle">
-                  Bygger terräng, vägar och etiketter...
+                  Förbereder parametrar...
+                </div>
+                <div class="editor-loading-visual" aria-hidden="true">
+                  <div class="editor-loading-progress">
+                    <div class="editor-loading-progress-fill"></div>
+                  </div>
+                  <ol class="editor-loading-steps">
+                    <li class="editor-loading-step">Terräng</li>
+                    <li class="editor-loading-step">Vatten</li>
+                    <li class="editor-loading-step">Vägar & noder</li>
+                    <li class="editor-loading-step">Ritar kartan</li>
+                  </ol>
                 </div>
               </div>
             </div>

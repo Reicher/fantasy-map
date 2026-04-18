@@ -1,4 +1,5 @@
 import { consumeInventoryItemsByType } from "../inventory";
+import { withPlayActionMode } from "./actionMode";
 import {
   DEFAULT_MAX_HEALTH,
   DEFAULT_MAX_STAMINA,
@@ -19,14 +20,14 @@ export function applyHourlyHunger(
   elapsedHours: number | null | undefined,
 ): PlayStateLike {
   if (!playState || playState.gameOver) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   const safeElapsedHours = Number.isFinite(elapsedHours)
     ? Math.max(0, Math.floor(elapsedHours))
     : 0;
   if (safeElapsedHours <= 0) {
-    return playState;
+    return withPlayActionMode(playState);
   }
   const runStats = normalizeRunStats(playState.runStats);
 
@@ -40,10 +41,10 @@ export function applyHourlyHunger(
   );
 
   if (mealsNeeded === 0) {
-    return {
+    return withPlayActionMode({
       ...playState,
       hungerElapsedHours: nextElapsed,
-    };
+    });
   }
 
   const { inventory, missing } = consumeInventoryItemsByType(
@@ -66,19 +67,19 @@ export function applyHourlyHunger(
         }
       : runStats;
 
-  return {
+  return withPlayActionMode({
     ...playState,
     inventory,
     hungerElapsedHours: nextElapsed,
     runStats: nextRunStats,
     maxHealth,
     health: nextHealth,
-  };
+  });
 }
 
 export function finalizeHourlySurvival(playState: PlayStateLike): PlayStateLike {
   if (!playState || playState.gameOver) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   const maxHealth = normalizeHealthValue(
@@ -91,16 +92,16 @@ export function finalizeHourlySurvival(playState: PlayStateLike): PlayStateLike 
   );
   if (health > 0) {
     if (playState.health === health && playState.maxHealth === maxHealth) {
-      return playState;
+      return withPlayActionMode(playState);
     }
-    return {
+    return withPlayActionMode({
       ...playState,
       maxHealth,
       health,
-    };
+    });
   }
 
-  return {
+  return withPlayActionMode({
     ...playState,
     maxHealth,
     health: 0,
@@ -119,7 +120,7 @@ export function finalizeHourlySurvival(playState: PlayStateLike): PlayStateLike 
       message: "Du svalt ihjäl.",
       stats: snapshotRunStats(playState.runStats),
     },
-  };
+  });
 }
 
 export function applyHourlyTravelStamina(
@@ -127,7 +128,7 @@ export function applyHourlyTravelStamina(
   elapsedHours: number | null | undefined,
 ): PlayStateLike {
   if (!playState || playState.gameOver) {
-    return playState;
+    return withPlayActionMode(playState);
   }
   if (
     !playState.travel ||
@@ -135,14 +136,14 @@ export function applyHourlyTravelStamina(
     playState.rest ||
     playState.hunt
   ) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   const safeElapsedHours = Number.isFinite(elapsedHours)
     ? Math.max(0, Math.floor(elapsedHours))
     : 0;
   if (safeElapsedHours <= 0) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   const previousElapsed = Math.floor(
@@ -155,10 +156,10 @@ export function applyHourlyTravelStamina(
   );
 
   if (staminaTicks <= 0) {
-    return {
+    return withPlayActionMode({
       ...playState,
       staminaElapsedHours: nextElapsed,
-    };
+    });
   }
 
   const maxStamina = normalizeStaminaValue(
@@ -179,10 +180,10 @@ export function applyHourlyTravelStamina(
   };
 
   if (nextStamina > 0) {
-    return nextState;
+    return withPlayActionMode(nextState);
   }
 
-  return {
+  return withPlayActionMode({
     ...nextState,
     viewMode: "journey",
     isTravelPaused: true,
@@ -193,5 +194,5 @@ export function applyHourlyTravelStamina(
     latestHuntFeedback: null,
     hoveredNodeId: null,
     pressedNodeId: null,
-  };
+  });
 }

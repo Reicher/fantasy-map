@@ -1,10 +1,15 @@
 import { coordsOf } from "@fardvag/shared/utils";
 
+const JUNCTION_SETTLEMENT_EXCLUSION_RADIUS = 4.5;
+const JUNCTION_CLUSTER_RADIUS = 2;
+const JUNCTION_SIGNPOST_EXCLUSION_RADIUS = 3;
+
 export function buildWorldNetwork(world) {
   return buildRoadNetwork({
     settlements: world.settlements,
     roads: world.roads.roads,
     width: world.terrain.width,
+    height: world.terrain.height,
     crashSiteCells: world.crashSiteCells ?? [],
   });
 }
@@ -13,10 +18,12 @@ export function buildRoadNetwork({
   settlements,
   roads,
   width,
+  height,
   crashSiteCells = [],
 }) {
   const nodes = [];
   const nodeIdByCell = new Map();
+  let nextStopNodeId = Math.max(0, settlements?.length ?? 0);
 
   for (const settlement of settlements) {
     const node = {
@@ -43,17 +50,24 @@ export function buildRoadNetwork({
     const node = {
       id: nodes.length,
       type: "abandoned",
+      nodeId: nextStopNodeId,
       cell,
       x,
       y,
       name: "Övergiven plats",
     };
     nodes.push(node);
+    nextStopNodeId += 1;
     nodeIdByCell.set(cell, node.id);
   }
 
   const { representativeCells, representativeByCell } =
-    collectLandRoadJunctionCells(roads, width);
+    collectLandRoadJunctionCells(
+      roads,
+      width,
+      height,
+      settlements.map((settlement) => Number(settlement.cell)).filter(Number.isFinite),
+    );
 
   for (const cell of representativeCells) {
     if (nodeIdByCell.has(cell)) {
@@ -62,13 +76,15 @@ export function buildRoadNetwork({
     const [x, y] = coordsOf(cell, width);
     const node = {
       id: nodes.length,
-      type: "junction",
+      type: "signpost",
+      nodeId: nextStopNodeId,
       cell,
       x,
       y,
-      name: "Vägknut",
+      name: "Vägvisare",
     };
     nodes.push(node);
+    nextStopNodeId += 1;
     nodeIdByCell.set(cell, node.id);
   }
 
@@ -87,20 +103,29 @@ export function buildRoadNetwork({
     if (cells.length < 1) {
       continue;
     }
+    if ((road?.type ?? "road") !== "sea-route") {
+      continue;
+    }
     for (const endpoint of [cells[0], cells[cells.length - 1]]) {
       if (nodeIdByCell.has(endpoint)) {
         continue;
       }
       const [x, y] = coordsOf(endpoint, width);
+      const nodeType = road.type === "sea-route" ? "harbor" : "signpost";
+      const isStopNode = nodeType !== "harbor";
       const node = {
         id: nodes.length,
-        type: road.type === "sea-route" ? "harbor" : "junction",
+        type: nodeType,
+        nodeId: isStopNode ? nextStopNodeId : null,
         cell: endpoint,
         x,
         y,
-        name: road.type === "sea-route" ? "Hamnpunkt" : "Vägknut",
+        name: road.type === "sea-route" ? "Hamnpunkt" : "Vägvisare",
       };
       nodes.push(node);
+      if (isStopNode) {
+        nextStopNodeId += 1;
+      }
       nodeIdByCell.set(endpoint, node.id);
     }
   }
@@ -127,22 +152,36 @@ export function buildRoadNetwork({
   };
 }
 
-function collectLandRoadJunctionCells(roads, width) {
+function collectLandRoadJunctionCells(
+  roads,
+  width,
+  height,
+  settlementCells = [],
+) {
   const adjacencyByCell = new Map();
+  const roadIdsByCell = new Map();
 
-  const connect = (fromCell, toCell) => {
+  const connect = (fromCell, toCell, roadId) => {
     let neighbors = adjacencyByCell.get(fromCell);
     if (!neighbors) {
       neighbors = new Set();
       adjacencyByCell.set(fromCell, neighbors);
     }
     neighbors.add(toCell);
+
+    let roadIds = roadIdsByCell.get(fromCell);
+    if (!roadIds) {
+      roadIds = new Set();
+      roadIdsByCell.set(fromCell, roadIds);
+    }
+    roadIds.add(roadId);
   };
 
   for (const road of roads) {
     if ((road?.type ?? "road") !== "road") {
       continue;
     }
+    const roadId = Number(road?.id);
     const cells = road?.cells ?? [];
     for (let i = 1; i < cells.length; i += 1) {
       const fromCell = cells[i - 1];
@@ -150,22 +189,128 @@ function collectLandRoadJunctionCells(roads, width) {
       if (fromCell === toCell) {
         continue;
       }
-      connect(fromCell, toCell);
-      connect(toCell, fromCell);
+      connect(fromCell, toCell, roadId);
+      connect(toCell, fromCell, roadId);
     }
   }
 
   const junctions = [];
   for (const [cell, neighbors] of adjacencyByCell.entries()) {
-    if (neighbors.size >= 3) {
+    const roadCount = Number(roadIdsByCell.get(cell)?.size ?? 0);
+    if (neighbors.size >= 3 && roadCount >= 2) {
       junctions.push(cell);
     }
   }
+
+  const settlementCoords = settlementCells
+    .filter((cell) => Number.isInteger(cell) && cell >= 0)
+    .map((cell) => coordsOf(cell, width));
+  const exclusionRadiusSq =
+    JUNCTION_SETTLEMENT_EXCLUSION_RADIUS * JUNCTION_SETTLEMENT_EXCLUSION_RADIUS;
+
+  const uniqueJunctions = [...new Set<number>(junctions)].sort((a, b) => a - b);
+  const junctionSet = new Set<number>(uniqueJunctions);
+  const visited = new Set<number>();
   const representativeByCell = new Map<number, number>();
-  const representativeCells = [...new Set<number>(junctions)].sort((a, b) => a - b);
-  for (const cell of representativeCells) {
-    representativeByCell.set(cell, cell);
+  const representativeCells = [];
+  const candidates = [];
+
+  for (const start of uniqueJunctions) {
+    if (visited.has(start)) {
+      continue;
+    }
+
+    const component = [];
+    const stack = [start];
+    visited.add(start);
+
+    while (stack.length > 0) {
+      const cell = Number(stack.pop());
+      component.push(cell);
+      const [x, y] = coordsOf(cell, width);
+      for (let oy = -JUNCTION_CLUSTER_RADIUS; oy <= JUNCTION_CLUSTER_RADIUS; oy += 1) {
+        for (let ox = -JUNCTION_CLUSTER_RADIUS; ox <= JUNCTION_CLUSTER_RADIUS; ox += 1) {
+          if (ox === 0 && oy === 0) {
+            continue;
+          }
+          const nx = x + ox;
+          const ny = y + oy;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+            continue;
+          }
+          const next = ny * width + nx;
+          if (!junctionSet.has(next) || visited.has(next)) {
+            continue;
+          }
+          visited.add(next);
+          stack.push(next);
+        }
+      }
+    }
+
+    let skip = false;
+    for (const cell of component) {
+      const [x, y] = coordsOf(cell, width);
+      for (const [sx, sy] of settlementCoords) {
+        const dx = x - sx;
+        const dy = y - sy;
+        if (dx * dx + dy * dy <= exclusionRadiusSq) {
+          skip = true;
+          break;
+        }
+      }
+      if (skip) {
+        break;
+      }
+    }
+    if (skip) {
+      continue;
+    }
+
+    component.sort((a, b) => a - b);
+    const representative = component[0];
+    candidates.push({
+      representative,
+      degree: Number(adjacencyByCell.get(representative)?.size ?? 0),
+      component,
+    });
   }
+
+  candidates.sort((a, b) => {
+    if (b.degree !== a.degree) {
+      return b.degree - a.degree;
+    }
+    return a.representative - b.representative;
+  });
+
+  const selectedRepresentatives = [];
+  const signpostExclusionRadiusSq =
+    JUNCTION_SIGNPOST_EXCLUSION_RADIUS * JUNCTION_SIGNPOST_EXCLUSION_RADIUS;
+
+  for (const candidate of candidates) {
+    const [x, y] = coordsOf(candidate.representative, width);
+    let tooClose = false;
+    for (const selectedCell of selectedRepresentatives) {
+      const [sx, sy] = coordsOf(selectedCell, width);
+      const dx = x - sx;
+      const dy = y - sy;
+      if (dx * dx + dy * dy <= signpostExclusionRadiusSq) {
+        tooClose = true;
+        break;
+      }
+    }
+    if (tooClose) {
+      continue;
+    }
+
+    selectedRepresentatives.push(candidate.representative);
+    representativeCells.push(candidate.representative);
+    for (const cell of candidate.component) {
+      representativeByCell.set(cell, candidate.representative);
+    }
+  }
+
+  representativeCells.sort((a, b) => a - b);
   return {
     representativeCells,
     representativeByCell,

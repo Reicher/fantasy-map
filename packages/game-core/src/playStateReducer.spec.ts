@@ -72,6 +72,7 @@ function createTravelPlayState(): PlayState {
   );
 
   return {
+    actionMode: "idle",
     gameOver: null,
     viewMode: "map",
     graph,
@@ -114,6 +115,7 @@ describe("playStateReducer", () => {
     expect(next).not.toBe(playState);
     expect(next?.viewMode).toBe("journey");
     expect(next?.travel?.targetNodeId).toBe(1);
+    expect(next?.actionMode).toBe("travel-active");
   });
 
   it("keeps state unchanged on ADVANCE_TRAVEL without world context", () => {
@@ -148,6 +150,7 @@ describe("playStateReducer", () => {
     expect(advanced?.position).toMatchObject({ x: 4, y: 2 });
     expect(advanced?.pendingJourneyEvent).toBeNull();
     expect(advanced?.runStats?.distanceTraveled).toBeCloseTo(2, 6);
+    expect(advanced?.actionMode).toBe("idle");
   });
 
   it("accumulates runStats distance during partial ADVANCE_TRAVEL steps", () => {

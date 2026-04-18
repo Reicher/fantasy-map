@@ -2,6 +2,15 @@ import type { InventoryState } from "./inventory";
 
 export type PlayViewMode = "map" | "journey";
 
+export type PlayActionMode =
+  | "game-over"
+  | "event"
+  | "idle"
+  | "travel-active"
+  | "travel-paused"
+  | "resting"
+  | "hunting";
+
 export type TravelPauseReason =
   | "manual"
   | "exhausted"
@@ -182,6 +191,7 @@ export interface PlaySettlementState {
 }
 
 export interface PlayState {
+  actionMode?: PlayActionMode;
   gameOver?: PlayGameOverState | null;
   viewMode?: PlayViewMode;
   travel?: PlayTravelState | null;

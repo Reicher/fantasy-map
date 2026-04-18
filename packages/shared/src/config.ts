@@ -12,7 +12,7 @@ export const DEFAULT_PARAMS: WorldParams = {
   fragmentation: 52,
   mapSize: 58,
   mountainousness: 54,
-  settlementDensity: 20,
+  settlementDensity: 30,
   riverAmount: 56,
   lakeAmount: 56,
   lakeSize: 52,
@@ -23,7 +23,9 @@ export const DEFAULT_PARAMS: WorldParams = {
   fogVisionRadius: 18,
   temperatureBias: 50,
   moistureBias: 50,
-  inlandPreference: 50,
+  inlandPreference: 62,
+  roadConnectivity: 2,
+  abandonedMaxSegmentLength: 36,
   settlementRandomness: 20,
   abandonedFrequency: 50,
   nodeMinDistance: 5,
@@ -50,7 +52,7 @@ const PARAM_LABELS: Record<NumericWorldParamKey, (value: number) => string> = {
           : "Arkipelagisk",
   mapSize: (value: number) => `${value}%`,
   mountainousness: (value: number) => `${value}%`,
-  settlementDensity: (value: number) => `${value}%`,
+  settlementDensity: (value: number) => `${Math.round(value)} st`,
   riverAmount: (value: number) => `${value}%`,
   lakeAmount: (value: number) => `${value}%`,
   lakeSize: (value: number) => `${value}%`,
@@ -83,14 +85,19 @@ const PARAM_LABELS: Record<NumericWorldParamKey, (value: number) => string> = {
             : "Regnigt",
   inlandPreference: (value: number) =>
     value < 20
-      ? "Tydligt kustnära"
+      ? "Låg vattennärhet"
       : value < 40
-        ? "Mest kust"
+        ? "Svag vattennärhet"
         : value < 60
-          ? "Blandat"
+          ? "Balanserad"
           : value < 80
-            ? "Mest inland"
-            : "Tydligt inland",
+            ? "Hög vattennärhet"
+            : "Mycket hög vattennärhet",
+  roadConnectivity: (value: number) =>
+    value <= 1
+      ? "Alla kortare genvägar"
+      : `Minst ${Math.round(value)}x kortare`,
+  abandonedMaxSegmentLength: (value: number) => `${Math.round(value)} celler`,
   settlementRandomness: (value: number) =>
     value < 15
       ? "Förutsägbart"
@@ -280,16 +287,16 @@ export const PARAM_SCHEMA = {
   },
   settlementDensity: {
     type: "number",
-    min: 0,
+    min: 10,
     max: 100,
     step: 1,
     formatLabel: PARAM_LABELS.settlementDensity,
     ui: {
-      label: "Bosättningstäthet",
+      label: "Antal bosättningar",
       tab: "noder",
       section: "Bosättningar",
       order: 10,
-      hint: "Grundnivå för hur tätt bosättningar placeras.",
+      hint: "Styr hur många bosättningar som försöker placeras ut på kartan.",
     },
   },
   settlementRandomness: {
@@ -304,6 +311,7 @@ export const PARAM_SCHEMA = {
       section: "Bosättningar",
       order: 20,
       hint: "Högre värde prioriterar jämnare spridning och mer varierade placeringar.",
+      hidden: true,
     },
   },
   renderScale: {
@@ -369,11 +377,39 @@ export const PARAM_SCHEMA = {
     step: 1,
     formatLabel: PARAM_LABELS.inlandPreference,
     ui: {
-      label: "Kust/inland-fokus",
+      label: "Vattennärhet",
       tab: "noder",
       section: "Bosättningar",
-      order: 30,
-      hint: "Vänster = fler kustnära platser, höger = mer inland.",
+      order: 20,
+      hint: "Högre värde gör att bosättningar i högre grad prioriterar kust, sjöar och floder.",
+    },
+  },
+  roadConnectivity: {
+    type: "number",
+    min: 1,
+    max: 5,
+    step: 1,
+    formatLabel: PARAM_LABELS.roadConnectivity,
+    ui: {
+      label: "Genvägskrav",
+      tab: "noder",
+      section: "Vägar",
+      order: 10,
+      hint: "Lägg till genväg när befintlig nätväg är minst X gånger längre än en ny direkt väg. 2 = hälften så lång.",
+    },
+  },
+  abandonedMaxSegmentLength: {
+    type: "number",
+    min: 5,
+    max: 100,
+    step: 1,
+    formatLabel: PARAM_LABELS.abandonedMaxSegmentLength,
+    ui: {
+      label: "Max väglängd utan övergiven plats",
+      tab: "noder",
+      section: "Vägar",
+      order: 20,
+      hint: "Om en väg är längre än detta delas den upp med övergivna platser. Vid 2x längd placeras 2 platser.",
     },
   },
   abandonedFrequency: {
@@ -383,11 +419,12 @@ export const PARAM_SCHEMA = {
     step: 1,
     formatLabel: PARAM_LABELS.abandonedFrequency,
     ui: {
-      label: "Övergivna platser",
+      label: "Övergivna platser (inaktiv)",
       tab: "noder",
       section: "Nodtyper",
       order: 20,
-      hint: "Fler övergivna platser längs vägarna.",
+      hint: "Tillfälligt avstängd i detta steg medan bosättningsplacering förfinas.",
+      hidden: true,
     },
   },
   nodeMinDistance: {
@@ -402,6 +439,7 @@ export const PARAM_SCHEMA = {
       section: "Nodtyper",
       order: 15,
       hint: "Öka för jämnare spridning och färre kluster.",
+      hidden: true,
     },
   },
   startTimeOfDayHours: {

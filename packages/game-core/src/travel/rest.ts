@@ -1,4 +1,5 @@
 import { clamp } from "@fardvag/shared/utils";
+import { withPlayActionMode } from "./actionMode";
 import {
   DEFAULT_MAX_STAMINA,
   STAMINA_PER_REST_HOUR,
@@ -17,24 +18,24 @@ export function beginRest(
   requestedHours: number | null | undefined,
 ): PlayStateLike {
   if (!playState || playState.gameOver) {
-    return playState;
+    return withPlayActionMode(playState);
   }
   if (playState.rest || playState.hunt || hasBlockingActionInteraction(playState)) {
-    return playState;
+    return withPlayActionMode(playState);
   }
   if (playState.travel && !playState.isTravelPaused && !playState.pendingRestChoice) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   const restHours = normalizeRestHours(requestedHours);
   if (restHours <= 0) {
-    return playState;
+    return withPlayActionMode(playState);
   }
   const hasTravel = Boolean(playState.travel);
   const wasTravelPaused = Boolean(playState.isTravelPaused);
   const priorPauseReason = playState.travelPauseReason ?? null;
 
-  return {
+  return withPlayActionMode({
     ...playState,
     hoveredNodeId: null,
     pressedNodeId: null,
@@ -50,12 +51,12 @@ export function beginRest(
       priorWasTravelPaused: wasTravelPaused,
       priorTravelPauseReason: priorPauseReason,
     },
-  };
+  });
 }
 
 export function cancelRest(playState: PlayStateLike): PlayStateLike {
   if (!playState || playState.gameOver || !playState.rest) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   const totalRestHours = normalizeRestHours(playState.rest.hours);
@@ -71,14 +72,14 @@ export function advanceRest(
   elapsedHours: number | null | undefined,
 ): PlayStateLike {
   if (!playState || playState.gameOver || !playState.rest) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   const safeElapsedHours = Number.isFinite(elapsedHours)
     ? Math.max(0, Math.floor(elapsedHours))
     : 0;
   if (safeElapsedHours <= 0) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   const totalRestHours = normalizeRestHours(playState.rest.hours);
@@ -88,14 +89,14 @@ export function advanceRest(
   const nextElapsed = Math.min(totalRestHours, previousElapsed + safeElapsedHours);
 
   if (nextElapsed < totalRestHours - 1e-6) {
-    return {
+    return withPlayActionMode({
       ...playState,
       rest: {
         ...playState.rest,
         hours: totalRestHours,
         elapsedHours: nextElapsed,
       },
-    };
+    });
   }
 
   return finishRest(playState, totalRestHours, { completed: true });
@@ -117,7 +118,7 @@ function finishRest(
   options: { completed?: boolean } = {},
 ): PlayStateLike {
   if (!playState?.rest) {
-    return playState;
+    return withPlayActionMode(playState);
   }
   const totalRestHours = normalizeRestHours(playState.rest.hours);
   const countedHours = clamp(
@@ -137,7 +138,7 @@ function finishRest(
   const nextStamina = Math.min(maxStamina, currentStamina + requestedGain);
   const actualGain = Math.max(0, nextStamina - currentStamina);
 
-  return {
+  return withPlayActionMode({
     ...playState,
     maxStamina,
     stamina: nextStamina,
@@ -159,5 +160,5 @@ function finishRest(
           ? `Vila avbruten: ${countedHours}h räknas, +${actualGain} stamina.`
           : "Vila avbruten: ingen full timme räknas (+0 stamina).",
     },
-  };
+  });
 }

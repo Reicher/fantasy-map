@@ -10,6 +10,11 @@ import {
   reduceTravelActionState,
   type TravelActionEvent,
 } from "./travel/actionStateMachine";
+import {
+  getPlayActionMode,
+  isWorldTimeAdvancingActionMode,
+  withPlayActionMode,
+} from "./travel/actionMode";
 import { normalizeRunStats } from "./travel/runStats";
 import { normalizeTimeOfDayHours } from "./timeOfDay";
 import { advanceSettlementAgentsOneHour } from "./settlementAgents";
@@ -48,7 +53,10 @@ export function reducePlayState(
   event: PlayStateEvent,
   context: ReducePlayStateContext = {},
 ): PlayState | null | undefined {
-  return reducePlayStateWithMeta(playState, event, context).playState;
+  return withPlayActionMode(
+    reducePlayStateWithMeta(playState, event, context).playState,
+    { force: true },
+  );
 }
 
 export function reducePlayStateWithMeta(
@@ -56,68 +64,74 @@ export function reducePlayStateWithMeta(
   event: PlayStateEvent,
   context: ReducePlayStateContext = {},
 ): ReducePlayStateMetaResult {
-  if (!playState) {
-    return { playState, halted: true };
+  const normalizedPlayState = withPlayActionMode(playState, { force: true });
+  if (!normalizedPlayState) {
+    return { playState: normalizedPlayState, halted: true };
   }
 
   switch (event.type) {
     case "BEGIN_TRAVEL": {
       const nextPlayState = beginTravel(
-        playState,
+        normalizedPlayState,
         event.targetNodeId,
         context.world ?? null,
       );
-      if (nextPlayState === playState) {
-        return { playState, halted: false };
+      if (nextPlayState === normalizedPlayState) {
+        return { playState: normalizedPlayState, halted: false };
       }
       return {
-        playState: {
+        playState: withPlayActionMode({
           ...nextPlayState,
           viewMode: "journey",
-        },
+        }, { force: true }),
         halted: false,
       };
     }
 
     case "ADVANCE_TRAVEL":
       if (!context.world) {
-        return { playState, halted: true };
+        return { playState: normalizedPlayState, halted: true };
       }
       return {
-        playState: advanceTravel(playState, context.world, event.deltaMs),
+        playState: withPlayActionMode(
+          advanceTravel(normalizedPlayState, context.world, event.deltaMs),
+          { force: true },
+        ),
         halted: false,
       };
 
     case "TRAVEL_ACTION":
       return {
-        playState: reduceTravelActionState(playState, event.action, {
-          world: context.world,
-        }),
+        playState: withPlayActionMode(
+          reduceTravelActionState(normalizedPlayState, event.action, {
+            world: context.world,
+          }),
+          { force: true },
+        ),
         halted: false,
       };
 
     case "ADVANCE_WORLD_HOURS":
       if (!context.world) {
-        return { playState, halted: true };
+        return { playState: normalizedPlayState, halted: true };
       }
-      return advancePlayWorldHours(playState, context.world, event.hours);
+      return advancePlayWorldHours(normalizedPlayState, context.world, event.hours);
 
     default:
-      return { playState, halted: false };
+      return { playState: normalizedPlayState, halted: false };
   }
 }
 
 export function getPlayWorldTimeActivity(playState: PlayState | null | undefined) {
-  const hasTravel = Boolean(playState?.travel);
-  const isTravelPaused = Boolean(playState?.isTravelPaused);
-  const isResting = Boolean(playState?.rest);
-  const isHunting = Boolean(playState?.hunt);
-  const isTraveling = hasTravel && !isTravelPaused && !isResting && !isHunting;
+  const actionMode = getPlayActionMode(playState);
+  const isTraveling = actionMode === "travel-active";
+  const isResting = actionMode === "resting";
+  const isHunting = actionMode === "hunting";
   return {
     isTraveling,
     isResting,
     isHunting,
-    shouldAdvanceWorldTime: isTraveling || isResting || isHunting,
+    shouldAdvanceWorldTime: isWorldTimeAdvancingActionMode(actionMode),
   };
 }
 
@@ -131,19 +145,19 @@ function advancePlayWorldHours(
     : 0;
   if (!playState || targetHours <= 0) {
     return {
-      playState,
+      playState: withPlayActionMode(playState, { force: true }),
       halted: targetHours <= 0,
     };
   }
 
-  let nextState = playState;
+  let nextState = withPlayActionMode(playState, { force: true });
   let processedHours = 0;
 
   while (processedHours < targetHours) {
     const activity = getPlayWorldTimeActivity(nextState);
     if (!activity.shouldAdvanceWorldTime) {
       return {
-        playState: nextState,
+        playState: withPlayActionMode(nextState, { force: true }),
         halted: true,
       };
     }
@@ -154,7 +168,7 @@ function advancePlayWorldHours(
       ? Math.max(0, nextState.journeyElapsedHours)
       : 0;
     const runStats = normalizeRunStats(nextState?.runStats);
-    nextState = {
+    nextState = withPlayActionMode({
       ...nextState,
       timeOfDayHours: normalizeTimeOfDayHours(
         (nextState?.timeOfDayHours ?? 0) + 1,
@@ -166,32 +180,32 @@ function advancePlayWorldHours(
         huntHours: runStats.huntHours + (activity.isHunting ? 1 : 0),
         restHours: runStats.restHours + (activity.isResting ? 1 : 0),
       },
-    };
+    }, { force: true });
 
-    nextState = applyHourlyHunger(nextState, 1);
+    nextState = withPlayActionMode(applyHourlyHunger(nextState, 1), { force: true });
     if (activity.isTraveling) {
-      nextState = applyHourlyTravelStamina(nextState, 1);
+      nextState = withPlayActionMode(applyHourlyTravelStamina(nextState, 1), { force: true });
     }
     if (activity.isResting) {
-      nextState = advanceRest(nextState, 1);
+      nextState = withPlayActionMode(advanceRest(nextState, 1), { force: true });
     }
     if (activity.isHunting) {
-      nextState = advanceHunt(nextState, world, 1);
+      nextState = withPlayActionMode(advanceHunt(nextState, world, 1), { force: true });
     }
-    nextState = finalizeHourlySurvival(nextState);
-    nextState = advanceSettlementAgentsOneHour(nextState, world);
+    nextState = withPlayActionMode(finalizeHourlySurvival(nextState), { force: true });
+    nextState = withPlayActionMode(advanceSettlementAgentsOneHour(nextState, world), { force: true });
 
     processedHours += 1;
     if (nextState?.gameOver) {
       return {
-        playState: nextState,
+        playState: withPlayActionMode(nextState, { force: true }),
         halted: true,
       };
     }
   }
 
   return {
-    playState: nextState,
+    playState: withPlayActionMode(nextState, { force: true }),
     halted: false,
   };
 }

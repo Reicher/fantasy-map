@@ -1,16 +1,14 @@
 import { toggleTravelPause } from "./pause";
 import { beginHunt, cancelHunt } from "./hunt";
 import { beginRest, cancelRest } from "./rest";
-import type { PlayState } from "@fardvag/shared/types/play";
+import {
+  getPlayActionMode,
+  withPlayActionMode,
+} from "./actionMode";
+import type { PlayActionMode, PlayState } from "@fardvag/shared/types/play";
 import type { World } from "@fardvag/shared/types/world";
 
-export type TravelActionState =
-  | "game-over"
-  | "idle"
-  | "travel-active"
-  | "travel-paused"
-  | "resting"
-  | "hunting";
+export type TravelActionState = PlayActionMode;
 
 export type TravelActionEventType =
   | "TOGGLE_TRAVEL_PAUSE"
@@ -51,6 +49,7 @@ const ALLOWED_EVENT_TYPES_BY_STATE: Record<
   readonly TravelActionEventType[]
 > = {
   "game-over": [],
+  event: [],
   idle: ["START_REST", "START_HUNT", "DISMISS_HUNT_RESULT"],
   "travel-active": ["TOGGLE_TRAVEL_PAUSE", "DISMISS_HUNT_RESULT"],
   "travel-paused": [
@@ -67,19 +66,7 @@ const ALLOWED_EVENT_TYPES_BY_STATE: Record<
 export function getTravelActionState(
   playState: PlayState | null | undefined,
 ): TravelActionState {
-  if (playState?.gameOver) {
-    return "game-over";
-  }
-  if (playState?.rest) {
-    return "resting";
-  }
-  if (playState?.hunt) {
-    return "hunting";
-  }
-  if (playState?.travel) {
-    return playState.isTravelPaused ? "travel-paused" : "travel-active";
-  }
-  return "idle";
+  return getPlayActionMode(playState);
 }
 
 export function isTravelActionEventAllowed(
@@ -94,61 +81,64 @@ export function reduceTravelActionState(
   event: TravelActionEvent,
   context: TravelActionContext = {},
 ): PlayState | null | undefined {
-  if (!playState) {
-    return playState;
+  const normalizedPlayState = withPlayActionMode(playState);
+  if (!normalizedPlayState) {
+    return normalizedPlayState;
   }
 
-  const currentState = getTravelActionState(playState);
+  const currentState = getTravelActionState(normalizedPlayState);
   if (!isTravelActionEventAllowed(currentState, event.type)) {
-    return playState;
+    return normalizedPlayState;
   }
 
   switch (event.type) {
     case "TOGGLE_TRAVEL_PAUSE":
-      return toggleTravelPause(playState);
+      return withPlayActionMode(toggleTravelPause(normalizedPlayState));
 
     case "START_REST":
-      return beginRest(playState, event.hours);
+      return withPlayActionMode(beginRest(normalizedPlayState, event.hours));
 
     case "START_HUNT":
       if (!context.world) {
-        return playState;
+        return normalizedPlayState;
       }
-      return beginHunt(playState, context.world, event.hours);
+      return withPlayActionMode(
+        beginHunt(normalizedPlayState, context.world, event.hours),
+      );
 
     case "CANCEL_TIMED_ACTION":
       if (currentState === "hunting") {
         if (!context.world) {
-          return playState;
+          return normalizedPlayState;
         }
-        return cancelHunt(playState, context.world);
+        return withPlayActionMode(cancelHunt(normalizedPlayState, context.world));
       }
       if (currentState === "resting") {
-        return cancelRest(playState);
+        return withPlayActionMode(cancelRest(normalizedPlayState));
       }
-      return playState;
+      return normalizedPlayState;
 
     case "DISMISS_MANUAL_TRAVEL_PAUSE":
       if (
-        !playState.travel ||
-        !playState.isTravelPaused ||
-        playState.travelPauseReason !== "manual" ||
-        playState.pendingRestChoice
+        !normalizedPlayState.travel ||
+        !normalizedPlayState.isTravelPaused ||
+        normalizedPlayState.travelPauseReason !== "manual" ||
+        normalizedPlayState.pendingRestChoice
       ) {
-        return playState;
+        return normalizedPlayState;
       }
-      return toggleTravelPause(playState);
+      return withPlayActionMode(toggleTravelPause(normalizedPlayState));
 
     case "DISMISS_HUNT_RESULT":
-      if (playState.latestHuntFeedback?.type !== "result") {
-        return playState;
+      if (normalizedPlayState.latestHuntFeedback?.type !== "result") {
+        return normalizedPlayState;
       }
-      return {
-        ...playState,
+      return withPlayActionMode({
+        ...normalizedPlayState,
         latestHuntFeedback: null,
-      };
+      });
 
     default:
-      return playState;
+      return normalizedPlayState;
   }
 }

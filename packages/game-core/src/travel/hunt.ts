@@ -4,6 +4,7 @@ import { normalizeTimeOfDayHours } from "../timeOfDay";
 import { createRng } from "@fardvag/shared/random";
 import { getNodeTitle } from "@fardvag/shared/node/model";
 import { biomeKeyAtPoint } from "./biomeBands";
+import { withPlayActionMode } from "./actionMode";
 import {
   DEFAULT_MAX_STAMINA,
   HUNT_AREA_RECOVERY_PER_HOUR,
@@ -79,42 +80,42 @@ export function beginHunt(
   requestedHours: number | null | undefined,
 ): PlayStateLike {
   if (!playState || playState.gameOver || !world) {
-    return playState;
+    return withPlayActionMode(playState);
   }
   if (playState.hunt || playState.rest || hasBlockingActionInteraction(playState)) {
-    return playState;
+    return withPlayActionMode(playState);
   }
   if (playState.travel && !playState.isTravelPaused) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   const huntHours = normalizeHuntHours(requestedHours);
   if (huntHours <= 0) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   const maxStamina = normalizeStaminaValue(playState.maxStamina, DEFAULT_MAX_STAMINA);
   const stamina = Math.min(maxStamina, normalizeStaminaValue(playState.stamina, maxStamina));
   if (stamina <= 0) {
-    return {
+    return withPlayActionMode({
       ...playState,
       pendingRestChoice: true,
       latestHuntFeedback: {
         type: "hint",
         text: "Du saknar ork för jakt. Vila först.",
       },
-    };
+    });
   }
 
   const context = resolveHuntContext(playState, world);
   if (!context.available) {
-    return {
+    return withPlayActionMode({
       ...playState,
       latestHuntFeedback: {
         type: "hint",
         text: context.reason,
       },
-    };
+    });
   }
 
   const currentJourneyHours = normalizeElapsedHours(playState.journeyElapsedHours);
@@ -135,7 +136,7 @@ export function beginHunt(
     playState.vapenTraffsakerhet,
   );
 
-  return {
+  return withPlayActionMode({
     ...playState,
     hoveredNodeId: null,
     pressedNodeId: null,
@@ -172,7 +173,7 @@ export function beginHunt(
     },
     huntAreaStates: recoveredArea.huntAreaStates,
     nextHuntRunId: runId + 1,
-  };
+  });
 }
 
 export function cancelHunt(
@@ -180,7 +181,7 @@ export function cancelHunt(
   world: WorldLike,
 ): PlayStateLike {
   if (!playState || playState.gameOver || !playState.hunt || !world) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   const huntState = playState.hunt;
@@ -193,16 +194,16 @@ export function cancelHunt(
     nextState = resolveHuntHours(nextState, world, roundedTargetHours);
   }
   if (!nextState.hunt) {
-    return nextState;
+    return withPlayActionMode(nextState);
   }
 
-  return completeHunt(nextState, {
+  return withPlayActionMode(completeHunt(nextState, {
     type: "stopped",
     text:
       roundedTargetHours > 0
         ? `Du avbryter jakten. ${roundedTargetHours}h räknas.`
         : "Du avbryter jakten innan någon full timme har passerat.",
-  });
+  }));
 }
 
 export function advanceHunt(
@@ -211,14 +212,14 @@ export function advanceHunt(
   elapsedHours: number | null | undefined,
 ): PlayStateLike {
   if (!playState || playState.gameOver || !playState.hunt || !world) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   const safeElapsedHours = Number.isFinite(elapsedHours)
     ? Math.max(0, Math.floor(elapsedHours))
     : 0;
   if (safeElapsedHours <= 0) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   const huntState = playState.hunt;
@@ -240,17 +241,17 @@ export function advanceHunt(
 
   nextState = resolveHuntHours(nextState, world, completedHours);
   if (!nextState.hunt) {
-    return nextState;
+    return withPlayActionMode(nextState);
   }
 
   if (nextElapsed >= totalHours - 1e-6) {
-    return completeHunt(nextState, {
+    return withPlayActionMode(completeHunt(nextState, {
       type: "completed",
       text: "Jakten är avslutad för den planerade tiden.",
-    });
+    }));
   }
 
-  return nextState;
+  return withPlayActionMode(nextState);
 }
 
 export function describeHuntSituation(
@@ -443,7 +444,7 @@ function completeHunt(
   feedback: HuntFeedback = null,
 ): PlayStateLike {
   if (!playState?.hunt) {
-    return playState;
+    return withPlayActionMode(playState);
   }
   const huntState = playState.hunt;
   const isExhausted = feedback?.type === "exhausted";
@@ -466,7 +467,7 @@ function completeHunt(
   };
 
   if (!feedback?.text) {
-    return nextState;
+    return withPlayActionMode(nextState);
   }
   const totalHours = normalizeHuntHours(huntState.hours);
   const completedHours = normalizeCompletedHours(huntState.completedHours);
@@ -481,7 +482,7 @@ function completeHunt(
         : feedback?.type === "exhausted"
           ? "Du är utmattad och måste vila."
           : feedback?.text;
-  return {
+  return withPlayActionMode({
     ...nextState,
     latestHuntFeedback: {
       type: "result",
@@ -489,7 +490,7 @@ function completeHunt(
       runId: huntState.runId,
       hour: totalHours,
     },
-  };
+  });
 }
 
 function resolveHuntContext(

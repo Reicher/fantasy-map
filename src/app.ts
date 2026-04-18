@@ -49,6 +49,13 @@ const refs = createAppRefs();
 const initialMode = inferInitialMode();
 initializeCanvasSizes(refs);
 
+const EDITOR_GENERATION_STAGE_SUBTITLES = [
+  "Förbereder parametrar...",
+  "Skapar terräng och hydrologi...",
+  "Bygger vägnät, noder och platser...",
+  "Ritar karta, etiketter och statistik...",
+] as const;
+
 const state: AppState = {
   currentMode: initialMode,
   currentWorld: null,
@@ -436,6 +443,11 @@ async function generateAndRender() {
   state.editorLoading = state.currentMode === "editor";
   state.playLoading = state.currentMode === "play";
   syncModeUi();
+  setEditorLoadingStage(0);
+  if (!(await waitForNextPaintIfActive(generateTransition, runId, 1))) {
+    return;
+  }
+  setEditorLoadingStage(1);
   if (!(await waitForNextPaintIfActive(generateTransition, runId, 1))) {
     return;
   }
@@ -444,6 +456,7 @@ async function generateAndRender() {
   playSession.resetJourney();
   applyCanvasResolution(refs, params.renderScale);
   state.currentWorld = generateWorld(params);
+  setEditorLoadingStage(2);
   state.playState = playSession.createInitialPlayState(state.currentWorld);
   state.playActivePanels = [];
   state.playActionMenuOpen = false;
@@ -460,6 +473,7 @@ async function generateAndRender() {
   }
   updateStats(refs.statsContainer, state.currentWorld.stats);
   syncViewUi();
+  setEditorLoadingStage(3);
 
   if (!(await waitForNextPaintIfActive(generateTransition, runId, 1))) {
     return;
@@ -468,6 +482,7 @@ async function generateAndRender() {
   state.editorLoading = false;
   state.playLoading = false;
   syncModeUi();
+  setEditorLoadingStage(0);
 
   if (!(await waitForNextPaintIfActive(generateTransition, runId, 1))) {
     return;
@@ -477,6 +492,25 @@ async function generateAndRender() {
     editorSession.rerenderCurrentWorld();
   } else {
     playSession.renderPlayWorld();
+  }
+}
+
+function setEditorLoadingStage(stage: number): void {
+  const overlay = refs.editorLoading;
+  if (!overlay) {
+    return;
+  }
+  const normalized = Math.max(
+    0,
+    Math.min(
+      EDITOR_GENERATION_STAGE_SUBTITLES.length - 1,
+      Math.round(Number(stage) || 0),
+    ),
+  );
+  overlay.dataset.stage = String(normalized);
+  const subtitle = overlay.querySelector<HTMLElement>(".editor-loading-subtitle");
+  if (subtitle) {
+    subtitle.textContent = EDITOR_GENERATION_STAGE_SUBTITLES[normalized];
   }
 }
 

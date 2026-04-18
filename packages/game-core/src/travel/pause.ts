@@ -1,20 +1,21 @@
 import { normalizeStaminaValue } from "./normalizers";
+import { withPlayActionMode } from "./actionMode";
 import type { PlayState } from "@fardvag/shared/types/play";
 
 export function toggleTravelPause(
   playState: PlayState | null | undefined,
 ): PlayState | null | undefined {
   if (!playState || playState.gameOver || !playState.travel) {
-    return playState;
+    return withPlayActionMode(playState);
   }
   if (playState.rest || playState.hunt) {
-    return playState;
+    return withPlayActionMode(playState);
   }
 
   if (playState.isTravelPaused) {
     const stamina = normalizeStaminaValue(playState.stamina, 0);
     if (stamina <= 0) {
-      return {
+      return withPlayActionMode({
         ...playState,
         viewMode: "journey",
         isTravelPaused: true,
@@ -22,17 +23,17 @@ export function toggleTravelPause(
         pendingRestChoice: true,
         hoveredNodeId: null,
         pressedNodeId: null,
-      };
+      });
     }
-    return {
+    return withPlayActionMode({
       ...playState,
       isTravelPaused: false,
       travelPauseReason: null,
       pendingRestChoice: false,
-    };
+    });
   }
 
-  return {
+  return withPlayActionMode({
     ...playState,
     viewMode: "journey",
     isTravelPaused: true,
@@ -40,5 +41,5 @@ export function toggleTravelPause(
     pendingRestChoice: false,
     rest: null,
     latestHuntFeedback: null,
-  };
+  });
 }

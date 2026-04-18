@@ -52,6 +52,10 @@ export {
   REST_HOUR_OPTIONS,
 } from "./travel/constants";
 export {
+  getPlayActionMode,
+  isWorldTimeAdvancingActionMode,
+} from "./travel/actionMode";
+export {
   normalizeElapsedHours,
   normalizeHuntHours,
   normalizeRestHours,
