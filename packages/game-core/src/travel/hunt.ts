@@ -7,7 +7,6 @@ import { biomeKeyAtPoint } from "./biomeBands";
 import { withPlayActionMode } from "./actionMode";
 import {
   DEFAULT_MAX_STAMINA,
-  HUNT_AREA_RECOVERY_PER_HOUR,
   HUNT_BIOME_FACTORS,
   HUNT_MEAT_LOOT_COLUMNS,
   HUNT_MEAT_LOOT_ROWS,
@@ -30,7 +29,6 @@ import {
 } from "./normalizers";
 import type { InventoryState } from "@fardvag/shared/types/inventory";
 import type {
-  PlayHuntAreaState,
   PlayHuntFeedback,
   PlayHuntState,
   PlayState,
@@ -49,7 +47,6 @@ interface HuntWorldLike {
   };
 }
 type WorldLike = World | HuntWorldLike | null | undefined;
-type HuntAreaState = PlayHuntAreaState;
 type HuntFeedback =
   | Pick<PlayHuntFeedback, "type" | "text">
   | null;
@@ -119,11 +116,6 @@ export function beginHunt(
   }
 
   const currentJourneyHours = normalizeElapsedHours(playState.journeyElapsedHours);
-  const recoveredArea = recoverHuntAreaState(
-    playState.huntAreaStates,
-    context,
-    currentJourneyHours,
-  );
   const runId = normalizeActionCounter(playState.nextHuntRunId);
   const hasTravel = Boolean(playState.travel);
   const wasTravelPaused = Boolean(playState.isTravelPaused);
@@ -131,7 +123,6 @@ export function beginHunt(
   const startTimeOfDay = normalizeTimeOfDayHours(playState.timeOfDayHours);
   const outlook = describeHuntOutlook(
     context,
-    recoveredArea.areaState,
     startTimeOfDay,
     playState.vapenTraffsakerhet,
   );
@@ -171,7 +162,6 @@ export function beginHunt(
       type: "hint",
       text: outlook,
     },
-    huntAreaStates: recoveredArea.huntAreaStates,
     nextHuntRunId: runId + 1,
   });
 }
@@ -282,15 +272,8 @@ export function describeHuntSituation(
     };
   }
 
-  const currentJourneyHours = normalizeElapsedHours(playState.journeyElapsedHours);
-  const previewState = previewRecoveredHuntAreaState(
-    playState.huntAreaStates,
-    context,
-    currentJourneyHours,
-  );
   const outlook = describeHuntOutlook(
     context,
-    previewState,
     playState.timeOfDayHours,
     playState.vapenTraffsakerhet,
   );
@@ -351,21 +334,11 @@ function resolveSingleHuntHour(
     areaCapacity: normalizeAreaCapacity(huntState.areaCapacity),
     worldSeed: String(huntState.worldSeed ?? "seed"),
   };
-  const boundaryJourneyHours =
-    normalizeElapsedHours(huntState.startedAtJourneyHours) + hourNumber;
   const boundaryTimeOfDayHours = normalizeTimeOfDayHours(
     normalizeTimeOfDayHours(huntState.startedTimeOfDayHours) + hourNumber,
   );
-  const recovered = recoverHuntAreaState(
-    playState.huntAreaStates,
-    context,
-    boundaryJourneyHours,
-    { allowRecovery: false },
-  );
-  const areaState = recovered.areaState;
   const chance = resolveHuntSuccessChance(
     context,
-    areaState,
     boundaryTimeOfDayHours,
     playState.vapenTraffsakerhet,
   );
@@ -379,28 +352,9 @@ function resolveSingleHuntHour(
   );
   const nextStamina = Math.max(0, currentStamina - STAMINA_PER_HUNT_HOUR);
 
-  const densityDrop = success
-    ? resolveSuccessfulHuntDensityDrop(areaState, context, hourRng)
-    : resolveFailedHuntDensityDrop(areaState, context, hourRng);
-  const nextDensity = clamp(
-    areaState.density - densityDrop,
-    0,
-    context.areaCapacity,
-  );
-  const nextAreaState = {
-    ...areaState,
-    density: nextDensity,
-    lastUpdatedHours: boundaryJourneyHours,
-  };
-  const nextHuntAreaStates = {
-    ...(recovered.huntAreaStates ?? {}),
-    [context.areaKey]: nextAreaState,
-  };
-
   const meatFound = success
     ? resolveHuntMeatYield(
         context,
-        areaState,
         playState.vapenTraffsakerhet,
         boundaryTimeOfDayHours,
         hourRng,
@@ -418,7 +372,6 @@ function resolveSingleHuntHour(
     maxStamina,
     stamina: nextStamina,
     inventory: addedMeat.inventory,
-    huntAreaStates: nextHuntAreaStates,
     hunt: {
       ...huntState,
       completedHours: hourNumber,
@@ -602,166 +555,59 @@ function getBiomeKeyByCell(
   return biomeArray[cell] ?? null;
 }
 
-function recoverHuntAreaState(
-  huntAreaStates: Record<string, HuntAreaState> | null | undefined,
-  context: HuntContextAvailable,
-  currentJourneyHours: number | null | undefined,
-  options: { allowRecovery?: boolean } = {},
-): {
-  huntAreaStates: Record<string, HuntAreaState>;
-  areaState: HuntAreaState;
-} {
-  const allowRecovery = options.allowRecovery !== false;
-  const allStates = { ...(huntAreaStates ?? {}) };
-  const existingState = allStates[context.areaKey];
-  const baseState =
-    existingState ??
-    createInitialHuntAreaState(context, {
-      currentJourneyHours,
-    });
-
-  const safeCurrentHours = normalizeElapsedHours(currentJourneyHours);
-  const previousHours = normalizeElapsedHours(baseState.lastUpdatedHours);
-  const elapsedSinceLast = Math.max(0, safeCurrentHours - previousHours);
-  const nextDensity = allowRecovery
-    ? Math.min(
-        context.areaCapacity,
-        baseState.density +
-          elapsedSinceLast * HUNT_AREA_RECOVERY_PER_HOUR * context.areaCapacity,
-      )
-    : baseState.density;
-  const nextState = {
-    ...baseState,
-    density: clamp(nextDensity, 0, context.areaCapacity),
-    areaCapacity: context.areaCapacity,
-    lastUpdatedHours: safeCurrentHours,
-  };
-  allStates[context.areaKey] = nextState;
-  return {
-    huntAreaStates: allStates,
-    areaState: nextState,
-  };
-}
-
-function previewRecoveredHuntAreaState(
-  huntAreaStates: Record<string, HuntAreaState> | null | undefined,
-  context: HuntContextAvailable,
-  currentJourneyHours: number | null | undefined,
-): HuntAreaState {
-  const existingState = huntAreaStates?.[context.areaKey];
-  const baseState =
-    existingState ??
-    createInitialHuntAreaState(context, {
-      currentJourneyHours,
-    });
-  const safeCurrentHours = normalizeElapsedHours(currentJourneyHours);
-  const previousHours = normalizeElapsedHours(baseState.lastUpdatedHours);
-  const elapsedSinceLast = Math.max(0, safeCurrentHours - previousHours);
-  const recoveredDensity = Math.min(
-    context.areaCapacity,
-    baseState.density +
-      elapsedSinceLast * HUNT_AREA_RECOVERY_PER_HOUR * context.areaCapacity,
-  );
-  return {
-    ...baseState,
-    areaCapacity: context.areaCapacity,
-    density: clamp(recoveredDensity, 0, context.areaCapacity),
-    lastUpdatedHours: safeCurrentHours,
-  };
-}
-
-function createInitialHuntAreaState(
-  context: HuntContextAvailable,
-  options: { currentJourneyHours?: number } = {},
-) {
-  const seed = [
-    String(context.worldSeed ?? "seed"),
-    String(context.areaKey ?? "area"),
-    String(context.biomeKey ?? "biome"),
-    String(context.areaType ?? "type"),
-  ].join(":");
-  const rng = createRng(seed);
-  const areaCapacity = normalizeAreaCapacity(context.areaCapacity);
-  const initialDensity = areaCapacity * (0.48 + rng.float() * 0.48);
-  return {
-    areaCapacity,
-    density: clamp(initialDensity, 0, areaCapacity),
-    lastUpdatedHours: normalizeElapsedHours(options.currentJourneyHours),
-  };
-}
-
 function resolveHuntSuccessChance(
   context: HuntContextAvailable,
-  areaState: HuntAreaState,
   timeOfDayHours: number | null | undefined,
   weaponAccuracy: number | null | undefined,
 ) {
-  const capacity = normalizeAreaCapacity(context.areaCapacity);
-  const normalizedDensity = capacity > 0 ? areaState.density / capacity : 0;
-  const abundanceComponent = clamp(areaState.density, 0, 1);
+  const areaQuality = clamp(normalizeAreaCapacity(context.areaCapacity), 0.08, 1);
   const timeFactor = huntTimeOfDayFactor(timeOfDayHours).factor;
   const biomeFactor = biomeHuntFactor(context.biomeKey);
   const skillFactor = clamp(
-    (normalizeWeaponAccuracy(weaponAccuracy) - 25) / 75,
+    (normalizeWeaponAccuracy(weaponAccuracy) - 20) / 80,
     0,
     1,
   );
   const chance =
-    0.06 +
-    abundanceComponent * 0.39 +
-    normalizedDensity * 0.14 +
-    timeFactor * 0.15 +
-    biomeFactor * 0.12 +
-    skillFactor * 0.19;
+    0.28 +
+    areaQuality * 0.34 +
+    timeFactor * 0.12 +
+    biomeFactor * 0.14 +
+    skillFactor * 0.18;
   return clamp(chance, HUNT_SUCCESS_MIN_CHANCE, HUNT_SUCCESS_MAX_CHANCE);
-}
-
-function resolveSuccessfulHuntDensityDrop(
-  _areaState: HuntAreaState,
-  context: HuntContextAvailable,
-  rng: RngLike,
-) {
-  const swing = 0.78 + rng.float() * 0.6;
-  const base = context.areaCapacity * 0.13 * swing;
-  const pressure = context.areaType === "node" ? 1.12 : 1;
-  return clamp(base * pressure, 0.02, context.areaCapacity * 0.45);
-}
-
-function resolveFailedHuntDensityDrop(
-  _areaState: HuntAreaState,
-  context: HuntContextAvailable,
-  rng: RngLike,
-) {
-  const base = context.areaCapacity * (0.015 + rng.float() * 0.02);
-  return clamp(base, 0.002, context.areaCapacity * 0.08);
 }
 
 function resolveHuntMeatYield(
   context: HuntContextAvailable,
-  areaState: HuntAreaState,
   weaponAccuracy: number | null | undefined,
   timeOfDayHours: number | null | undefined,
   rng: RngLike,
 ) {
-  const capacity = normalizeAreaCapacity(context.areaCapacity);
-  const normalizedDensity = capacity > 0 ? areaState.density / capacity : 0;
-  let yieldCount = 1;
-  if (normalizedDensity > 0.6 && rng.float() < 0.58) {
+  const areaQuality = clamp(normalizeAreaCapacity(context.areaCapacity), 0.08, 1);
+  const timeFactor = huntTimeOfDayFactor(timeOfDayHours).factor;
+  const biomeFactor = biomeHuntFactor(context.biomeKey);
+  const skillFactor = clamp(
+    (normalizeWeaponAccuracy(weaponAccuracy) - 20) / 80,
+    0,
+    1,
+  );
+  let yieldCount = 2;
+  if (areaQuality >= 0.35 && rng.float() < 0.62) {
     yieldCount += 1;
   }
-  if (normalizedDensity > 0.82 && rng.float() < 0.36) {
+  if (areaQuality >= 0.62 && rng.float() < 0.42) {
     yieldCount += 1;
   }
-  if (normalizeWeaponAccuracy(weaponAccuracy) >= 72 && rng.float() < 0.32) {
+  if (skillFactor >= 0.55 && rng.float() < 0.34) {
     yieldCount += 1;
   }
-  if (huntTimeOfDayFactor(timeOfDayHours).factor >= 0.8 && rng.float() < 0.27) {
+  if (timeFactor >= 0.8 && rng.float() < 0.3) {
     yieldCount += 1;
   }
-  if (context.areaType === "node" && rng.float() < 0.45) {
-    yieldCount = Math.max(1, yieldCount - 1);
+  if (biomeFactor >= 0.8 && rng.float() < 0.2) {
+    yieldCount += 1;
   }
-  return clamp(Math.floor(yieldCount), 1, 4);
+  return clamp(Math.floor(yieldCount), 1, 5);
 }
 
 function addMeatToInventory(
@@ -808,20 +654,18 @@ function addMeatToInventory(
 
 function describeHuntOutlook(
   context: HuntContextAvailable,
-  areaState: HuntAreaState,
   timeOfDayHours: number | null | undefined,
   weaponAccuracy: number | null | undefined,
 ) {
   const chance = resolveHuntSuccessChance(
     context,
-    areaState,
     timeOfDayHours,
     weaponAccuracy,
   );
-  if (chance >= 0.7) {
+  if (chance >= 0.72) {
     return "Bra läge";
   }
-  if (chance >= 0.42) {
+  if (chance >= 0.5) {
     return "Medelläge";
   }
   return "Svagt läge";

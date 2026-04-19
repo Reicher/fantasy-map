@@ -66,6 +66,17 @@ function createBaseHuntState(overrides: Record<string, unknown> = {}): PlayState
   };
 }
 
+function countMeat(inventory: PlayState["inventory"]): number {
+  const items = Array.isArray(inventory?.items) ? inventory.items : [];
+  return items.reduce((sum, item) => {
+    if (item?.type !== "meat") {
+      return sum;
+    }
+    const count = Number.isFinite(item?.count) ? Number(item.count) : 0;
+    return sum + Math.max(0, Math.floor(count));
+  }, 0);
+}
+
 describe("travel hunt invariants", () => {
   it("preserves key invariants across random hunt advancement schedules", () => {
     fc.assert(
@@ -142,5 +153,48 @@ describe("travel hunt invariants", () => {
     };
 
     expect(run()).toEqual(run());
+  });
+
+  it("does not persist per-area depletion state after hunting", () => {
+    const world = createTestWorld("no-area-depletion-seed");
+    let state = createBaseHuntState({
+      maxStamina: 120,
+      stamina: 120,
+      huntAreaStates: {},
+    });
+
+    for (let i = 0; i < 4; i += 1) {
+      state = beginHunt(state, world, 3) ?? state;
+      state = advanceHunt(state, world, 3) ?? state;
+      expect(state.hunt).toBeNull();
+    }
+
+    expect(state.huntAreaStates ?? {}).toEqual({});
+  });
+
+  it("averages above one meat per hour in standard hunt conditions", () => {
+    const world = createTestWorld("hunt-yield-target-seed");
+    let state = createBaseHuntState({
+      maxStamina: 2000,
+      stamina: 2000,
+      inventory: {
+        columns: 128,
+        rows: 128,
+        items: [],
+      },
+    });
+    let totalHours = 0;
+    let totalMeat = 0;
+
+    for (let i = 0; i < 10; i += 1) {
+      const before = countMeat(state.inventory);
+      state = beginHunt(state, world, 8) ?? state;
+      state = advanceHunt(state, world, 8) ?? state;
+      const after = countMeat(state.inventory);
+      totalHours += 8;
+      totalMeat += Math.max(0, after - before);
+    }
+
+    expect(totalMeat / totalHours).toBeGreaterThan(1);
   });
 });
