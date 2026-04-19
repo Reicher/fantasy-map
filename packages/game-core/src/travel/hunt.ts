@@ -1,15 +1,11 @@
-import { transferAllInventoryItems } from "../inventory";
 import { clamp } from "@fardvag/shared/utils";
 import { normalizeTimeOfDayHours } from "../timeOfDay";
-import { createRng } from "@fardvag/shared/random";
 import { getNodeTitle } from "@fardvag/shared/node/model";
 import { biomeKeyAtPoint } from "./biomeBands";
 import { withPlayActionMode } from "./actionMode";
 import {
   DEFAULT_MAX_STAMINA,
   HUNT_BIOME_FACTORS,
-  HUNT_MEAT_LOOT_COLUMNS,
-  HUNT_MEAT_LOOT_ROWS,
   HUNT_SEA_ROUTE_REASON,
   HUNT_SUCCESS_MAX_CHANCE,
   HUNT_SUCCESS_MIN_CHANCE,
@@ -23,11 +19,9 @@ import {
   normalizeCompletedHours,
   normalizeElapsedHours,
   normalizeHuntHours,
-  normalizeStackCount,
   normalizeStaminaValue,
   normalizeWeaponAccuracy,
 } from "./normalizers";
-import type { InventoryState } from "@fardvag/shared/types/inventory";
 import type {
   PlayHuntFeedback,
   PlayHuntState,
@@ -50,7 +44,6 @@ type WorldLike = World | HuntWorldLike | null | undefined;
 type HuntFeedback =
   | Pick<PlayHuntFeedback, "type" | "text">
   | null;
-type RngLike = ReturnType<typeof createRng>;
 
 interface HuntContextUnavailable {
   available: false;
@@ -320,31 +313,6 @@ function resolveSingleHuntHour(
   }
 
   const huntState = playState.hunt;
-  const context: HuntContextAvailable = {
-    available: true,
-    areaKey: String(huntState.areaKey ?? "unknown-area"),
-    areaLabel: String(huntState.areaLabel ?? "Okänt område"),
-    areaType:
-      huntState.areaType === "node" ||
-      huntState.areaType === "wild" ||
-      huntState.areaType === "stretch"
-        ? huntState.areaType
-        : "wild",
-    biomeKey: huntState.biomeKey ?? "plains",
-    areaCapacity: normalizeAreaCapacity(huntState.areaCapacity),
-    worldSeed: String(huntState.worldSeed ?? "seed"),
-  };
-  const boundaryTimeOfDayHours = normalizeTimeOfDayHours(
-    normalizeTimeOfDayHours(huntState.startedTimeOfDayHours) + hourNumber,
-  );
-  const chance = resolveHuntSuccessChance(
-    context,
-    boundaryTimeOfDayHours,
-    playState.vapenTraffsakerhet,
-  );
-  const hourRng = createRng(`${huntState.seed}:hour:${hourNumber}`);
-  const success = hourRng.float() < chance;
-
   const maxStamina = normalizeStaminaValue(playState.maxStamina, DEFAULT_MAX_STAMINA);
   const currentStamina = Math.min(
     maxStamina,
@@ -352,33 +320,13 @@ function resolveSingleHuntHour(
   );
   const nextStamina = Math.max(0, currentStamina - STAMINA_PER_HUNT_HOUR);
 
-  const meatFound = success
-    ? resolveHuntMeatYield(
-        context,
-        playState.vapenTraffsakerhet,
-        boundaryTimeOfDayHours,
-        hourRng,
-      )
-    : 0;
-  const addedMeat = addMeatToInventory(
-    playState.inventory,
-    meatFound,
-    huntState.runId,
-    hourNumber,
-  );
-
   const nextState = {
     ...playState,
     maxStamina,
     stamina: nextStamina,
-    inventory: addedMeat.inventory,
     hunt: {
       ...huntState,
       completedHours: hourNumber,
-      successfulHours:
-        normalizeCompletedHours(huntState.successfulHours) + (success ? 1 : 0),
-      totalMeatGained:
-        normalizeStackCount(huntState.totalMeatGained) + addedMeat.gainedMeat,
     },
   };
 
@@ -424,9 +372,7 @@ function completeHunt(
   }
   const totalHours = normalizeHuntHours(huntState.hours);
   const completedHours = normalizeCompletedHours(huntState.completedHours);
-  const successfulHours = normalizeCompletedHours(huntState.successfulHours);
-  const totalMeatGained = normalizeStackCount(huntState.totalMeatGained);
-  const summaryText = `Jaktresultat: ${successfulHours}/${completedHours} lyckade timmar, +${totalMeatGained} kött.`;
+  const summaryText = `Jaktpass: ${completedHours}/${totalHours}h genomförda.`;
   const statusText =
     feedback?.type === "completed"
       ? "Jakten är avslutad."
@@ -575,81 +521,6 @@ function resolveHuntSuccessChance(
     biomeFactor * 0.14 +
     skillFactor * 0.18;
   return clamp(chance, HUNT_SUCCESS_MIN_CHANCE, HUNT_SUCCESS_MAX_CHANCE);
-}
-
-function resolveHuntMeatYield(
-  context: HuntContextAvailable,
-  weaponAccuracy: number | null | undefined,
-  timeOfDayHours: number | null | undefined,
-  rng: RngLike,
-) {
-  const areaQuality = clamp(normalizeAreaCapacity(context.areaCapacity), 0.08, 1);
-  const timeFactor = huntTimeOfDayFactor(timeOfDayHours).factor;
-  const biomeFactor = biomeHuntFactor(context.biomeKey);
-  const skillFactor = clamp(
-    (normalizeWeaponAccuracy(weaponAccuracy) - 20) / 80,
-    0,
-    1,
-  );
-  let yieldCount = 2;
-  if (areaQuality >= 0.35 && rng.float() < 0.62) {
-    yieldCount += 1;
-  }
-  if (areaQuality >= 0.62 && rng.float() < 0.42) {
-    yieldCount += 1;
-  }
-  if (skillFactor >= 0.55 && rng.float() < 0.34) {
-    yieldCount += 1;
-  }
-  if (timeFactor >= 0.8 && rng.float() < 0.3) {
-    yieldCount += 1;
-  }
-  if (biomeFactor >= 0.8 && rng.float() < 0.2) {
-    yieldCount += 1;
-  }
-  return clamp(Math.floor(yieldCount), 1, 5);
-}
-
-function addMeatToInventory(
-  inventory: InventoryState | null | undefined,
-  meatCount: number | null | undefined,
-  runId: number | null | undefined,
-  hourNumber: number | null | undefined,
-) {
-  const safeMeatCount = Number.isFinite(meatCount)
-    ? Math.max(0, Math.floor(meatCount))
-    : 0;
-  if (!inventory || safeMeatCount <= 0) {
-    return {
-      inventory,
-      gainedMeat: 0,
-    };
-  }
-
-  const lootInventory = {
-    columns: HUNT_MEAT_LOOT_COLUMNS,
-    rows: HUNT_MEAT_LOOT_ROWS,
-    items: [
-      {
-        id: `hunt-${runId}-${hourNumber}`,
-        type: "meat",
-        name: "Köttbit",
-        symbol: "meat",
-        width: 1,
-        height: 1,
-        count: safeMeatCount,
-        column: 0,
-        row: 0,
-      },
-    ],
-  };
-  const transferred = transferAllInventoryItems(lootInventory, inventory);
-  const remainingCount = transferred.sourceInventory?.items?.[0]?.count ?? 0;
-  const gainedMeat = Math.max(0, safeMeatCount - normalizeStackCount(remainingCount));
-  return {
-    inventory: transferred.targetInventory,
-    gainedMeat,
-  };
 }
 
 function describeHuntOutlook(

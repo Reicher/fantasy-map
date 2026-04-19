@@ -69,6 +69,10 @@ export interface AppRefs {
   playJourneyEventLoot: HTMLElement | null;
   playJourneyEventLootList: HTMLElement | null;
   playJourneyEventTakeAllButton: HTMLButtonElement | null;
+  playJourneyEncounterActions: HTMLElement | null;
+  playJourneyEncounterGreetButton: HTMLButtonElement | null;
+  playJourneyEncounterAttackButton: HTMLButtonElement | null;
+  playJourneyEncounterFleeButton: HTMLButtonElement | null;
   playSettlementDebug: HTMLElement | null;
   playSettlementDebugBody: HTMLElement | null;
   playRestDialog: HTMLElement | null;

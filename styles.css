@@ -1090,6 +1090,35 @@ canvas[data-dragging="true"] {
   line-height: 1.25;
 }
 
+.play-journey-event-dialog--encounter .play-journey-event-body {
+  font-size: 0.9rem;
+  line-height: 1.3;
+}
+
+.play-journey-encounter-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.play-journey-encounter-action {
+  min-height: 34px;
+  min-width: 78px;
+  padding: 5px 11px;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-color: var(--play-ui-border);
+  background: var(--play-ui-bg-soft);
+  color: var(--play-ui-text);
+}
+
+.play-journey-encounter-action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .play-journey-event-loot {
   display: grid;
   gap: 8px;

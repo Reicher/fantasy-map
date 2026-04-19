@@ -15,7 +15,8 @@ export type TravelPauseReason =
   | "manual"
   | "exhausted"
   | "resting"
-  | "hunting";
+  | "hunting"
+  | "encounter";
 
 export interface PlayPathPoint {
   x: number;
@@ -127,6 +128,7 @@ interface PlayJourneyEventBase {
   nodeId?: number | null;
   message?: string;
   requiresAcknowledgement?: boolean;
+  encounterId?: string;
 }
 
 export interface PlayJourneyEventAbandonedLoot extends PlayJourneyEventBase {
@@ -149,11 +151,63 @@ export interface PlayJourneyEventAgentGreeting extends PlayJourneyEventBase {
   agentId?: string;
 }
 
+export interface PlayJourneyEventEncounterTurn extends PlayJourneyEventBase {
+  type: "encounter-turn";
+  canAttack?: boolean;
+}
+
+export interface PlayJourneyEventEncounterLoot extends PlayJourneyEventBase {
+  type: "encounter-loot";
+  inventory?: InventoryState | null;
+}
+
 export type PlayJourneyEvent =
   | PlayJourneyEventAbandonedLoot
   | PlayJourneyEventAbandonedEmpty
   | PlayJourneyEventSignpostDirections
-  | PlayJourneyEventAgentGreeting;
+  | PlayJourneyEventAgentGreeting
+  | PlayJourneyEventEncounterTurn
+  | PlayJourneyEventEncounterLoot;
+
+export type PlayEncounterType = "rabbit" | "wolf";
+
+export type PlayEncounterDisposition = "neutral" | "hostile" | "fleeing";
+
+export type PlayEncounterTurn = "player" | "opponent";
+
+export type PlayEncounterPhase = "approaching" | "active";
+
+export type PlayEncounterOutcome =
+  | "player-fled"
+  | "opponent-fled"
+  | "player-died"
+  | "opponent-died";
+
+export interface PlayEncounterState {
+  id: string;
+  type: PlayEncounterType;
+  disposition: PlayEncounterDisposition;
+  turn: PlayEncounterTurn;
+  entryStyle?: "travel-static" | "slide-right";
+  phase?: PlayEncounterPhase;
+  targetTravelProgress?: number;
+  round: number;
+  rollIndex?: number;
+  opponentInitiative: number;
+  opponentDamageMin: number;
+  opponentDamageMax: number;
+  opponentMaxHealth: number;
+  opponentHealth: number;
+  opponentMaxStamina: number;
+  opponentStamina: number;
+}
+
+export interface PlayEncounterResolution {
+  encounterId?: string;
+  type?: PlayEncounterType;
+  outcome?: PlayEncounterOutcome;
+  targetTravelProgress?: number;
+}
 
 export interface PlayPosition {
   x: number;
@@ -200,6 +254,8 @@ export interface PlayState {
   hunt?: PlayHuntState | null;
   pendingRestChoice?: boolean;
   pendingJourneyEvent?: PlayJourneyEvent | null;
+  encounter?: PlayEncounterState | null;
+  latestEncounterResolution?: PlayEncounterResolution | null;
   abandonedLootByNodeId?: Record<string, InventoryState | null>;
   currentNodeId?: number | null;
   lastRegionId?: number | null;

@@ -271,6 +271,33 @@ if (refs.playActionCancelButton) {
   });
 }
 
+if (refs.playJourneyEncounterGreetButton) {
+  refs.playJourneyEncounterGreetButton.addEventListener("click", () => {
+    if (state.currentMode !== "play" || !state.playState) {
+      return;
+    }
+    playSession.encounterGreet();
+  });
+}
+
+if (refs.playJourneyEncounterAttackButton) {
+  refs.playJourneyEncounterAttackButton.addEventListener("click", () => {
+    if (state.currentMode !== "play" || !state.playState) {
+      return;
+    }
+    playSession.encounterAttack();
+  });
+}
+
+if (refs.playJourneyEncounterFleeButton) {
+  refs.playJourneyEncounterFleeButton.addEventListener("click", () => {
+    if (state.currentMode !== "play" || !state.playState) {
+      return;
+    }
+    playSession.encounterFlee();
+  });
+}
+
 if (refs.playActionResultOkButton) {
   refs.playActionResultOkButton.addEventListener("click", () => {
     if (state.currentMode !== "play" || !state.playState) {

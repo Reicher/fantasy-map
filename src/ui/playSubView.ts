@@ -21,6 +21,8 @@ import type { World } from "@fardvag/shared/types/world";
 interface JourneyPresentationSnapshot {
   viewW?: number;
   destMarkerCanvasX?: number | null;
+  encounterId?: string | null;
+  encounterIntroComplete?: boolean;
   agentHits?: Array<{
     x?: number;
     y?: number;
@@ -60,6 +62,8 @@ export function createPlaySubViewController({
   let lastJourneyEventDialogMessage = null;
   let lastJourneyLootPanelVisible = null;
   let lastJourneyLootTakeAllEnabled = null;
+  let lastJourneyEncounterActionsVisible = null;
+  let lastJourneyEncounterCanAttack = null;
   let lastSettlementDebugVisible = null;
   let lastSettlementDebugSignature = null;
   let lastRestDialogVisible = null;
@@ -151,6 +155,8 @@ export function createPlaySubViewController({
     lastJourneyEventDialogMessage = null;
     lastJourneyLootPanelVisible = null;
     lastJourneyLootTakeAllEnabled = null;
+    lastJourneyEncounterActionsVisible = null;
+    lastJourneyEncounterCanAttack = null;
     lastSettlementDebugVisible = null;
     lastSettlementDebugSignature = null;
     lastRestDialogVisible = null;
@@ -292,7 +298,7 @@ export function createPlaySubViewController({
         ? journeyScene.getPresentationSnapshot()
         : {};
     maybeTriggerArrivalCue(world, playState, presentation);
-    syncJourneyEventDialog(playState, isJourney);
+    syncJourneyEventDialog(playState, isJourney, presentation);
     syncSettlementDebugPanel(world, playState, isJourney);
     profiler.setSnapshot(journeyScene.getDebugSnapshot());
   }
@@ -418,7 +424,11 @@ export function createPlaySubViewController({
     refs.playArrivalCueText.textContent = "";
   }
 
-  function syncJourneyEventDialog(playState, isJourney) {
+  function syncJourneyEventDialog(
+    playState,
+    isJourney,
+    presentation: JourneyPresentationSnapshot = {},
+  ) {
     const dialog = refs.playJourneyEventDialog;
     const body = refs.playJourneyEventBody;
     if (!dialog || !body) {
@@ -426,7 +436,15 @@ export function createPlaySubViewController({
     }
 
     const event = playState?.pendingJourneyEvent ?? null;
-    const shouldShow = isJourney && Boolean(event);
+    const isEncounterTurn = event?.type === "encounter-turn";
+    const encounterId = String(event?.encounterId ?? "");
+    const introReady =
+      !isEncounterTurn ||
+      (encounterId.length <= 0
+        ? true
+        : String(presentation?.encounterId ?? "") === encounterId &&
+          Boolean(presentation?.encounterIntroComplete));
+    const shouldShow = isJourney && Boolean(event) && introReady;
     if (lastJourneyEventDialogVisible !== shouldShow) {
       setElementVisible(dialog, shouldShow, "grid");
       lastJourneyEventDialogVisible = shouldShow;
@@ -435,6 +453,9 @@ export function createPlaySubViewController({
     if (!shouldShow) {
       lastJourneyEventDialogMessage = null;
       syncJourneyLootPanel(false, null);
+      syncJourneyEncounterActions(false, false);
+      dialog.classList.remove("play-journey-event-dialog--loot");
+      dialog.classList.remove("play-journey-event-dialog--encounter");
       clearAutoClearJourneyEventTimer();
       return;
     }
@@ -447,17 +468,22 @@ export function createPlaySubViewController({
 
     const lootInventory = getLootInventory(playState);
     const showLootPanel = Boolean(lootInventory);
+    const showEncounterActions = event?.type === "encounter-turn";
+    const canAttack =
+      showEncounterActions &&
+      Boolean(event?.canAttack) &&
+      getInventoryTypeCount(playState?.inventory, "bullets") > 0;
+    dialog.classList.toggle("play-journey-event-dialog--loot", showLootPanel);
+    dialog.classList.toggle(
+      "play-journey-event-dialog--encounter",
+      showEncounterActions,
+    );
     syncJourneyLootPanel(showLootPanel, lootInventory);
+    syncJourneyEncounterActions(showEncounterActions, canAttack);
     scheduleAutoClearJourneyEvent(event);
   }
 
   function syncJourneyLootPanel(showLootPanel, lootInventory) {
-    if (refs.playJourneyEventDialog) {
-      refs.playJourneyEventDialog.classList.toggle(
-        "play-journey-event-dialog--loot",
-        showLootPanel,
-      );
-    }
     if (lastJourneyLootPanelVisible !== showLootPanel) {
       setElementVisible(refs.playJourneyEventLoot, showLootPanel, "grid");
       lastJourneyLootPanelVisible = showLootPanel;
@@ -478,17 +504,40 @@ export function createPlaySubViewController({
     }
   }
 
+  function syncJourneyEncounterActions(showActions, canAttack) {
+    if (lastJourneyEncounterActionsVisible !== showActions) {
+      setElementVisible(refs.playJourneyEncounterActions, showActions, "flex");
+      lastJourneyEncounterActionsVisible = showActions;
+    }
+    if (!showActions) {
+      lastJourneyEncounterCanAttack = null;
+      return;
+    }
+    if (lastJourneyEncounterCanAttack !== canAttack) {
+      if (refs.playJourneyEncounterAttackButton) {
+        refs.playJourneyEncounterAttackButton.disabled = !canAttack;
+      }
+      lastJourneyEncounterCanAttack = canAttack;
+    }
+  }
+
   function hideJourneyEventDialog() {
     if (!refs.playJourneyEventDialog) {
       return;
     }
     setElementVisible(refs.playJourneyEventDialog, false, "grid");
     refs.playJourneyEventDialog.classList.remove("play-journey-event-dialog--loot");
+    refs.playJourneyEventDialog.classList.remove(
+      "play-journey-event-dialog--encounter",
+    );
     setElementVisible(refs.playJourneyEventLoot, false, "grid");
+    setElementVisible(refs.playJourneyEncounterActions, false, "flex");
     lastJourneyEventDialogVisible = false;
     lastJourneyEventDialogMessage = null;
     lastJourneyLootPanelVisible = false;
     lastJourneyLootTakeAllEnabled = null;
+    lastJourneyEncounterActionsVisible = false;
+    lastJourneyEncounterCanAttack = null;
     clearAutoClearJourneyEventTimer();
   }
 
@@ -923,7 +972,7 @@ export function createPlaySubViewController({
         agentId: String(bestHit.agentId ?? ""),
       },
     };
-    syncJourneyEventDialog(state.playState, true);
+    syncJourneyEventDialog(state.playState, true, {});
   }
 
   function canDropAcrossInventories(
@@ -1020,7 +1069,13 @@ export function createPlaySubViewController({
   }
 
   function scheduleAutoClearJourneyEvent(event) {
-    if (!event || event.type === "abandoned-loot" || event.requiresAcknowledgement) {
+    if (
+      !event ||
+      event.type === "abandoned-loot" ||
+      event.type === "encounter-loot" ||
+      event.type === "encounter-turn" ||
+      event.requiresAcknowledgement
+    ) {
       clearAutoClearJourneyEventTimer();
       return;
     }
@@ -1140,6 +1195,10 @@ function syncTravelToggleButton(playState, playActionMenuOpen, button, lastSigna
   const isPaused = Boolean(playState?.isTravelPaused);
   const isResting = Boolean(playState?.rest);
   const isHunting = Boolean(playState?.hunt);
+  const isEncounterActive =
+    Boolean(playState?.encounter) ||
+    playState?.pendingJourneyEvent?.type === "encounter-turn" ||
+    playState?.pendingJourneyEvent?.type === "encounter-loot";
   const inNode = !hasTravel && playState?.currentNodeId != null;
   const canResume =
     hasTravel &&
@@ -1152,7 +1211,12 @@ function syncTravelToggleButton(playState, playActionMenuOpen, button, lastSigna
   let description = "Öppna eller stäng handlingar i noder.";
   let isActive = Boolean(playActionMenuOpen && inNode);
 
-  if (isResting) {
+  if (isEncounterActive) {
+    isDisabled = true;
+    label = "Möte";
+    description = "Hantera mötet i dialogen för att fortsätta färden.";
+    isActive = true;
+  } else if (isResting) {
     isDisabled = true;
     label = "Vilar";
     description = "Vilan pågår och kan avbrytas i dialogen.";
@@ -1842,6 +1906,7 @@ function buildJourneyEventKey(event) {
     String(event.type ?? ""),
     String(event.nodeId ?? ""),
     String(event.agentId ?? ""),
+    String(event.encounterId ?? ""),
     String(event.message ?? ""),
   ].join("|");
 }
@@ -1956,7 +2021,9 @@ function normalizePositiveInteger(value) {
 
 function getLootEvent(playState) {
   const event = playState?.pendingJourneyEvent;
-  return event?.type === "abandoned-loot" ? event : null;
+  return event?.type === "abandoned-loot" || event?.type === "encounter-loot"
+    ? event
+    : null;
 }
 
 function getLootInventory(playState) {

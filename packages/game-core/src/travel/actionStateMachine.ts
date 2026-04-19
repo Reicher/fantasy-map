@@ -1,6 +1,7 @@
 import { toggleTravelPause } from "./pause";
 import { beginHunt, cancelHunt } from "./hunt";
 import { beginRest, cancelRest } from "./rest";
+import { resolveEncounterPlayerAction } from "./encounter";
 import {
   getPlayActionMode,
   withPlayActionMode,
@@ -16,7 +17,10 @@ export type TravelActionEventType =
   | "START_HUNT"
   | "CANCEL_TIMED_ACTION"
   | "DISMISS_MANUAL_TRAVEL_PAUSE"
-  | "DISMISS_HUNT_RESULT";
+  | "DISMISS_HUNT_RESULT"
+  | "ENCOUNTER_GREET"
+  | "ENCOUNTER_ATTACK"
+  | "ENCOUNTER_FLEE";
 
 export type TravelActionEvent =
   | {
@@ -38,6 +42,15 @@ export type TravelActionEvent =
     }
   | {
       type: "DISMISS_HUNT_RESULT";
+    }
+  | {
+      type: "ENCOUNTER_GREET";
+    }
+  | {
+      type: "ENCOUNTER_ATTACK";
+    }
+  | {
+      type: "ENCOUNTER_FLEE";
     };
 
 interface TravelActionContext {
@@ -49,7 +62,7 @@ const ALLOWED_EVENT_TYPES_BY_STATE: Record<
   readonly TravelActionEventType[]
 > = {
   "game-over": [],
-  event: [],
+  event: ["ENCOUNTER_GREET", "ENCOUNTER_ATTACK", "ENCOUNTER_FLEE"],
   idle: ["START_REST", "START_HUNT", "DISMISS_HUNT_RESULT"],
   "travel-active": ["TOGGLE_TRAVEL_PAUSE", "DISMISS_HUNT_RESULT"],
   "travel-paused": [
@@ -137,6 +150,21 @@ export function reduceTravelActionState(
         ...normalizedPlayState,
         latestHuntFeedback: null,
       });
+
+    case "ENCOUNTER_GREET":
+      return withPlayActionMode(
+        resolveEncounterPlayerAction(normalizedPlayState, "greet"),
+      );
+
+    case "ENCOUNTER_ATTACK":
+      return withPlayActionMode(
+        resolveEncounterPlayerAction(normalizedPlayState, "attack"),
+      );
+
+    case "ENCOUNTER_FLEE":
+      return withPlayActionMode(
+        resolveEncounterPlayerAction(normalizedPlayState, "flee"),
+      );
 
     default:
       return normalizedPlayState;

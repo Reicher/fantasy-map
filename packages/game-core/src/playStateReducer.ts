@@ -11,6 +11,11 @@ import {
   type TravelActionEvent,
 } from "./travel/actionStateMachine";
 import {
+  maybeTriggerHuntRabbitEncounter,
+  maybeTriggerTravelEncounter,
+  maybeTriggerWildernessHostileEncounter,
+} from "./travel/encounter";
+import {
   getPlayActionMode,
   isWorldTimeAdvancingActionMode,
   withPlayActionMode,
@@ -183,17 +188,35 @@ function advancePlayWorldHours(
     }, { force: true });
 
     nextState = withPlayActionMode(applyHourlyHunger(nextState, 1), { force: true });
+    if (activity.isHunting) {
+      nextState = withPlayActionMode(
+        maybeTriggerHuntRabbitEncounter(nextState, world),
+        { force: true },
+      );
+    }
+    if (activity.isResting || activity.isHunting) {
+      nextState = withPlayActionMode(
+        maybeTriggerWildernessHostileEncounter(nextState, world),
+        { force: true },
+      );
+    }
     if (activity.isTraveling) {
       nextState = withPlayActionMode(applyHourlyTravelStamina(nextState, 1), { force: true });
     }
-    if (activity.isResting) {
+    if (activity.isResting && nextState?.rest) {
       nextState = withPlayActionMode(advanceRest(nextState, 1), { force: true });
     }
-    if (activity.isHunting) {
+    if (activity.isHunting && nextState?.hunt) {
       nextState = withPlayActionMode(advanceHunt(nextState, world, 1), { force: true });
     }
     nextState = withPlayActionMode(finalizeHourlySurvival(nextState), { force: true });
     nextState = withPlayActionMode(advanceSettlementAgentsOneHour(nextState, world), { force: true });
+    if (activity.isTraveling) {
+      nextState = withPlayActionMode(
+        maybeTriggerTravelEncounter(nextState, world),
+        { force: true },
+      );
+    }
 
     processedHours += 1;
     if (nextState?.gameOver) {

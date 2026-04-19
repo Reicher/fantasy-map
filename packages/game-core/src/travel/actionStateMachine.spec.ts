@@ -191,4 +191,40 @@ describe("travel action state machine", () => {
     expect(next).not.toBe(withResult);
     expect(next?.latestHuntFeedback).toBeNull();
   });
+
+  it("handles encounter events while in event mode", () => {
+    const withEncounter = createBasePlayState({
+      pendingJourneyEvent: {
+        type: "encounter-turn",
+        encounterId: "enc-1",
+        message: "Test",
+        requiresAcknowledgement: true,
+        canAttack: true,
+      },
+      encounter: {
+        id: "enc-1",
+        type: "rabbit",
+        disposition: "neutral",
+        turn: "player",
+        round: 1,
+        rollIndex: 0,
+        opponentInitiative: 4,
+        opponentDamageMin: 1,
+        opponentDamageMax: 2,
+        opponentMaxHealth: 4,
+        opponentHealth: 4,
+        opponentMaxStamina: 10,
+        opponentStamina: 10,
+      },
+      travel: { routeType: "road", progress: 1, totalLength: 4 },
+      isTravelPaused: true,
+      travelPauseReason: "encounter",
+    });
+    const next = reduceTravelActionState(withEncounter, {
+      type: "ENCOUNTER_GREET",
+    });
+    expect(next).not.toBe(withEncounter);
+    expect(next?.pendingJourneyEvent?.type).toBe("encounter-turn");
+    expect(next?.encounter?.turn).toBe("player");
+  });
 });

@@ -3,6 +3,7 @@ import {
 } from "./inventory";
 import { createGeneratedAgentProfile } from "./agentFactory";
 import { createInitialSettlementStates } from "./settlementAgents";
+import { maybeActivateEncounterFromTravelProgress } from "./travel/encounter";
 import { dedupePoints } from "@fardvag/shared/utils";
 import { regionAtCell, regionAtPosition } from "./playQueries";
 import {
@@ -101,6 +102,8 @@ export function createPlayState(world): PlayState {
     pressedNodeId: null,
     travel: null,
     pendingJourneyEvent: null,
+    encounter: null,
+    latestEncounterResolution: null,
     abandonedLootByNodeId: {},
     inventory: playerProfile.inventory,
     hungerElapsedHours: playerProfile.hungerElapsedHours,
@@ -141,7 +144,8 @@ export function beginTravel(playState, targetNodeId, world = null) {
     playState.travel ||
     playState.gameOver ||
     playState.rest ||
-    playState.hunt
+    playState.hunt ||
+    playState.encounter
   ) {
     return withPlayActionMode(playState);
   }
@@ -186,6 +190,8 @@ export function beginTravel(playState, targetNodeId, world = null) {
     hoveredNodeId: null,
     pressedNodeId: null,
     pendingJourneyEvent: null,
+    encounter: null,
+    latestEncounterResolution: null,
     isTravelPaused: false,
     travelPauseReason: null,
     pendingRestChoice: false,
@@ -206,13 +212,25 @@ export function advanceTravel(playState, world, deltaMs) {
     return withPlayActionMode(playState);
   }
 
-  const nextProgress = Math.min(
+  let nextProgress = Math.min(
     playState.travel.totalLength,
     playState.travel.progress + (deltaMs / 1000) * TRAVEL_SPEED,
   );
   const currentProgress = Number.isFinite(playState.travel.progress)
     ? playState.travel.progress
     : 0;
+  if (
+    playState.encounter?.phase === "approaching" &&
+    Number.isFinite(playState.encounter?.targetTravelProgress)
+  ) {
+    nextProgress = Math.min(
+      nextProgress,
+      Math.max(
+        currentProgress,
+        Number(playState.encounter.targetTravelProgress),
+      ),
+    );
+  }
   const distanceDelta = Math.max(0, nextProgress - currentProgress);
   const normalizedRunStats = normalizeRunStats(playState.runStats);
   const runStats =
@@ -288,7 +306,7 @@ export function advanceTravel(playState, world, deltaMs) {
     });
   }
 
-  return withPlayActionMode({
+  const progressedState = withPlayActionMode({
     ...playState,
     position: sample.point,
     lastRegionId,
@@ -302,6 +320,13 @@ export function advanceTravel(playState, world, deltaMs) {
       progress: nextProgress,
     },
   });
+  if (playState.encounter?.phase === "approaching") {
+    return withPlayActionMode(
+      maybeActivateEncounterFromTravelProgress(progressedState),
+      { force: true },
+    );
+  }
+  return progressedState;
 }
 
 export function updateAbandonedLootInventory(playState, nextLootInventory) {
@@ -309,9 +334,33 @@ export function updateAbandonedLootInventory(playState, nextLootInventory) {
     return withPlayActionMode(playState);
   }
 
-  const lootEvent = getPendingAbandonedLootEvent(playState);
+  const lootEvent = getPendingLootEvent(playState);
   if (!lootEvent) {
     return withPlayActionMode(playState);
+  }
+
+  if (lootEvent.type === "encounter-loot") {
+    if (!nextLootInventory || isInventoryEmpty(nextLootInventory)) {
+      const shouldResumeTravel = Boolean(
+        playState.travel &&
+        !playState.rest &&
+        !playState.hunt &&
+        playState.travelPauseReason === "encounter",
+      );
+      return withPlayActionMode({
+        ...playState,
+        pendingJourneyEvent: null,
+        isTravelPaused: shouldResumeTravel ? false : playState.isTravelPaused,
+        travelPauseReason: shouldResumeTravel ? null : playState.travelPauseReason,
+      });
+    }
+    return withPlayActionMode({
+      ...playState,
+      pendingJourneyEvent: {
+        ...lootEvent,
+        inventory: cloneInventorySnapshot(nextLootInventory),
+      },
+    });
   }
 
   const nextAbandonedLootByNodeId = setAbandonedLootInventoryForNode(
@@ -326,7 +375,6 @@ export function updateAbandonedLootInventory(playState, nextLootInventory) {
       abandonedLootByNodeId: nextAbandonedLootByNodeId,
     });
   }
-
   return withPlayActionMode({
     ...playState,
     pendingJourneyEvent: {
@@ -602,9 +650,11 @@ function cloneInventorySnapshot(inventory) {
   };
 }
 
-function getPendingAbandonedLootEvent(playState) {
+function getPendingLootEvent(playState) {
   const event = playState?.pendingJourneyEvent;
-  return event?.type === "abandoned-loot" ? event : null;
+  return event?.type === "abandoned-loot" || event?.type === "encounter-loot"
+    ? event
+    : null;
 }
 
 function createTravel(

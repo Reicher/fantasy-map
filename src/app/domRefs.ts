@@ -74,6 +74,18 @@ export function createAppRefs(): AppRefs {
     playJourneyEventTakeAllButton: queryOptional<HTMLButtonElement>(
       "#play-journey-event-take-all",
     ),
+    playJourneyEncounterActions: queryOptional<HTMLElement>(
+      "#play-journey-encounter-actions",
+    ),
+    playJourneyEncounterGreetButton: queryOptional<HTMLButtonElement>(
+      "#play-journey-encounter-greet",
+    ),
+    playJourneyEncounterAttackButton: queryOptional<HTMLButtonElement>(
+      "#play-journey-encounter-attack",
+    ),
+    playJourneyEncounterFleeButton: queryOptional<HTMLButtonElement>(
+      "#play-journey-encounter-flee",
+    ),
     playSettlementDebug: queryOptional<HTMLElement>("#play-settlement-debug"),
     playSettlementDebugBody: queryOptional<HTMLElement>("#play-settlement-debug-body"),
     playRestDialog: queryOptional<HTMLElement>("#play-rest-dialog"),

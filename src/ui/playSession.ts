@@ -79,6 +79,9 @@ export function createPlaySession({ refs, state, syncModeUi }: PlaySessionDeps) 
     cancelTimedAction,
     dismissActionResult,
     dismissActionDialog,
+    encounterGreet,
+    encounterAttack,
+    encounterFlee,
     enterPlayMode,
     stopAnimation: playController.stopAnimation,
     resetJourney: journeyScene.reset,
@@ -236,6 +239,18 @@ export function createPlaySession({ refs, state, syncModeUi }: PlaySessionDeps) 
 
   function dismissActionResult() {
     return dispatchTravelAction({ type: "DISMISS_HUNT_RESULT" });
+  }
+
+  function encounterGreet() {
+    return dispatchTravelAction({ type: "ENCOUNTER_GREET" });
+  }
+
+  function encounterAttack() {
+    return dispatchTravelAction({ type: "ENCOUNTER_ATTACK" });
+  }
+
+  function encounterFlee() {
+    return dispatchTravelAction({ type: "ENCOUNTER_FLEE" });
   }
 
   async function enterPlayMode() {

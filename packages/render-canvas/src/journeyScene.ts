@@ -55,6 +55,22 @@ const PLAYER_FEET_Y_FRAC = 0.83;
 const IDLE_CLOUD_DRIFT_HOURS_PER_REAL_SECOND = 0.035;
 const CAMPFIRE_FLICKER_FRAME_MS = 140;
 const CAMPFIRE_FLICKER_SCALE_BY_FRAME = [0.84, 1.08, 0.92];
+const ENCOUNTER_SLIDE_ENTRY_DURATION_MS = 620;
+const ENCOUNTER_EXIT_DURATION_MS = 540;
+const ENCOUNTER_CENTER_X_FRAC = 0.52;
+const ENCOUNTER_FEET_Y_FRAC = 0.79;
+const ENCOUNTER_VISUAL_HEIGHT_BY_TYPE = {
+  rabbit: 44,
+  wolf: 84,
+};
+const ENCOUNTER_SPRITE_BY_TYPE = {
+  rabbit: createJourneySprite(
+    new URL("../../../src/assets/journey/kanin.png", import.meta.url).href,
+  ),
+  wolf: createJourneySprite(
+    new URL("../../../src/assets/journey/wolf.png", import.meta.url).href,
+  ),
+};
 
 /**
  * @param {{ canvas: HTMLCanvasElement, getWorld?: () => object | null }} options
@@ -78,7 +94,19 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       viewH: 0,
       startMarkerCanvasX: null,
       destMarkerCanvasX: null,
+      encounterId: null,
+      encounterIntroComplete: false,
       agentHits: [],
+    },
+    encounterVisual: {
+      activeIntroId: null,
+      introStartedAtMs: null,
+      introComplete: false,
+      activeExitId: null,
+      activeExitType: null,
+      activeExitDirection: null,
+      exitStartedAtMs: null,
+      handledExitIds: new Set(),
     },
     nightVeilCanvas: null,
     nightVeilCtx: null,
@@ -201,7 +229,19 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       viewH: 0,
       startMarkerCanvasX: null,
       destMarkerCanvasX: null,
+      encounterId: null,
+      encounterIntroComplete: false,
       agentHits: [],
+    };
+    state.encounterVisual = {
+      activeIntroId: null,
+      introStartedAtMs: null,
+      introComplete: false,
+      activeExitId: null,
+      activeExitType: null,
+      activeExitDirection: null,
+      exitStartedAtMs: null,
+      handledExitIds: new Set(),
     };
     if (ctx) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -299,6 +339,8 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
         viewH,
         startMarkerCanvasX: null,
         destMarkerCanvasX: null,
+        encounterId: null,
+        encounterIntroComplete: false,
         agentHits: [],
       };
       return;
@@ -361,11 +403,25 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       nowMs,
     });
 
+    const encounterSnapshot = drawEncounterVisual(
+      ctx,
+      state,
+      playState,
+      strip,
+      scrollX,
+      playerX,
+      viewW,
+      viewH,
+      nowMs,
+    );
+
     state.presentationSnapshot = {
       viewW,
       viewH,
       startMarkerCanvasX: markerSnapshot.startMarkerCanvasX,
       destMarkerCanvasX: markerSnapshot.destMarkerCanvasX,
+      encounterId: encounterSnapshot.encounterId,
+      encounterIntroComplete: encounterSnapshot.encounterIntroComplete,
       agentHits: markerSnapshot.agentHits ?? [],
     };
 
@@ -405,6 +461,308 @@ function drawNightVeilWithCampfireCutout(
   drawNightVeil(overlay, viewW, viewH, skyState);
   carveCampfireVisibilityInVeil(overlay, anchors, skyState);
   ctx.drawImage(sceneState.nightVeilCanvas, 0, 0);
+}
+
+function drawEncounterVisual(
+  ctx,
+  sceneState,
+  playState,
+  strip,
+  scrollX,
+  playerX,
+  viewW,
+  viewH,
+  nowMs = null,
+) {
+  const encounterVisual = sceneState.encounterVisual ?? {
+    activeIntroId: null,
+    introStartedAtMs: null,
+    introComplete: false,
+    activeExitId: null,
+    activeExitType: null,
+    activeExitDirection: null,
+    exitStartedAtMs: null,
+    handledExitIds: new Set(),
+  };
+  sceneState.encounterVisual = encounterVisual;
+  if (!(encounterVisual.handledExitIds instanceof Set)) {
+    encounterVisual.handledExitIds = new Set();
+  }
+
+  const resolvedNowMs = Number.isFinite(nowMs) ? nowMs : Date.now();
+  const activeEncounter = playState?.encounter ?? null;
+  const activeEncounterId =
+    activeEncounter && typeof activeEncounter.id === "string"
+      ? activeEncounter.id
+      : null;
+  const activeEncounterType = resolveEncounterType(activeEncounter?.type);
+  const activeEncounterEntryStyle = String(activeEncounter?.entryStyle ?? "travel-static");
+  const shouldSlideInFromRight = activeEncounterEntryStyle === "slide-right";
+
+  if (activeEncounterId !== encounterVisual.activeIntroId) {
+    encounterVisual.activeIntroId = activeEncounterId;
+    encounterVisual.introStartedAtMs = activeEncounterId ? resolvedNowMs : null;
+    encounterVisual.introComplete = !shouldSlideInFromRight;
+  } else if (!activeEncounterId) {
+    encounterVisual.introStartedAtMs = null;
+    encounterVisual.introComplete = false;
+  } else if (!shouldSlideInFromRight) {
+    encounterVisual.introComplete = true;
+  } else if (!encounterVisual.introComplete && Number.isFinite(encounterVisual.introStartedAtMs)) {
+    const elapsedMs = Math.max(0, resolvedNowMs - encounterVisual.introStartedAtMs);
+    encounterVisual.introComplete = elapsedMs >= ENCOUNTER_SLIDE_ENTRY_DURATION_MS;
+  }
+
+  const resolution = playState?.latestEncounterResolution ?? null;
+  const resolutionId =
+    resolution && typeof resolution.encounterId === "string"
+      ? resolution.encounterId
+      : null;
+  const resolutionType = resolveEncounterType(resolution?.type);
+  const resolutionOutcome = String(resolution?.outcome ?? "");
+
+  let snapshotEncounterId = null;
+  let snapshotIntroComplete = false;
+
+  if (activeEncounterId && activeEncounterType) {
+    if (encounterVisual.activeExitId) {
+      encounterVisual.activeExitId = null;
+      encounterVisual.activeExitType = null;
+      encounterVisual.activeExitDirection = null;
+      encounterVisual.exitStartedAtMs = null;
+    }
+    const visualHeight =
+      ENCOUNTER_VISUAL_HEIGHT_BY_TYPE[activeEncounterType] ??
+      ENCOUNTER_VISUAL_HEIGHT_BY_TYPE.rabbit;
+    const visualWidth = Math.max(40, visualHeight * 0.96);
+    const feetY = Math.round(viewH * ENCOUNTER_FEET_Y_FRAC);
+    if (shouldSlideInFromRight) {
+      const targetCenterX = Math.round(viewW * ENCOUNTER_CENTER_X_FRAC);
+      let centerX = targetCenterX;
+      if (!encounterVisual.introComplete && Number.isFinite(encounterVisual.introStartedAtMs)) {
+        const elapsedMs = Math.max(0, resolvedNowMs - encounterVisual.introStartedAtMs);
+        const introT = clamp01(elapsedMs / ENCOUNTER_SLIDE_ENTRY_DURATION_MS);
+        centerX = Math.round(lerp(viewW + visualWidth * 0.9, targetCenterX, introT));
+      }
+      drawEncounterSprite(
+        ctx,
+        activeEncounterType,
+        centerX,
+        feetY,
+        visualWidth,
+        visualHeight,
+      );
+    } else {
+      const encounterTravelProgress = Number.isFinite(
+        activeEncounter?.targetTravelProgress,
+      )
+        ? Number(activeEncounter.targetTravelProgress)
+        : Number(playState?.travel?.progress ?? 0);
+      drawEncounterSpriteAtTravelProgress(ctx, {
+        encounterType: activeEncounterType,
+        travelProgress: encounterTravelProgress,
+        strip,
+        scrollX,
+        playerX,
+        viewW,
+        feetY,
+        visualWidth,
+        visualHeight,
+      });
+    }
+    snapshotEncounterId = activeEncounterId;
+    snapshotIntroComplete = shouldSlideInFromRight
+      ? Boolean(encounterVisual.introComplete)
+      : activeEncounter?.phase !== "approaching";
+  } else {
+    if (
+      resolutionType &&
+      resolutionOutcome === "player-fled" &&
+      playState?.travel
+    ) {
+      const visualHeight =
+        ENCOUNTER_VISUAL_HEIGHT_BY_TYPE[resolutionType] ??
+        ENCOUNTER_VISUAL_HEIGHT_BY_TYPE.rabbit;
+      const visualWidth = Math.max(40, visualHeight * 0.96);
+      const feetY = Math.round(viewH * ENCOUNTER_FEET_Y_FRAC);
+      const travelProgress = Number.isFinite(resolution?.targetTravelProgress)
+        ? Number(resolution.targetTravelProgress)
+        : Number(playState.travel.progress ?? 0);
+      drawEncounterSpriteAtTravelProgress(ctx, {
+        encounterType: resolutionType,
+        travelProgress,
+        strip,
+        scrollX,
+        playerX,
+        viewW,
+        feetY,
+        visualWidth,
+        visualHeight,
+      });
+    }
+
+    const canAnimateExit =
+      resolutionId &&
+      resolutionType &&
+      resolutionOutcome === "opponent-fled" &&
+      !encounterVisual.handledExitIds.has(resolutionId) &&
+      resolutionId !== encounterVisual.activeExitId;
+    if (canAnimateExit) {
+      encounterVisual.activeExitId = resolutionId;
+      encounterVisual.activeExitType = resolutionType;
+      encounterVisual.activeExitDirection = "right";
+      encounterVisual.exitStartedAtMs = resolvedNowMs;
+    }
+  }
+
+  if (
+    encounterVisual.activeExitId &&
+    encounterVisual.activeExitType &&
+    encounterVisual.activeExitDirection &&
+    Number.isFinite(encounterVisual.exitStartedAtMs)
+  ) {
+    const elapsedMs = Math.max(0, resolvedNowMs - encounterVisual.exitStartedAtMs);
+    const exitT = clamp01(elapsedMs / ENCOUNTER_EXIT_DURATION_MS);
+    const visualHeight =
+      ENCOUNTER_VISUAL_HEIGHT_BY_TYPE[encounterVisual.activeExitType] ??
+      ENCOUNTER_VISUAL_HEIGHT_BY_TYPE.rabbit;
+    const visualWidth = Math.max(40, visualHeight * 0.96);
+    const centerStartX = Math.round(viewW * ENCOUNTER_CENTER_X_FRAC);
+    const centerEndX =
+      encounterVisual.activeExitDirection === "left"
+        ? -visualWidth * 0.8
+        : viewW + visualWidth * 0.8;
+    const centerX = Math.round(lerp(centerStartX, centerEndX, exitT));
+    const feetY = Math.round(viewH * ENCOUNTER_FEET_Y_FRAC);
+    drawEncounterSprite(
+      ctx,
+      encounterVisual.activeExitType,
+      centerX,
+      feetY,
+      visualWidth,
+      visualHeight,
+    );
+    if (exitT >= 1) {
+      encounterVisual.handledExitIds.add(encounterVisual.activeExitId);
+      if (encounterVisual.handledExitIds.size > 48) {
+        const oldest = encounterVisual.handledExitIds.values().next().value;
+        if (oldest) {
+          encounterVisual.handledExitIds.delete(oldest);
+        }
+      }
+      encounterVisual.activeExitId = null;
+      encounterVisual.activeExitType = null;
+      encounterVisual.activeExitDirection = null;
+      encounterVisual.exitStartedAtMs = null;
+    }
+  }
+
+  return {
+    encounterId: snapshotEncounterId,
+    encounterIntroComplete: snapshotIntroComplete,
+  };
+}
+
+function drawEncounterSpriteAtTravelProgress(
+  ctx,
+  {
+    encounterType,
+    travelProgress,
+    strip,
+    scrollX,
+    playerX,
+    viewW,
+    feetY,
+    visualWidth,
+    visualHeight,
+  },
+) {
+  const centerX = getEncounterCenterXFromTravelProgress(
+    travelProgress,
+    strip,
+    scrollX,
+    playerX,
+    viewW,
+  );
+  if (!Number.isFinite(centerX)) {
+    return;
+  }
+  if (centerX < -visualWidth * 1.2 || centerX > viewW + visualWidth * 1.2) {
+    return;
+  }
+  drawEncounterSprite(
+    ctx,
+    encounterType,
+    centerX,
+    feetY,
+    visualWidth,
+    visualHeight,
+  );
+}
+
+function getEncounterCenterXFromTravelProgress(
+  travelProgress,
+  strip,
+  scrollX,
+  playerX,
+  viewW,
+) {
+  if (
+    strip &&
+    Number.isFinite(travelProgress) &&
+    Number.isFinite(scrollX) &&
+    Number.isFinite(playerX) &&
+    Number.isFinite(strip.startMarkerStripX) &&
+    Number.isFinite(strip.pxPerWorld)
+  ) {
+    const encounterStripX =
+      strip.startMarkerStripX + Number(travelProgress) * strip.pxPerWorld;
+    return Math.round(encounterStripX - (scrollX - playerX));
+  }
+  return Math.round(viewW * ENCOUNTER_CENTER_X_FRAC);
+}
+
+function drawEncounterSprite(
+  ctx,
+  encounterType,
+  centerX,
+  feetY,
+  visualWidth,
+  visualHeight,
+) {
+  const sprite = ENCOUNTER_SPRITE_BY_TYPE[encounterType] ?? null;
+  const left = centerX - visualWidth * 0.5;
+  const top = feetY - visualHeight;
+  ctx.save();
+  if (canDrawJourneySprite(sprite)) {
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(sprite, left, top, visualWidth, visualHeight);
+    ctx.restore();
+    return;
+  }
+
+  const fallbackFill =
+    encounterType === "wolf" ? "rgba(62, 52, 46, 0.95)" : "rgba(122, 112, 98, 0.95)";
+  ctx.fillStyle = fallbackFill;
+  ctx.beginPath();
+  ctx.ellipse(
+    centerX,
+    top + visualHeight * 0.62,
+    visualWidth * 0.45,
+    visualHeight * 0.34,
+    0,
+    0,
+    Math.PI * 2,
+  );
+  ctx.fill();
+  ctx.restore();
+}
+
+function resolveEncounterType(value) {
+  if (value === "rabbit" || value === "wolf") {
+    return value;
+  }
+  return null;
 }
 
 function carveCampfireVisibilityInVeil(overlayCtx, anchors, skyState) {
@@ -495,6 +853,31 @@ function ensureNightVeilOverlay(sceneState, viewW, viewH) {
     sceneState.nightVeilCanvas.height = viewH;
   }
   return sceneState.nightVeilCtx;
+}
+
+function createJourneySprite(url: string): HTMLImageElement | null {
+  if (typeof Image === "undefined") {
+    return null;
+  }
+  const image = new Image();
+  image.decoding = "async";
+  image.src = url;
+  return image;
+}
+
+function canDrawJourneySprite(
+  sprite: HTMLImageElement | null,
+): sprite is HTMLImageElement {
+  return Boolean(
+    sprite &&
+      sprite.complete &&
+      Number(sprite.naturalWidth) > 0 &&
+      Number(sprite.naturalHeight) > 0,
+  );
+}
+
+function lerp(start: number, end: number, t: number): number {
+  return start + (end - start) * clamp01(t);
 }
 
 function clamp01(value) {
