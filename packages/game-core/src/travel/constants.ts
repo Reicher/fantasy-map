@@ -12,6 +12,8 @@ export const HUNT_SUCCESS_MIN_CHANCE = 0.04;
 export const HUNT_SUCCESS_MAX_CHANCE = 0.93;
 export const HUNT_SEA_ROUTE_REASON =
   "Det finns inget jaktbart vilt ute på öppet hav.";
+export const HUNT_SETTLEMENT_REASON =
+  "Det går inte att jaga inne i en bosättning.";
 export const HUNT_UNAVAILABLE_REASON =
   "Här finns inga tydliga jaktspår just nu.";
 export const HUNT_TIME_OF_DAY_MODIFIERS = Object.freeze([

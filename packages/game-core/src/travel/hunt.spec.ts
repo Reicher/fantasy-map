@@ -5,7 +5,10 @@ import { advanceHunt, beginHunt, cancelHunt } from "./hunt";
 import type { PlayState } from "@fardvag/shared/types/play";
 import type { World } from "@fardvag/shared/types/world";
 
-function createTestWorld(seed = "hunt-test-seed"): World {
+function createTestWorld(
+  seed = "hunt-test-seed",
+  marker: string = "abandoned",
+): World {
   const width = 16;
   const height = 16;
   const size = width * height;
@@ -30,7 +33,7 @@ function createTestWorld(seed = "hunt-test-seed"): World {
           x: 4,
           y: 4,
           cell: 4 * width + 4,
-          marker: "settlement",
+          marker,
           name: "Basläger",
         },
       ],
@@ -153,6 +156,14 @@ describe("travel hunt invariants", () => {
     };
 
     expect(run()).toEqual(run());
+  });
+
+  it("blocks hunt start while player is in a settlement node", () => {
+    const world = createTestWorld("settlement-hunt-guard", "settlement");
+    const started = beginHunt(createBaseHuntState(), world, 3);
+    expect(started?.hunt).toBeNull();
+    expect(started?.latestHuntFeedback?.type).toBe("hint");
+    expect(started?.latestHuntFeedback?.text).toContain("bosättning");
   });
 
   it("does not persist per-area depletion state after hunting", () => {

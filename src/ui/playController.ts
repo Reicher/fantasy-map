@@ -449,7 +449,8 @@ export function createPlayController({
       }
 
       const isGameOver = Boolean(state.playState?.gameOver);
-      if (!isGameOver && (state.playState.travel || isJourney)) {
+      const hasTimedAction = Boolean(state.playState?.rest || state.playState?.hunt);
+      if (!isGameOver && (state.playState.travel || isJourney || hasTimedAction)) {
         state.playAnimationFrame = requestAnimationFrame(step);
       } else if (!isJourney) {
         renderPlayWorld();

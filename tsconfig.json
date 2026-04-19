@@ -13,5 +13,5 @@
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["src/**/*.ts", "scripts/**/*.ts", "vite.config.ts"]
+  "include": ["src/**/*.ts", "packages/**/*.ts", "scripts/**/*.ts", "vite.config.ts"]
 }

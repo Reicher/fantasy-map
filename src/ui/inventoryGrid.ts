@@ -259,7 +259,7 @@ export function createInventoryGridController({
       const payload =
         getDragPayloadFromEvent(event, {
           fallbackGridId: normalizedGridId,
-          fallbackItemId: activeDragItemId ?? selectedItemId,
+          fallbackItemId: activeDragItemId,
         }) ?? null;
       if (!payload) {
         return;
@@ -417,6 +417,16 @@ function getDragPayloadFromEvent(
     fallbackItemId = null,
   }: { fallbackGridId?: string; fallbackItemId?: string | null } = {},
 ): InventoryDragPayload | null {
+  const payload = parseDragPayload(event?.dataTransfer?.getData(INVENTORY_DRAG_MIME));
+  if (payload) {
+    return payload;
+  }
+
+  const globalPayload = parseDragPayloadFromGlobal();
+  if (globalPayload) {
+    return globalPayload;
+  }
+
   if (fallbackItemId) {
     return {
       gridId: fallbackGridId || "inventory",
@@ -424,12 +434,7 @@ function getDragPayloadFromEvent(
     };
   }
 
-  const payload = parseDragPayload(event?.dataTransfer?.getData(INVENTORY_DRAG_MIME));
-  if (payload) {
-    return payload;
-  }
-
-  return parseDragPayloadFromGlobal();
+  return null;
 }
 
 function parseDragPayload(rawValue: string | undefined): InventoryDragPayload | null {

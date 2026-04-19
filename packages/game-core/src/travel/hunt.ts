@@ -1,12 +1,15 @@
 import { clamp } from "@fardvag/shared/utils";
+import { createRng } from "@fardvag/shared/random";
 import { normalizeTimeOfDayHours } from "../timeOfDay";
 import { getNodeTitle } from "@fardvag/shared/node/model";
+import { addInventoryItemsByType } from "../inventory";
 import { biomeKeyAtPoint } from "./biomeBands";
 import { withPlayActionMode } from "./actionMode";
 import {
   DEFAULT_MAX_STAMINA,
   HUNT_BIOME_FACTORS,
   HUNT_SEA_ROUTE_REASON,
+  HUNT_SETTLEMENT_REASON,
   HUNT_SUCCESS_MAX_CHANCE,
   HUNT_SUCCESS_MIN_CHANCE,
   HUNT_TIME_OF_DAY_MODIFIERS,
@@ -313,6 +316,7 @@ function resolveSingleHuntHour(
   }
 
   const huntState = playState.hunt;
+  const hourOutcome = resolveHuntHourOutcome(playState, world, hourNumber);
   const maxStamina = normalizeStaminaValue(playState.maxStamina, DEFAULT_MAX_STAMINA);
   const currentStamina = Math.min(
     maxStamina,
@@ -323,10 +327,16 @@ function resolveSingleHuntHour(
   const nextState = {
     ...playState,
     maxStamina,
+    inventory: hourOutcome.inventory,
     stamina: nextStamina,
     hunt: {
       ...huntState,
       completedHours: hourNumber,
+      successfulHours:
+        normalizeCompletedHours(huntState.successfulHours) +
+        (hourOutcome.meatAdded > 0 ? 1 : 0),
+      totalMeatGained:
+        normalizeCompletedHours(huntState.totalMeatGained) + hourOutcome.meatAdded,
     },
   };
 
@@ -445,6 +455,13 @@ function resolveHuntContext(
   const currentNode =
     playState.currentNodeId == null ? null : nodes[playState.currentNodeId] ?? null;
   if (currentNode) {
+    if (currentNode.marker === "settlement") {
+      return {
+        available: false,
+        reason: HUNT_SETTLEMENT_REASON,
+        areaLabel: getNodeTitle(currentNode),
+      };
+    }
     const biomeKey = getBiomeKeyByCell(world, currentNode.cell) ?? "plains";
     const biomeFactor = biomeHuntFactor(biomeKey);
     const markerWeight = nodeSettlementWeight(currentNode);
@@ -584,4 +601,67 @@ function shouldResumeTravelAfterHunt(
   huntState: PlayHuntState | null | undefined,
 ): boolean {
   return Boolean(huntState?.resumeTravelOnFinish);
+}
+
+function resolveHuntHourOutcome(
+  playState: PlayState,
+  world: WorldLike,
+  hourNumber: number,
+) {
+  const reward = resolveHuntMeatReward(playState, world, hourNumber);
+  if (reward <= 0) {
+    return {
+      inventory: playState.inventory,
+      meatAdded: 0,
+    };
+  }
+  const addResult = addInventoryItemsByType(playState.inventory, "meat", reward, {
+    idPrefix: "hunt-meat",
+  });
+  return {
+    inventory: addResult.inventory,
+    meatAdded: Math.max(0, addResult.added),
+  };
+}
+
+function resolveHuntMeatReward(
+  playState: PlayState,
+  world: WorldLike,
+  hourNumber: number,
+): number {
+  const huntState = playState.hunt;
+  if (!huntState) {
+    return 0;
+  }
+  const context = resolveHuntContext(playState, world);
+  if (!context.available) {
+    return 0;
+  }
+  const hourTimeOfDay = normalizeTimeOfDayHours(
+    normalizeTimeOfDayHours(huntState.startedTimeOfDayHours ?? playState.timeOfDayHours) +
+      Math.max(0, hourNumber - 1),
+  );
+  const successChance = resolveHuntSuccessChance(
+    context,
+    hourTimeOfDay,
+    playState.vapenTraffsakerhet,
+  );
+  const seed = String(huntState.seed ?? "seed");
+  const hourRng = createRng(`${seed}:hour:${hourNumber}`);
+  const isSuccessfulHour = hourRng.chance(successChance);
+  if (!isSuccessfulHour) {
+    return 0;
+  }
+  return resolveMeatGainPerSuccessfulHour(hourRng, context.areaCapacity);
+}
+
+function resolveMeatGainPerSuccessfulHour(
+  rng: ReturnType<typeof createRng>,
+  areaCapacity: number,
+): number {
+  const capacity = normalizeAreaCapacity(areaCapacity);
+  const guaranteedBase = 1;
+  const qualityBonus = rng.chance(clamp(0.32 + capacity * 0.58, 0.2, 0.92)) ? 1 : 0;
+  const rareBonus = rng.chance(clamp(0.08 + capacity * 0.34, 0.05, 0.45)) ? 1 : 0;
+  return guaranteedBase + qualityBonus + rareBonus;
 }
