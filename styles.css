@@ -1106,6 +1106,10 @@ canvas[data-dragging="true"] {
   row-gap: 8px;
 }
 
+.play-journey-event-dialog--settlement-encounter.play-journey-event-dialog--actions-open {
+  min-height: 224px;
+}
+
 .play-journey-event-dialog--encounter.play-journey-event-dialog--actions-open .play-journey-event-body {
   grid-column: 1 / -1;
   max-width: 72ch;
@@ -1127,6 +1131,12 @@ canvas[data-dragging="true"] {
   align-self: start;
 }
 
+.play-journey-event-dialog--settlement-encounter.play-journey-event-dialog--actions-open .play-journey-encounter-actions {
+  width: 72px;
+  gap: 4px;
+  padding-top: 16px;
+}
+
 .play-journey-encounter-actions {
   display: flex;
   flex-direction: column;
@@ -1140,8 +1150,8 @@ canvas[data-dragging="true"] {
 }
 
 .play-journey-encounter-action {
-  min-height: 27px;
-  width: auto;
+  min-height: 28px;
+  width: 72px;
   min-width: 0;
   padding: 3px 8px;
   font-size: 0.61rem;

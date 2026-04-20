@@ -652,6 +652,42 @@ describe("travel encounters", () => {
     expect(triggered).toBe(true);
   });
 
+  it("does not trigger travel encounter on sea route", () => {
+    const world = {
+      params: {
+        seed: "encounter-sea-route-seed",
+      },
+    };
+    let triggered = false;
+    for (let hour = 0; hour < 256; hour += 1) {
+      const travelActive = createBasePlayState({
+        isTravelPaused: false,
+        travelPauseReason: null,
+        pendingJourneyEvent: null,
+        encounter: null,
+        journeyElapsedHours: hour,
+        travel: {
+          startNodeId: 0,
+          targetNodeId: 1,
+          routeType: "sea-route",
+          points: [
+            { x: 1, y: 1 },
+            { x: 200, y: 1 },
+          ],
+          segmentLengths: [199],
+          totalLength: 199,
+          progress: 12,
+        },
+      });
+      const next = maybeTriggerTravelEncounter(travelActive, world) ?? travelActive;
+      if (next.encounter || next.pendingJourneyEvent) {
+        triggered = true;
+        break;
+      }
+    }
+    expect(triggered).toBe(false);
+  });
+
   it("can trigger travel encounters even when nearby non-route nodes exist", () => {
     const world = {
       params: {
@@ -726,6 +762,51 @@ describe("travel encounters", () => {
       }
     }
     expect(triggered).toBe(true);
+  });
+
+  it("does not trigger hostile wilderness encounter on sea route", () => {
+    const world = {
+      params: {
+        seed: "encounter-rest-sea-route-seed",
+      },
+    };
+    let triggered = false;
+    for (let hour = 0; hour < 256; hour += 1) {
+      const resting = createBasePlayState({
+        journeyElapsedHours: hour,
+        isTravelPaused: true,
+        travelPauseReason: "resting",
+        pendingJourneyEvent: null,
+        encounter: null,
+        travel: {
+          startNodeId: 0,
+          targetNodeId: 1,
+          routeType: "sea-route",
+          points: [
+            { x: 1, y: 1 },
+            { x: 2, y: 1 },
+          ],
+          segmentLengths: [1],
+          totalLength: 1,
+          progress: 0.4,
+        },
+        rest: {
+          hours: 8,
+          elapsedHours: 0,
+          staminaGain: 72,
+          resumeTravelOnFinish: false,
+          priorWasTravelPaused: true,
+          priorTravelPauseReason: "manual",
+        },
+        hunt: null,
+      });
+      const next = maybeTriggerWildernessHostileEncounter(resting, world) ?? resting;
+      if (next.encounter?.type === "wolf") {
+        triggered = true;
+        break;
+      }
+    }
+    expect(triggered).toBe(false);
   });
 
   it("can trigger hostile wilderness encounter while hunting outside nodes", () => {
@@ -854,6 +935,64 @@ describe("travel encounters", () => {
       }
     }
     expect(triggered).toBe(true);
+  });
+
+  it("does not trigger rabbit encounter while hunting on sea route", () => {
+    const world = {
+      params: {
+        seed: "hunt-rabbit-sea-route-seed",
+      },
+    };
+    let triggered = false;
+    for (let hour = 0; hour < 256; hour += 1) {
+      const hunting = createBasePlayState({
+        journeyElapsedHours: hour,
+        isTravelPaused: true,
+        travelPauseReason: "hunting",
+        pendingJourneyEvent: null,
+        encounter: null,
+        travel: {
+          startNodeId: 0,
+          targetNodeId: 1,
+          routeType: "sea-route",
+          points: [
+            { x: 1, y: 1 },
+            { x: 2, y: 1 },
+          ],
+          segmentLengths: [1],
+          totalLength: 1,
+          progress: 0.4,
+        },
+        rest: null,
+        hunt: {
+          runId: 3,
+          seed: "hunt-seed",
+          hours: 8,
+          elapsedHours: 0,
+          completedHours: 0,
+          successfulHours: 0,
+          totalMeatGained: 0,
+          areaKey: "wild",
+          areaLabel: "Vildmark",
+          areaType: "wild",
+          biomeKey: "forest",
+          areaCapacity: 1,
+          worldSeed: "world",
+          startedAtJourneyHours: 0,
+          startedTimeOfDayHours: 12,
+          resumeTravelOnFinish: false,
+          priorWasTravelPaused: true,
+          priorTravelPauseReason: "manual",
+          lastMessage: "Du spanar efter spår.",
+        },
+      });
+      const next = maybeTriggerHuntRabbitEncounter(hunting, world) ?? hunting;
+      if (next.encounter?.type === "rabbit") {
+        triggered = true;
+        break;
+      }
+    }
+    expect(triggered).toBe(false);
   });
 
   it("does not auto-resume travel after flee when hunt is still active", () => {

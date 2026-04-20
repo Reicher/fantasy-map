@@ -98,6 +98,9 @@ export function maybeTriggerTravelEncounter(
   if (!playState || playState.gameOver || !canTriggerEncounter(playState)) {
     return withPlayActionMode(playState);
   }
+  if (isSeaRouteTravel(playState)) {
+    return withPlayActionMode(playState);
+  }
 
   const encounterSeed = buildEncounterTriggerSeed(playState, world);
   const rng = createRng(encounterSeed);
@@ -174,6 +177,9 @@ export function maybeTriggerWildernessHostileEncounter(
   ) {
     return withPlayActionMode(playState);
   }
+  if (isSeaRouteTravel(playState)) {
+    return withPlayActionMode(playState);
+  }
 
   const worldSeed = String(world?.params?.seed ?? "seed");
   const modeLabel = playState.hunt ? "hunt" : "rest";
@@ -219,6 +225,9 @@ export function maybeTriggerHuntRabbitEncounter(
     return withPlayActionMode(playState);
   }
   if (playState.pendingJourneyEvent || playState.encounter) {
+    return withPlayActionMode(playState);
+  }
+  if (isSeaRouteTravel(playState)) {
     return withPlayActionMode(playState);
   }
 
@@ -371,6 +380,10 @@ function canTriggerEncounter(playState: PlayState): boolean {
       !playState.pendingJourneyEvent &&
       !playState.encounter,
   );
+}
+
+function isSeaRouteTravel(playState: PlayState): boolean {
+  return (playState.travel?.routeType ?? "road") === "sea-route";
 }
 
 function buildEncounterTriggerSeed(playState: PlayState, world): string {
