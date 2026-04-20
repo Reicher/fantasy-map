@@ -62,7 +62,13 @@ const ALLOWED_EVENT_TYPES_BY_STATE: Record<
   readonly TravelActionEventType[]
 > = {
   "game-over": [],
-  event: ["ENCOUNTER_GREET", "ENCOUNTER_ATTACK", "ENCOUNTER_FLEE"],
+  event: [
+    "ENCOUNTER_GREET",
+    "ENCOUNTER_ATTACK",
+    "ENCOUNTER_FLEE",
+    "START_REST",
+    "START_HUNT",
+  ],
   idle: ["START_REST", "START_HUNT", "DISMISS_HUNT_RESULT"],
   "travel-active": ["TOGGLE_TRAVEL_PAUSE", "DISMISS_HUNT_RESULT"],
   "travel-paused": [

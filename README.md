@@ -54,6 +54,14 @@ Exempelvärldar i terminalen:
 npm run examples
 ```
 
+## Deploy till GitHub Pages
+
+Projektet måste byggas först så att Pages serverar JavaScript från `dist` i stället för råa `.ts`-filer.
+
+- Workflow finns i `.github/workflows/deploy-pages.yml` och körs på push till `main`.
+- Vite sätter automatiskt `base` till `/<repo>/` i GitHub Actions, så asset-URL:er fungerar på Pages.
+- I GitHub-repot: `Settings -> Pages -> Build and deployment -> Source: GitHub Actions`.
+
 ## Vad appen gör
 
 Vid generering skapas en komplett värld med bland annat:

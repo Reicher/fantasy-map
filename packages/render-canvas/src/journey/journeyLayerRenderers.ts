@@ -628,7 +628,9 @@ function drawSettlementAgentsAroundMarker(
     }
     const agentId = String(agent.id);
     visibleAgentIds.add(agentId);
-    const targetAlpha = agent.state === "resting" ? 1 : 0;
+    const isAlive = Number(agent.health ?? 1) > 0;
+    const isResting = agent.state === "resting";
+    const targetAlpha = isAlive && isResting ? 1 : 0;
     const alpha = resolveSettlementAgentAlpha(agentId, targetAlpha, resolvedNowMs);
     if (alpha <= 0.01) {
       continue;
@@ -657,6 +659,8 @@ function drawSettlementAgentsAroundMarker(
   for (let index = 0; index < sortedRenderables.length; index += 1) {
     const entry = sortedRenderables[index];
     const agent = entry.agent;
+    const isAlive = Number(agent?.health ?? 1) > 0;
+    const isResting = agent?.state === "resting";
     const alpha = entry.alpha;
     const agentHeight = Math.max(18, SETTLEMENT_AGENT_BASE_HEIGHT_PX);
     const agentWidth = agentHeight * 0.62;
@@ -693,7 +697,7 @@ function drawSettlementAgentsAroundMarker(
     }
     ctx.restore();
 
-    if (agent.state === "resting" && alpha >= 0.35 && Array.isArray(hitTarget)) {
+    if (isAlive && isResting && alpha >= 0.35 && Array.isArray(hitTarget)) {
       hitTarget.push({
         x: centerX,
         y: top + agentHeight * 0.52,

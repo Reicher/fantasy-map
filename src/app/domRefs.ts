@@ -86,6 +86,12 @@ export function createAppRefs(): AppRefs {
     playJourneyEncounterFleeButton: queryOptional<HTMLButtonElement>(
       "#play-journey-encounter-flee",
     ),
+    playJourneySettlementActions: queryOptional<HTMLElement>(
+      "#play-journey-settlement-actions",
+    ),
+    playJourneySettlementActionsHint: queryOptional<HTMLElement>(
+      "#play-journey-settlement-actions-hint",
+    ),
     playSettlementDebug: queryOptional<HTMLElement>("#play-settlement-debug"),
     playSettlementDebugBody: queryOptional<HTMLElement>("#play-settlement-debug-body"),
     playRestDialog: queryOptional<HTMLElement>("#play-rest-dialog"),
@@ -98,6 +104,12 @@ export function createAppRefs(): AppRefs {
     playActionResultOkButton: queryOptional<HTMLButtonElement>("#play-action-result-ok"),
     playRestButtons: queryAll<HTMLButtonElement>("[data-rest-hours]"),
     playHuntButtons: queryAll<HTMLButtonElement>("[data-hunt-hours]"),
+    playSettlementEncounterRestButtons: queryAll<HTMLButtonElement>(
+      "[data-settlement-rest-hours]",
+    ),
+    playSettlementEncounterHuntButtons: queryAll<HTMLButtonElement>(
+      "[data-settlement-hunt-hours]",
+    ),
     playGameOverDialog: queryOptional<HTMLElement>("#play-game-over-dialog"),
     playGameOverBody: queryOptional<HTMLElement>("#play-game-over-body"),
     playGameOverStats: queryOptional<HTMLElement>("#play-game-over-stats"),

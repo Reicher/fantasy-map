@@ -175,6 +175,12 @@ export function createPlaySession({ refs, state, syncModeUi }: PlaySessionDeps) 
     if (!state.playState || (mode !== "map" && mode !== "journey")) {
       return;
     }
+    if (
+      mode === "journey" &&
+      isJourneyModeLockedForDestinationChoice(state.playState)
+    ) {
+      return;
+    }
 
     if (mode === "map" && state.currentWorld) {
       const previousCamera =
@@ -203,6 +209,15 @@ export function createPlaySession({ refs, state, syncModeUi }: PlaySessionDeps) 
 
   function updatePlaySubView() {
     playSubView.update(state.currentWorld, state.playState);
+  }
+
+  function isJourneyModeLockedForDestinationChoice(playState: PlayState): boolean {
+    const event = playState?.pendingJourneyEvent;
+    return Boolean(
+      playState?.viewMode === "map" &&
+        event?.type === "signpost-directions" &&
+        event?.requiresDestinationChoice === true,
+    );
   }
 
   function toggleTravelPause() {

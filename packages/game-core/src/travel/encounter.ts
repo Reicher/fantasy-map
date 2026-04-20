@@ -13,10 +13,11 @@ import {
 import { snapshotRunStats } from "./runStats";
 import { createRng } from "@fardvag/shared/random";
 import type {
+  PlayEncounterOpponentMember,
   PlayEncounterState,
   PlayEncounterType,
-  PlayState,
   PlayJourneyEvent,
+  PlayState,
 } from "@fardvag/shared/types/play";
 
 type PlayStateLike = PlayState | null | undefined;
@@ -27,7 +28,7 @@ interface EncounterDefinition {
   type: PlayEncounterType;
   label: string;
   weight: number;
-  disposition: "neutral" | "hostile";
+  disposition: "friendly" | "neutral" | "hostile";
   initiative: number;
   damageMin: number;
   damageMax: number;
@@ -74,6 +75,19 @@ const ENCOUNTER_DEFINITIONS: readonly EncounterDefinition[] = Object.freeze([
     maxStamina: 20,
     lootMeatMin: 2,
     lootMeatMax: 4,
+  }),
+  Object.freeze({
+    type: "settlement-group",
+    label: "gruppen",
+    weight: 0,
+    disposition: "friendly",
+    initiative: 7,
+    damageMin: 2,
+    damageMax: 5,
+    maxHealth: 14,
+    maxStamina: 14,
+    lootMeatMin: 1,
+    lootMeatMax: 3,
   }),
 ]);
 
@@ -455,11 +469,7 @@ function handlePlayerGreet(
   playState: PlayState,
   encounter: PlayEncounterState,
 ): PlayState {
-  const opponentLabel = getEncounterLabel(encounter.type);
   const lines = ["Du hälsar."];
-  if (encounter.disposition !== "hostile") {
-    lines.push(`${capitalize(opponentLabel)} svarar: ...`);
-  }
   const nextEncounter: PlayEncounterState = {
     ...encounter,
     turn: "opponent",
@@ -494,6 +504,8 @@ function handlePlayerAttack(
   };
   if (nextEncounter.type === "rabbit") {
     nextEncounter.disposition = "fleeing";
+  } else if (nextEncounter.type === "settlement-group") {
+    nextEncounter.disposition = "hostile";
   }
 
   const accuracy = clamp01(
@@ -528,15 +540,37 @@ function handlePlayerAttack(
   );
   nextEncounter = damageRoll.encounter;
   const damage = damageRoll.value;
-  const remainingHealth = Math.max(0, nextEncounter.opponentHealth - damage);
-  lines.push(`Träff. Du gör ${damage} skada.`);
+  let remainingHealth = Math.max(0, nextEncounter.opponentHealth - damage);
+  let syncedSettlementState: PlayState = {
+    ...playState,
+    inventory: consumedAmmo.inventory,
+  };
+  if (nextEncounter.type === "settlement-group") {
+    const settlementDamage = applySettlementDamage(nextEncounter, damage);
+    nextEncounter = settlementDamage.encounter;
+    remainingHealth = settlementDamage.totalHealth;
+    syncedSettlementState = syncSettlementStateFromEncounter(
+      syncedSettlementState,
+      {
+        ...nextEncounter,
+        opponentHealth: remainingHealth,
+      },
+    );
+    if (settlementDamage.targetName) {
+      lines.push(`Träff. Du gör ${damage} skada på ${settlementDamage.targetName}.`);
+      if (settlementDamage.targetDefeated) {
+        lines.push(`${settlementDamage.targetName} faller.`);
+      }
+    } else {
+      lines.push(`Träff. Du gör ${damage} skada.`);
+    }
+  } else {
+    lines.push(`Träff. Du gör ${damage} skada.`);
+  }
 
   if (remainingHealth <= 0) {
     return finishEncounterWithOpponentDefeat(
-      {
-        ...playState,
-        inventory: consumedAmmo.inventory,
-      },
+      syncedSettlementState,
       {
         ...nextEncounter,
         opponentHealth: 0,
@@ -547,8 +581,7 @@ function handlePlayerAttack(
 
   return advanceEncounterUntilPlayerTurn(
     {
-      ...playState,
-      inventory: consumedAmmo.inventory,
+      ...syncedSettlementState,
       encounter: {
         ...nextEncounter,
         opponentHealth: remainingHealth,
@@ -563,7 +596,7 @@ function handlePlayerFlee(
   playState: PlayState,
   encounter: PlayEncounterState,
 ): PlayState {
-  if (encounter.disposition === "neutral" || encounter.disposition === "fleeing") {
+  if (encounter.disposition !== "hostile") {
     return finishEncounterWithFleeOutcome(playState, encounter, "player-fled");
   }
   const playerStamina = normalizePlayerStamina(playState);
@@ -636,14 +669,16 @@ function resolveOpponentTurn(
   if (!encounter) {
     return { playState, message: null };
   }
-  const opponentLabel = getEncounterLabel(encounter.type);
+  const opponentLabel = getEncounterDisplayLabel(encounter);
 
   if (encounter.disposition === "hostile") {
+    const attackerPick = pickHostileAttacker(encounter);
+    const attackerName = attackerPick.attacker?.name ?? null;
     const damageRoll = rollEncounterInt(
-      encounter,
+      attackerPick.encounter,
       "opponent-attack-damage",
-      encounter.opponentDamageMin,
-      encounter.opponentDamageMax,
+      attackerPick.damageMin,
+      attackerPick.damageMax,
     );
     const nextEncounter = damageRoll.encounter;
     const damage = damageRoll.value;
@@ -653,7 +688,7 @@ function resolveOpponentTurn(
     );
     const currentHealth = normalizeHealthValue(playState.health, maxHealth);
     const nextHealth = Math.max(0, currentHealth - damage);
-    const message = `${capitalize(opponentLabel)} anfaller och gör ${damage} skada.`;
+    const message = `${capitalize(attackerName ?? opponentLabel)} anfaller och gör ${damage} skada.`;
     if (nextHealth <= 0) {
       return {
         playState: finishEncounterWithPlayerDefeat(
@@ -663,6 +698,9 @@ function resolveOpponentTurn(
             maxHealth,
           },
           nextEncounter,
+          {
+            attackerName,
+          },
         ),
         message,
       };
@@ -717,7 +755,7 @@ function resolveOpponentTurn(
         round: encounter.round + 1,
       },
     },
-    message: `${capitalize(opponentLabel)} svarar: ...`,
+    message: `${capitalize(opponentLabel)} svarar: ${getNonHostileGreetingReply(encounter)}`,
   };
 }
 
@@ -726,9 +764,13 @@ function finishEncounterWithOpponentDefeat(
   encounter: PlayEncounterState,
   lines: string[],
 ): PlayState {
+  const syncedPlayState = syncSettlementStateFromEncounter(playState, encounter);
   const definition = getEncounterDefinition(encounter.type);
   const lootInventory = createEncounterLootInventory(encounter, definition);
-  const message = `${lines.join(" ")} ${capitalize(definition.label)} dör. Du kan ta bytet.`;
+  const defeatedLine = encounter.type === "settlement-group"
+    ? "Gruppen är besegrad."
+    : `${capitalize(definition.label)} dör.`;
+  const message = `${lines.join(" ")} ${defeatedLine} Du kan ta bytet.`;
   const event: PlayJourneyEvent = {
     type: "encounter-loot",
     encounterId: encounter.id,
@@ -737,7 +779,7 @@ function finishEncounterWithOpponentDefeat(
     inventory: lootInventory,
   };
   return {
-    ...playState,
+    ...syncedPlayState,
     encounter: null,
     latestEncounterResolution: {
       encounterId: encounter.id,
@@ -745,16 +787,26 @@ function finishEncounterWithOpponentDefeat(
       outcome: "opponent-died",
     },
     pendingJourneyEvent: event,
-    isTravelPaused: Boolean(playState.travel),
-    travelPauseReason: resolvePostEncounterPauseReason(playState),
+    isTravelPaused: Boolean(syncedPlayState.travel),
+    travelPauseReason: resolvePostEncounterPauseReason(syncedPlayState),
   };
 }
 
 function finishEncounterWithPlayerDefeat(
   playState: PlayState,
   encounter: PlayEncounterState,
+  options: {
+    attackerName?: string | null;
+  } = {},
 ): PlayState {
   const label = getEncounterLabel(encounter.type);
+  const attackerName = String(options.attackerName ?? "").trim();
+  const settlementName = String(encounter.settlementName ?? "").trim();
+  const message = attackerName
+    ? settlementName.length > 0
+      ? `Du dödades av ${attackerName} från ${settlementName}.`
+      : `Du dödades av ${attackerName}.`
+    : `Du dödades av en ${label}.`;
   return {
     ...playState,
     maxHealth: normalizeHealthValue(playState.maxHealth, DEFAULT_MAX_HEALTH),
@@ -777,7 +829,7 @@ function finishEncounterWithPlayerDefeat(
     pressedNodeId: null,
     gameOver: {
       reason: "slain",
-      message: `Du dödades av en ${label}.`,
+      message,
       stats: snapshotRunStats(playState.runStats),
     },
   };
@@ -788,12 +840,16 @@ function finishEncounterWithFleeOutcome(
   encounter: PlayEncounterState,
   outcome: "player-fled" | "opponent-fled",
 ): PlayState {
-  const shouldResumeTravel = Boolean(
-    playState.travel && !playState.rest && !playState.hunt,
-  );
+  const forceDestinationChoice =
+    outcome === "player-fled" && encounter.type === "settlement-group";
+  const fleeDestinationEvent = forceDestinationChoice
+    ? createSettlementFleeDestinationEvent(playState, encounter)
+    : null;
+  const shouldStayPaused = Boolean(playState.travel);
   const pausedReason = resolvePostEncounterPauseReason(playState);
   return {
     ...playState,
+    viewMode: forceDestinationChoice ? "map" : playState.viewMode,
     encounter: null,
     latestEncounterResolution: {
       encounterId: encounter.id,
@@ -805,9 +861,11 @@ function finishEncounterWithFleeOutcome(
           ? Number(playState.travel.progress)
           : undefined,
     },
-    pendingJourneyEvent: null,
-    isTravelPaused: shouldResumeTravel ? false : playState.isTravelPaused,
-    travelPauseReason: shouldResumeTravel ? null : pausedReason,
+    pendingJourneyEvent: fleeDestinationEvent,
+    isTravelPaused: shouldStayPaused ? true : playState.isTravelPaused,
+    travelPauseReason: shouldStayPaused ? pausedReason : playState.travelPauseReason,
+    hoveredNodeId: null,
+    pressedNodeId: null,
   };
 }
 
@@ -850,15 +908,381 @@ function resolvePostEncounterPauseReason(playState: PlayState): "manual" | "exha
   return playState.travelPauseReason ?? null;
 }
 
+function syncSettlementStateFromEncounter(
+  playState: PlayState,
+  encounter: PlayEncounterState,
+): PlayState {
+  if (encounter.type !== "settlement-group") {
+    return playState;
+  }
+  if (!Number.isFinite(encounter.settlementId)) {
+    return playState;
+  }
+  if (!Array.isArray(encounter.opponentMembers) || encounter.opponentMembers.length <= 0) {
+    return playState;
+  }
+  const settlementStates = playState.settlementStates;
+  if (!settlementStates) {
+    return playState;
+  }
+  const settlementId = Number(encounter.settlementId);
+  const settlementKey = String(settlementId);
+  const settlementState = settlementStates[settlementKey];
+  if (!settlementState || !Array.isArray(settlementState.agents)) {
+    return playState;
+  }
+
+  const membersById = new Map<string, PlayEncounterOpponentMember>();
+  for (const member of encounter.opponentMembers) {
+    if (!member?.id) {
+      continue;
+    }
+    membersById.set(String(member.id), member);
+  }
+  if (membersById.size <= 0) {
+    return playState;
+  }
+
+  let changed = false;
+  const nextAgents = settlementState.agents.map((agent) => {
+    const agentId = String(agent?.id ?? "");
+    const member = membersById.get(agentId);
+    if (!member || !agent) {
+      return agent;
+    }
+    const nextMaxHealth = Math.max(
+      1,
+      Math.floor(Number(member.maxHealth ?? agent.maxHealth ?? 1)),
+    );
+    const nextHealth = Math.max(
+      0,
+      Math.min(
+        nextMaxHealth,
+        Math.floor(Number(member.health ?? agent.health ?? nextMaxHealth)),
+      ),
+    );
+    const nextMaxStamina = Math.max(
+      1,
+      Math.floor(Number(member.maxStamina ?? agent.maxStamina ?? 1)),
+    );
+    const nextStamina = Math.max(
+      0,
+      Math.min(
+        nextMaxStamina,
+        Math.floor(Number(member.stamina ?? agent.stamina ?? nextMaxStamina)),
+      ),
+    );
+    if (
+      Number(agent.maxHealth) === nextMaxHealth &&
+      Number(agent.health) === nextHealth &&
+      Number(agent.maxStamina) === nextMaxStamina &&
+      Number(agent.stamina) === nextStamina
+    ) {
+      return agent;
+    }
+    changed = true;
+    return {
+      ...agent,
+      maxHealth: nextMaxHealth,
+      health: nextHealth,
+      maxStamina: nextMaxStamina,
+      stamina: nextStamina,
+    };
+  });
+
+  if (!changed) {
+    return playState;
+  }
+
+  return {
+    ...playState,
+    settlementStates: {
+      ...settlementStates,
+      [settlementKey]: {
+        ...settlementState,
+        agents: nextAgents,
+      },
+    },
+  };
+}
+
 function normalizePlayerStamina(playState: PlayState): number {
   return normalizeStaminaValue(playState.stamina, playState.maxStamina);
 }
 
 function normalizeOpponentStamina(encounter: PlayEncounterState): number {
+  if (encounter.type === "settlement-group") {
+    const aliveMembers = getAliveSettlementMembers(encounter);
+    if (aliveMembers.length > 0) {
+      const averageStamina =
+        aliveMembers.reduce((sum, member) => sum + member.stamina, 0) /
+        aliveMembers.length;
+      const averageMaxStamina =
+        aliveMembers.reduce((sum, member) => sum + member.maxStamina, 0) /
+        aliveMembers.length;
+      return normalizeStaminaValue(averageStamina, averageMaxStamina);
+    }
+  }
   return normalizeStaminaValue(
     encounter.opponentStamina,
     encounter.opponentMaxStamina,
   );
+}
+
+function createSettlementFleeDestinationEvent(
+  playState: PlayState,
+  encounter: PlayEncounterState,
+): PlayJourneyEvent | null {
+  const currentNodeId = Number.isFinite(playState.currentNodeId)
+    ? Number(playState.currentNodeId)
+    : null;
+  const neighborNodeIds = currentNodeId == null
+    ? []
+    : [...(playState.graph?.get(currentNodeId)?.keys() ?? [])].filter((nodeId) =>
+        Number.isFinite(nodeId),
+      );
+  if (neighborNodeIds.length <= 0) {
+    return null;
+  }
+  const settlementName = String(encounter.settlementName ?? "").trim();
+  const message = settlementName.length > 0
+    ? `Du flyr från ${settlementName}. Välj en destination på kartan.`
+    : "Du flyr från bosättningen. Välj en destination på kartan.";
+  return {
+    type: "signpost-directions",
+    nodeId: currentNodeId,
+    message,
+    requiresAcknowledgement: true,
+    neighborNodeIds,
+    requiresDestinationChoice: true,
+  };
+}
+
+function getAliveSettlementMembers(
+  encounter: PlayEncounterState,
+): PlayEncounterOpponentMember[] {
+  if (!Array.isArray(encounter.opponentMembers)) {
+    return [];
+  }
+  return encounter.opponentMembers.filter((member) =>
+    normalizeEncounterMemberHealth(member) > 0,
+  );
+}
+
+function normalizeEncounterMemberHealth(member: PlayEncounterOpponentMember): number {
+  const maxHealth = Math.max(1, Math.floor(Number(member?.maxHealth ?? 1)));
+  const health = Math.floor(Number(member?.health ?? 0));
+  return Math.max(0, Math.min(maxHealth, Number.isFinite(health) ? health : 0));
+}
+
+function normalizeEncounterMemberStamina(member: PlayEncounterOpponentMember): number {
+  const maxStamina = Math.max(1, Math.floor(Number(member?.maxStamina ?? 1)));
+  const stamina = Math.floor(Number(member?.stamina ?? 0));
+  return Math.max(0, Math.min(maxStamina, Number.isFinite(stamina) ? stamina : 0));
+}
+
+function normalizeEncounterMemberDamage(value: unknown, fallback = 1): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return Math.max(1, Math.floor(fallback));
+  }
+  return Math.max(1, Math.floor(numeric));
+}
+
+function recalculateSettlementEncounter(
+  encounter: PlayEncounterState,
+  members: PlayEncounterOpponentMember[],
+): PlayEncounterState {
+  const normalizedMembers = members.map((member) => {
+    const damageMin = normalizeEncounterMemberDamage(member.damageMin, 1);
+    const damageMax = Math.max(
+      damageMin,
+      normalizeEncounterMemberDamage(member.damageMax, damageMin),
+    );
+    const maxHealth = Math.max(1, Math.floor(Number(member.maxHealth ?? 1)));
+    return {
+      ...member,
+      damageMin,
+      damageMax,
+      maxHealth,
+      health: normalizeEncounterMemberHealth({
+        ...member,
+        maxHealth,
+      }),
+      maxStamina: Math.max(1, Math.floor(Number(member.maxStamina ?? 1))),
+      stamina: normalizeEncounterMemberStamina(member),
+    };
+  });
+  const aliveMembers = normalizedMembers.filter((member) => member.health > 0);
+  const memberCount = Math.max(1, aliveMembers.length);
+  const totalMaxHealth = normalizedMembers.reduce(
+    (sum, member) => sum + member.maxHealth,
+    0,
+  );
+  const totalHealth = normalizedMembers.reduce((sum, member) => sum + member.health, 0);
+  const averageMaxStamina = aliveMembers.length > 0
+    ? Math.max(
+        1,
+        Math.floor(
+          aliveMembers.reduce((sum, member) => sum + member.maxStamina, 0) / memberCount,
+        ),
+      )
+    : 1;
+  const averageStamina = aliveMembers.length > 0
+    ? Math.max(
+        0,
+        Math.floor(
+          aliveMembers.reduce((sum, member) => sum + member.stamina, 0) / memberCount,
+        ),
+      )
+    : 0;
+  const averageDamageMin = aliveMembers.length > 0
+    ? Math.max(
+        1,
+        Math.floor(
+          aliveMembers.reduce((sum, member) => sum + member.damageMin, 0) / memberCount,
+        ),
+      )
+    : encounter.opponentDamageMin;
+  const averageDamageMax = aliveMembers.length > 0
+    ? Math.max(
+        averageDamageMin,
+        Math.ceil(
+          aliveMembers.reduce((sum, member) => sum + member.damageMax, 0) / memberCount,
+        ),
+      )
+    : Math.max(averageDamageMin, encounter.opponentDamageMax);
+  const activeMemberStillAlive = aliveMembers.some(
+    (member) => member.id === encounter.activeOpponentMemberId,
+  );
+  const nextActiveOpponentMemberId =
+    activeMemberStillAlive
+      ? encounter.activeOpponentMemberId ?? null
+      : aliveMembers[0]?.id ?? null;
+  return {
+    ...encounter,
+    opponentMembers: normalizedMembers,
+    opponentHealth: totalHealth,
+    opponentMaxHealth: totalMaxHealth,
+    opponentStamina: averageStamina,
+    opponentMaxStamina: averageMaxStamina,
+    opponentDamageMin: averageDamageMin,
+    opponentDamageMax: averageDamageMax,
+    activeOpponentMemberId: nextActiveOpponentMemberId,
+  };
+}
+
+function applySettlementDamage(
+  encounter: PlayEncounterState,
+  damage: number,
+): {
+  encounter: PlayEncounterState;
+  totalHealth: number;
+  targetName: string | null;
+  targetDefeated: boolean;
+} {
+  const members = Array.isArray(encounter.opponentMembers)
+    ? encounter.opponentMembers
+    : [];
+  const aliveMembers = members.filter((member) => normalizeEncounterMemberHealth(member) > 0);
+  const activeTarget = aliveMembers.find(
+    (member) => member.id === encounter.activeOpponentMemberId,
+  );
+  const target = activeTarget ?? aliveMembers[0] ?? null;
+  if (!target) {
+    return {
+      encounter,
+      totalHealth: Math.max(0, encounter.opponentHealth),
+      targetName: null,
+      targetDefeated: false,
+    };
+  }
+  const updatedMembers = members.map((member) => {
+    if (member.id !== target.id) {
+      return member;
+    }
+    const health = Math.max(0, normalizeEncounterMemberHealth(member) - Math.max(0, damage));
+    return {
+      ...member,
+      health,
+    };
+  });
+  const recalculated = recalculateSettlementEncounter(encounter, updatedMembers);
+  const updatedTarget = updatedMembers.find((member) => member.id === target.id);
+  return {
+    encounter: recalculated,
+    totalHealth: Math.max(0, recalculated.opponentHealth),
+    targetName: String(target.name ?? "").trim() || null,
+    targetDefeated: Boolean(updatedTarget && updatedTarget.health <= 0),
+  };
+}
+
+function pickHostileAttacker(encounter: PlayEncounterState): {
+  encounter: PlayEncounterState;
+  attacker: PlayEncounterOpponentMember | null;
+  damageMin: number;
+  damageMax: number;
+} {
+  if (encounter.type !== "settlement-group") {
+    return {
+      encounter,
+      attacker: null,
+      damageMin: encounter.opponentDamageMin,
+      damageMax: encounter.opponentDamageMax,
+    };
+  }
+  const aliveMembers = getAliveSettlementMembers(encounter);
+  if (aliveMembers.length <= 0) {
+    return {
+      encounter,
+      attacker: null,
+      damageMin: encounter.opponentDamageMin,
+      damageMax: encounter.opponentDamageMax,
+    };
+  }
+  const attackerRoll = rollEncounterInt(
+    encounter,
+    "opponent-attacker-index",
+    0,
+    aliveMembers.length - 1,
+  );
+  const attacker = aliveMembers[attackerRoll.value] ?? aliveMembers[0];
+  const nextEncounter = {
+    ...attackerRoll.encounter,
+    activeOpponentMemberId: attacker.id,
+  };
+  return {
+    encounter: nextEncounter,
+    attacker,
+    damageMin: normalizeEncounterMemberDamage(attacker.damageMin, encounter.opponentDamageMin),
+    damageMax: Math.max(
+      normalizeEncounterMemberDamage(attacker.damageMin, encounter.opponentDamageMin),
+      normalizeEncounterMemberDamage(attacker.damageMax, encounter.opponentDamageMax),
+    ),
+  };
+}
+
+function getEncounterDisplayLabel(encounter: PlayEncounterState): string {
+  if (encounter.type !== "settlement-group") {
+    return getEncounterLabel(encounter.type);
+  }
+  const aliveMembers = getAliveSettlementMembers(encounter);
+  const activeMember = aliveMembers.find(
+    (member) => member.id === encounter.activeOpponentMemberId,
+  );
+  const selected = activeMember ?? aliveMembers[0] ?? null;
+  const selectedName = String(selected?.name ?? "").trim();
+  if (selectedName.length > 0) {
+    return selectedName;
+  }
+  return getEncounterLabel(encounter.type);
+}
+
+function getNonHostileGreetingReply(encounter: PlayEncounterState): string {
+  if (encounter.type === "settlement-group") {
+    return "hej.";
+  }
+  return "...";
 }
 
 function rollEncounterChance(

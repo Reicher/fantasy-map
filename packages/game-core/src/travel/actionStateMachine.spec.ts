@@ -225,6 +225,73 @@ describe("travel action state machine", () => {
     });
     expect(next).not.toBe(withEncounter);
     expect(next?.pendingJourneyEvent?.type).toBe("encounter-turn");
+    expect(next?.pendingJourneyEvent?.message).toContain("Du hälsar.");
+    expect(next?.encounter?.type).toBe("rabbit");
     expect(next?.encounter?.turn).toBe("player");
+    expect(next?.latestEncounterResolution).toBeUndefined();
+  });
+
+  it("allows START_REST during friendly settlement encounter event", () => {
+    const withSettlementEncounter = createBasePlayState({
+      pendingJourneyEvent: {
+        type: "encounter-turn",
+        encounterId: "enc-settlement-friendly",
+        message: "Du möter bosättare.",
+        requiresAcknowledgement: true,
+        canAttack: true,
+      },
+      encounter: {
+        id: "enc-settlement-friendly",
+        type: "settlement-group",
+        disposition: "friendly",
+        turn: "player",
+        round: 1,
+        rollIndex: 0,
+        opponentInitiative: 6,
+        opponentDamageMin: 1,
+        opponentDamageMax: 2,
+        opponentMaxHealth: 6,
+        opponentHealth: 6,
+        opponentMaxStamina: 10,
+        opponentStamina: 10,
+      },
+    });
+    const next = reduceTravelActionState(withSettlementEncounter, {
+      type: "START_REST",
+      hours: 3,
+    });
+    expect(next).not.toBe(withSettlementEncounter);
+    expect(next?.rest?.hours).toBe(3);
+    expect(next?.pendingJourneyEvent).toBeNull();
+    expect(next?.encounter).toBeNull();
+  });
+
+  it("does not resume paused travel while hostile opponent is active", () => {
+    const pausedHostile = createBasePlayState({
+      travel: { routeType: "road", progress: 1, totalLength: 4 },
+      isTravelPaused: true,
+      travelPauseReason: "encounter",
+      pendingJourneyEvent: null,
+      encounter: {
+        id: "enc-hostile",
+        type: "settlement-group",
+        disposition: "hostile",
+        turn: "player",
+        round: 2,
+        rollIndex: 0,
+        opponentInitiative: 7,
+        opponentDamageMin: 2,
+        opponentDamageMax: 4,
+        opponentMaxHealth: 9,
+        opponentHealth: 7,
+        opponentMaxStamina: 9,
+        opponentStamina: 7,
+      },
+    });
+    const next = reduceTravelActionState(pausedHostile, {
+      type: "TOGGLE_TRAVEL_PAUSE",
+    });
+    expect(next?.isTravelPaused).toBe(true);
+    expect(next?.travelPauseReason).toBe("encounter");
   });
 });

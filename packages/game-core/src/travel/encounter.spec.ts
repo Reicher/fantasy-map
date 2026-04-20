@@ -5,6 +5,7 @@ import {
   maybeTriggerWildernessHostileEncounter,
   resolveEncounterPlayerAction,
 } from "./encounter";
+import { updateAbandonedLootInventory } from "../travel";
 import type { PlayState } from "@fardvag/shared/types/play";
 
 function createBasePlayState(overrides: Record<string, unknown> = {}): PlayState {
@@ -107,6 +108,260 @@ describe("travel encounters", () => {
     expect(next.pendingJourneyEvent?.type).toBe("encounter-turn");
   });
 
+  it("turns friendly settlement group hostile when attacked", () => {
+    const state = createBasePlayState({
+      vapenTraffsakerhet: 0,
+      encounter: {
+        id: "enc-settlement-attack",
+        type: "settlement-group",
+        disposition: "friendly",
+        turn: "player",
+        round: 1,
+        rollIndex: 0,
+        opponentInitiative: 7,
+        opponentDamageMin: 1,
+        opponentDamageMax: 1,
+        opponentMaxHealth: 32,
+        opponentHealth: 32,
+        opponentMaxStamina: 12,
+        opponentStamina: 12,
+        opponentMembers: [
+          {
+            id: "agent-1",
+            name: "Sven Svensson",
+            damageMin: 1,
+            damageMax: 1,
+            maxHealth: 16,
+            health: 16,
+            maxStamina: 12,
+            stamina: 12,
+          },
+          {
+            id: "agent-2",
+            name: "Klara Kling",
+            damageMin: 1,
+            damageMax: 1,
+            maxHealth: 16,
+            health: 16,
+            maxStamina: 12,
+            stamina: 12,
+          },
+        ],
+        settlementName: "Karlskoga",
+      },
+    });
+
+    const next = resolveEncounterPlayerAction(state, "attack") ?? state;
+    expect(next.encounter?.disposition).toBe("hostile");
+    expect(next.pendingJourneyEvent?.type).toBe("encounter-turn");
+  });
+
+  it("shows settlement member name when hostile opponent attacks", () => {
+    const state = createBasePlayState({
+      encounter: {
+        id: "enc-settlement-hostile",
+        type: "settlement-group",
+        disposition: "hostile",
+        turn: "player",
+        round: 1,
+        rollIndex: 0,
+        opponentInitiative: 8,
+        opponentDamageMin: 1,
+        opponentDamageMax: 3,
+        opponentMaxHealth: 28,
+        opponentHealth: 28,
+        opponentMaxStamina: 12,
+        opponentStamina: 12,
+        opponentMembers: [
+          {
+            id: "agent-1",
+            name: "Sven Svensson",
+            damageMin: 2,
+            damageMax: 2,
+            maxHealth: 14,
+            health: 14,
+            maxStamina: 12,
+            stamina: 12,
+          },
+        ],
+        settlementName: "Karlskoga",
+      },
+    });
+
+    const next = resolveEncounterPlayerAction(state, "greet") ?? state;
+    expect(next.pendingJourneyEvent?.type).toBe("encounter-turn");
+    expect(next.pendingJourneyEvent?.message).toContain("Sven Svensson anfaller");
+  });
+
+  it("keeps friendly settlement encounter active when greeting", () => {
+    const state = createBasePlayState({
+      viewMode: "journey",
+      travel: null,
+      isTravelPaused: false,
+      travelPauseReason: null,
+      currentNodeId: 0,
+      graph: new Map<number, Map<number, { points: Array<{ x: number; y: number }>; routeType: string }>>([
+        [
+          0,
+          new Map([
+            [
+              1,
+              {
+                points: [
+                  { x: 0, y: 0 },
+                  { x: 1, y: 0 },
+                ],
+                routeType: "road",
+              },
+            ],
+          ]),
+        ],
+      ]),
+      encounter: {
+        id: "enc-settlement-greet",
+        type: "settlement-group",
+        disposition: "friendly",
+        turn: "player",
+        round: 1,
+        rollIndex: 0,
+        opponentInitiative: 8,
+        opponentDamageMin: 1,
+        opponentDamageMax: 2,
+        opponentMaxHealth: 14,
+        opponentHealth: 14,
+        opponentMaxStamina: 12,
+        opponentStamina: 12,
+        opponentMembers: [
+          {
+            id: "agent-1",
+            name: "Sven Svensson",
+            damageMin: 1,
+            damageMax: 2,
+            maxHealth: 14,
+            health: 14,
+            maxStamina: 12,
+            stamina: 12,
+          },
+        ],
+        settlementName: "Karlskoga",
+      },
+    });
+
+    const next = resolveEncounterPlayerAction(state, "greet") ?? state;
+    expect(next.encounter?.type).toBe("settlement-group");
+    expect(next.encounter?.turn).toBe("player");
+    expect(next.pendingJourneyEvent?.type).toBe("encounter-turn");
+    expect(next.pendingJourneyEvent?.message).toContain("Du hälsar.");
+    expect(next.pendingJourneyEvent?.message).toContain("Sven Svensson svarar: hej.");
+    expect(next.latestEncounterResolution).toBeNull();
+  });
+
+  it("includes attacker and settlement in slain game-over message", () => {
+    const state = createBasePlayState({
+      health: 2,
+      encounter: {
+        id: "enc-settlement-slain",
+        type: "settlement-group",
+        disposition: "hostile",
+        turn: "player",
+        round: 1,
+        rollIndex: 0,
+        opponentInitiative: 8,
+        opponentDamageMin: 2,
+        opponentDamageMax: 2,
+        opponentMaxHealth: 14,
+        opponentHealth: 14,
+        opponentMaxStamina: 12,
+        opponentStamina: 12,
+        opponentMembers: [
+          {
+            id: "agent-1",
+            name: "Sven Svensson",
+            damageMin: 2,
+            damageMax: 2,
+            maxHealth: 14,
+            health: 14,
+            maxStamina: 12,
+            stamina: 12,
+          },
+        ],
+        settlementName: "Karlskoga",
+      },
+    });
+
+    const next = resolveEncounterPlayerAction(state, "greet") ?? state;
+    expect(next.gameOver?.reason).toBe("slain");
+    expect(next.gameOver?.message).toBe(
+      "Du dödades av Sven Svensson från Karlskoga.",
+    );
+  });
+
+  it("syncs defeated settlement members back to settlement state", () => {
+    const state = createBasePlayState({
+      vapenTraffsakerhet: 100,
+      encounter: {
+        id: "enc-settlement-sync",
+        type: "settlement-group",
+        disposition: "friendly",
+        turn: "player",
+        round: 1,
+        rollIndex: 0,
+        opponentInitiative: 8,
+        opponentDamageMin: 1,
+        opponentDamageMax: 2,
+        opponentMaxHealth: 14,
+        opponentHealth: 1,
+        opponentMaxStamina: 12,
+        opponentStamina: 12,
+        opponentMembers: [
+          {
+            id: "agent-1",
+            name: "Sven Svensson",
+            damageMin: 1,
+            damageMax: 2,
+            maxHealth: 14,
+            health: 1,
+            maxStamina: 12,
+            stamina: 12,
+          },
+        ],
+        settlementId: 2,
+        settlementName: "Karlskoga",
+      },
+      settlementStates: {
+        "2": {
+          settlementId: 2,
+          inventory: {
+            columns: 4,
+            rows: 4,
+            items: [],
+          },
+          agents: [
+            {
+              id: "agent-1",
+              settlementId: 2,
+              state: "resting",
+              name: "Sven Svensson",
+              maxHealth: 14,
+              health: 1,
+              maxStamina: 12,
+              stamina: 12,
+              inventory: {
+                columns: 4,
+                rows: 4,
+                items: [],
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    const next = resolveEncounterPlayerAction(state, "attack") ?? state;
+    expect(next.latestEncounterResolution?.outcome).toBe("opponent-died");
+    expect(next.settlementStates?.["2"]?.agents?.[0]?.health).toBe(0);
+  });
+
   it("spends ammo and creates loot event when opponent dies", () => {
     const state = createBasePlayState({
       vapenTraffsakerhet: 100,
@@ -185,8 +440,179 @@ describe("travel encounters", () => {
     const next = resolveEncounterPlayerAction(state, "flee") ?? state;
     expect(next.encounter).toBeNull();
     expect(next.pendingJourneyEvent).toBeNull();
-    expect(next.isTravelPaused).toBe(false);
+    expect(next.isTravelPaused).toBe(true);
+    expect(next.travelPauseReason).toBe("encounter");
     expect(next.latestEncounterResolution?.outcome).toBe("player-fled");
+  });
+
+  it("auto-succeeds flee when settlement opponent is friendly", () => {
+    const state = createBasePlayState({
+      viewMode: "journey",
+      travel: null,
+      isTravelPaused: false,
+      travelPauseReason: null,
+      currentNodeId: 0,
+      graph: new Map<number, Map<number, { points: Array<{ x: number; y: number }>; routeType: string }>>([
+        [
+          0,
+          new Map([
+            [
+              1,
+              {
+                points: [
+                  { x: 0, y: 0 },
+                  { x: 1, y: 0 },
+                ],
+                routeType: "road",
+              },
+            ],
+          ]),
+        ],
+      ]),
+      encounter: {
+        id: "enc-friendly-flee",
+        type: "settlement-group",
+        disposition: "friendly",
+        turn: "player",
+        round: 1,
+        rollIndex: 0,
+        opponentInitiative: 8,
+        opponentDamageMin: 2,
+        opponentDamageMax: 2,
+        opponentMaxHealth: 14,
+        opponentHealth: 14,
+        opponentMaxStamina: 12,
+        opponentStamina: 12,
+        opponentMembers: [
+          {
+            id: "agent-1",
+            name: "Sven Svensson",
+            damageMin: 2,
+            damageMax: 2,
+            maxHealth: 14,
+            health: 14,
+            maxStamina: 12,
+            stamina: 12,
+          },
+        ],
+        settlementName: "Karlskoga",
+      },
+    });
+
+    const next = resolveEncounterPlayerAction(state, "flee") ?? state;
+    expect(next.encounter).toBeNull();
+    expect(next.viewMode).toBe("map");
+    expect(next.pendingJourneyEvent?.type).toBe("signpost-directions");
+    expect(next.latestEncounterResolution?.outcome).toBe("player-fled");
+  });
+
+  it("forces map destination choice after fleeing a settlement encounter", () => {
+    const state = createBasePlayState({
+      viewMode: "journey",
+      travel: null,
+      isTravelPaused: false,
+      travelPauseReason: null,
+      currentNodeId: 0,
+      graph: new Map<number, Map<number, { points: Array<{ x: number; y: number }>; routeType: string }>>([
+        [
+          0,
+          new Map([
+            [
+              1,
+              {
+                points: [
+                  { x: 0, y: 0 },
+                  { x: 1, y: 0 },
+                ],
+                routeType: "road",
+              },
+            ],
+          ]),
+        ],
+      ]),
+      encounter: {
+        id: "enc-settlement-flee",
+        type: "settlement-group",
+        disposition: "neutral",
+        turn: "player",
+        round: 1,
+        rollIndex: 0,
+        opponentInitiative: 8,
+        opponentDamageMin: 2,
+        opponentDamageMax: 2,
+        opponentMaxHealth: 14,
+        opponentHealth: 14,
+        opponentMaxStamina: 12,
+        opponentStamina: 12,
+        opponentMembers: [
+          {
+            id: "agent-1",
+            name: "Sven Svensson",
+            damageMin: 2,
+            damageMax: 2,
+            maxHealth: 14,
+            health: 14,
+            maxStamina: 12,
+            stamina: 12,
+          },
+        ],
+        settlementName: "Karlskoga",
+      },
+    });
+
+    const next = resolveEncounterPlayerAction(state, "flee") ?? state;
+    const event = next.pendingJourneyEvent;
+    expect(next.encounter).toBeNull();
+    expect(next.viewMode).toBe("map");
+    expect(event?.type).toBe("signpost-directions");
+    expect(event?.message).toContain("Välj en destination");
+    if (event?.type !== "signpost-directions") {
+      throw new Error("Expected signpost-directions event after settlement flee.");
+    }
+    expect(event.requiresDestinationChoice).toBe(true);
+    expect(event.requiresAcknowledgement).toBe(true);
+    expect(next.latestEncounterResolution?.outcome).toBe("player-fled");
+  });
+
+  it("keeps travel paused after encounter loot is fully collected", () => {
+    const state = createBasePlayState({
+      isTravelPaused: false,
+      travelPauseReason: null,
+      encounter: null,
+      pendingJourneyEvent: {
+        type: "encounter-loot",
+        encounterId: "enc-loot",
+        message: "Du kan ta bytet.",
+        requiresAcknowledgement: false,
+        inventory: {
+          columns: 4,
+          rows: 4,
+          items: [
+            {
+              id: "encounter-meat-1",
+              type: "meat",
+              name: "Köttbit",
+              symbol: "meat",
+              width: 1,
+              height: 1,
+              count: 1,
+              column: 0,
+              row: 0,
+            },
+          ],
+        },
+      },
+    });
+
+    const next = updateAbandonedLootInventory(state, {
+      columns: 4,
+      rows: 4,
+      items: [],
+    }) ?? state;
+
+    expect(next.pendingJourneyEvent).toBeNull();
+    expect(next.isTravelPaused).toBe(true);
+    expect(next.travelPauseReason).toBe("encounter");
   });
 
   it("can trigger encounter while traveling by world-hour roll", () => {

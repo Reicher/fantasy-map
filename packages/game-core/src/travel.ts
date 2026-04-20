@@ -1,4 +1,5 @@
 import {
+  countInventoryItemsByType,
   isInventoryEmpty,
 } from "./inventory";
 import { createGeneratedAgentProfile } from "./agentFactory";
@@ -25,7 +26,11 @@ import {
   normalizeRunStats,
 } from "./travel/runStats";
 import { measureGraphPathDistance } from "./travel/pathGeometry";
-import type { PlayState } from "@fardvag/shared/types/play";
+import type {
+  PlayEncounterOpponentMember,
+  PlayJourneyEventSignpostDirections,
+  PlayState,
+} from "@fardvag/shared/types/play";
 
 export {
   buildTravelBiomeBandSegments,
@@ -60,6 +65,11 @@ export {
 const TRAVEL_SPEED = 3.75;
 const EVENT_LOOT_COLUMNS = 4;
 const EVENT_LOOT_ROWS = 4;
+type NodeArrivalResult = {
+  event: PlayState["pendingJourneyEvent"];
+  abandonedLootByNodeId: NonNullable<PlayState["abandonedLootByNodeId"]>;
+  encounter: PlayState["encounter"];
+};
 
 export function createPlayState(world): PlayState {
   const playerProfile = createGeneratedAgentProfile(world, "player", {
@@ -89,7 +99,7 @@ export function createPlayState(world): PlayState {
     currentNode ? { x: currentNode.x, y: currentNode.y } : null,
   );
 
-  return withPlayActionMode({
+  const basePlayState: PlayState = {
     graph: world.travelGraph,
     viewMode: "map",
     timeOfDayHours: normalizeTimeOfDayHours(
@@ -132,7 +142,34 @@ export function createPlayState(world): PlayState {
     discoveredNodeIds,
     revealedNodeIds,
     fogDirty: true,
-  }, { force: true });
+  };
+
+  const initialArrival: NodeArrivalResult =
+    currentNode?.marker === "settlement"
+      ? createNodeArrivalResult(
+          currentNodeId,
+          world,
+          world.travelGraph,
+          basePlayState,
+        )
+      : {
+          event: null,
+          abandonedLootByNodeId: normalizeAbandonedLootByNodeId(
+            basePlayState.abandonedLootByNodeId,
+          ),
+          encounter: null,
+        };
+
+  return withPlayActionMode(
+    {
+      ...basePlayState,
+      pendingJourneyEvent: initialArrival.event ?? null,
+      encounter: initialArrival.encounter ?? null,
+      abandonedLootByNodeId: initialArrival.abandonedLootByNodeId,
+      latestEncounterResolution: null,
+    },
+    { force: true },
+  );
 }
 
 export function beginTravel(playState, targetNodeId, world = null) {
@@ -140,12 +177,16 @@ export function beginTravel(playState, targetNodeId, world = null) {
     return withPlayActionMode(playState);
   }
 
+  const hasBlockingEncounter = Boolean(
+    playState.encounter && playState.encounter.disposition === "hostile",
+  );
+
   if (
     playState.travel ||
     playState.gameOver ||
     playState.rest ||
     playState.hunt ||
-    playState.encounter
+    hasBlockingEncounter
   ) {
     return withPlayActionMode(playState);
   }
@@ -233,18 +274,26 @@ export function advanceTravel(playState, world, deltaMs) {
   }
   const distanceDelta = Math.max(0, nextProgress - currentProgress);
   const normalizedRunStats = normalizeRunStats(playState.runStats);
-  const runStats =
-    distanceDelta > 0
-      ? {
-          ...normalizedRunStats,
-          distanceTraveled: normalizedRunStats.distanceTraveled + distanceDelta,
-        }
-      : playState.runStats;
   const sample = samplePath(
     playState.travel.points,
     playState.travel.segmentLengths,
     nextProgress,
   );
+  const sampleEastDistance = resolveEastDistanceFromStart(world, sample.point?.x);
+  const nextMaxEastDistance = Math.max(
+    normalizedRunStats.maxEastDistance,
+    sampleEastDistance,
+  );
+  const runStatsChanged =
+    distanceDelta > 0 ||
+    nextMaxEastDistance > normalizedRunStats.maxEastDistance + 1e-9;
+  const runStats = runStatsChanged
+    ? {
+        ...normalizedRunStats,
+        distanceTraveled: normalizedRunStats.distanceTraveled + distanceDelta,
+        maxEastDistance: nextMaxEastDistance,
+      }
+    : playState.runStats;
   const sampledRegionId = regionAtPosition(world, sample.point)?.id ?? null;
   const lastRegionId = sampledRegionId ?? playState.lastRegionId ?? null;
   const discoveredCells =
@@ -260,6 +309,15 @@ export function advanceTravel(playState, world, deltaMs) {
     const finalPosition = targetNode
       ? { x: targetNode.x, y: targetNode.y }
       : sample.point;
+    const arrivalEastDistance = resolveEastDistanceFromStart(world, finalPosition?.x);
+    const arrivalMaxEastDistance = Math.max(nextMaxEastDistance, arrivalEastDistance);
+    const arrivalRunStats =
+      arrivalMaxEastDistance > nextMaxEastDistance + 1e-9
+        ? {
+            ...normalizeRunStats(runStats),
+            maxEastDistance: arrivalMaxEastDistance,
+          }
+        : runStats;
     const finalReveal = revealAroundPosition(
       world,
       discoveredCells,
@@ -290,7 +348,9 @@ export function advanceTravel(playState, world, deltaMs) {
           ? (regionAtCell(world, targetNode.cell)?.id ?? lastRegionId)
           : lastRegionId,
       travel: null,
+      encounter: arrival.encounter ?? null,
       pendingJourneyEvent: arrival.event,
+      latestEncounterResolution: null,
       abandonedLootByNodeId: arrival.abandonedLootByNodeId,
       isTravelPaused: false,
       travelPauseReason: null,
@@ -298,7 +358,7 @@ export function advanceTravel(playState, world, deltaMs) {
       rest: null,
       hunt: null,
       latestHuntFeedback: null,
-      runStats,
+      runStats: arrivalRunStats,
       discoveredCells,
       discoveredNodeIds,
       revealedNodeIds,
@@ -341,17 +401,19 @@ export function updateAbandonedLootInventory(playState, nextLootInventory) {
 
   if (lootEvent.type === "encounter-loot") {
     if (!nextLootInventory || isInventoryEmpty(nextLootInventory)) {
-      const shouldResumeTravel = Boolean(
-        playState.travel &&
-        !playState.rest &&
-        !playState.hunt &&
-        playState.travelPauseReason === "encounter",
-      );
+      const shouldStayPaused = Boolean(playState.travel);
+      const nextPauseReason = shouldStayPaused
+        ? playState.rest
+          ? "resting"
+          : playState.hunt
+            ? "hunting"
+            : "encounter"
+        : playState.travelPauseReason;
       return withPlayActionMode({
         ...playState,
         pendingJourneyEvent: null,
-        isTravelPaused: shouldResumeTravel ? false : playState.isTravelPaused,
-        travelPauseReason: shouldResumeTravel ? null : playState.travelPauseReason,
+        isTravelPaused: shouldStayPaused ? true : playState.isTravelPaused,
+        travelPauseReason: nextPauseReason,
       });
     }
     return withPlayActionMode({
@@ -385,10 +447,18 @@ export function updateAbandonedLootInventory(playState, nextLootInventory) {
   });
 }
 
-function createNodeArrivalResult(nodeId, world, graph = null, playState = null) {
+function createNodeArrivalResult(
+  nodeId,
+  world,
+  graph = null,
+  playState = null,
+): NodeArrivalResult {
   const node = nodeId == null ? null : world?.features?.nodes?.[nodeId];
   if (node?.marker === "abandoned") {
     return createAbandonedLootArrivalResult(nodeId, world, playState);
+  }
+  if (node?.marker === "settlement") {
+    return createSettlementEncounterArrivalResult(nodeId, world, playState);
   }
   if (node?.marker === "signpost") {
     return {
@@ -396,6 +466,7 @@ function createNodeArrivalResult(nodeId, world, graph = null, playState = null) 
       abandonedLootByNodeId: normalizeAbandonedLootByNodeId(
         playState?.abandonedLootByNodeId,
       ),
+      encounter: null,
     };
   }
 
@@ -404,10 +475,171 @@ function createNodeArrivalResult(nodeId, world, graph = null, playState = null) 
     abandonedLootByNodeId: normalizeAbandonedLootByNodeId(
       playState?.abandonedLootByNodeId,
     ),
+    encounter: null,
   };
 }
 
-function createAbandonedLootArrivalResult(nodeId, world, playState) {
+function createSettlementEncounterArrivalResult(
+  nodeId,
+  world,
+  playState = null,
+): NodeArrivalResult {
+  const abandonedLootByNodeId = normalizeAbandonedLootByNodeId(
+    playState?.abandonedLootByNodeId,
+  );
+  const settlementNode = nodeId == null ? null : world?.features?.nodes?.[nodeId] ?? null;
+  const settlementId = Number.isFinite(settlementNode?.id)
+    ? Number(settlementNode.id)
+    : Number(nodeId);
+  const settlementState =
+    playState?.settlementStates?.[String(settlementId)] ?? null;
+  const agents = Array.isArray(settlementState?.agents)
+    ? settlementState.agents.filter(
+        (agent) =>
+          normalizeSettlementStat(agent?.health, 0) > 0 &&
+          String(agent?.state ?? "resting") === "resting",
+      )
+    : [];
+  if (!agents.length) {
+    return {
+      event: null,
+      abandonedLootByNodeId,
+      encounter: null,
+    };
+  }
+
+  const opponentMembers: PlayEncounterOpponentMember[] = agents.map((agent, index) => {
+    const fallbackName = `Bosättare ${index + 1}`;
+    const name = String(agent?.name ?? "").trim() || fallbackName;
+    const vitality = normalizeSettlementStat(agent?.vitality, 9);
+    const maxHealth = Math.max(4, normalizeSettlementStat(agent?.maxHealth, 12));
+    const health = Math.max(
+      1,
+      Math.min(maxHealth, normalizeSettlementStat(agent?.health, maxHealth)),
+    );
+    const maxStamina = Math.max(
+      4,
+      normalizeSettlementStat(agent?.maxStamina, 12),
+    );
+    const stamina = Math.max(
+      1,
+      Math.min(maxStamina, normalizeSettlementStat(agent?.stamina, maxStamina)),
+    );
+    const damageMin = Math.max(1, Math.floor(vitality * 0.28));
+    const damageMax = Math.max(damageMin, Math.ceil(vitality * 0.52));
+    return {
+      id: String(agent?.id ?? `settlement-member-${settlementId}-${index + 1}`),
+      name,
+      damageMin,
+      damageMax,
+      maxHealth,
+      health,
+      maxStamina,
+      stamina,
+    };
+  });
+  const memberCount = Math.max(1, opponentMembers.length);
+  const averageInitiative = normalizeSettlementStat(
+    averageSettlementStat(agents, "initiative", 0),
+    0,
+  );
+  const totalMaxHealth = opponentMembers.reduce((sum, member) => sum + member.maxHealth, 0);
+  const totalHealth = opponentMembers.reduce((sum, member) => sum + member.health, 0);
+  const averageMaxStamina = Math.max(
+    1,
+    Math.floor(
+      opponentMembers.reduce((sum, member) => sum + member.maxStamina, 0) / memberCount,
+    ),
+  );
+  const averageStamina = Math.max(
+    1,
+    Math.floor(
+      opponentMembers.reduce((sum, member) => sum + member.stamina, 0) / memberCount,
+    ),
+  );
+  const averageDamageMin = Math.max(
+    1,
+    Math.floor(
+      opponentMembers.reduce((sum, member) => sum + member.damageMin, 0) / memberCount,
+    ),
+  );
+  const averageDamageMax = Math.max(
+    averageDamageMin,
+    Math.ceil(
+      opponentMembers.reduce((sum, member) => sum + member.damageMax, 0) / memberCount,
+    ),
+  );
+  const settlementName = String(
+    settlementNode?.name ??
+      world?.settlements?.find((entry) => Number(entry?.id) === settlementId)?.name ??
+      "okänd bosättning",
+  ).trim();
+  const worldSeed = String(world?.params?.seed ?? "seed");
+  const hourIndex = Number.isFinite(playState?.journeyElapsedHours)
+    ? Math.max(0, Math.floor(Number(playState.journeyElapsedHours)))
+    : 0;
+  const encounterRng = createRng(
+    `${worldSeed}:settlement-encounter:${settlementId}:${hourIndex}`,
+  );
+  const encounterId = `settlement-encounter-${settlementId}-${hourIndex}-${encounterRng.int(100, 999)}`;
+  const playerInitiative = normalizeSettlementStat(playState?.initiative, 0);
+  const settlementWinsInitiative = averageInitiative > playerInitiative;
+  const canAttack = countInventoryItemsByType(playState?.inventory, "bullets") > 0;
+  const participantNames = opponentMembers
+    .map((member) => String(member?.name ?? "").trim())
+    .filter((name) => name.length > 0);
+  const participantLabel =
+    formatSettlementEncounterParticipantNames(participantNames) ||
+    (agents.length === 1 ? "en bosättare" : `${agents.length} bosättare`);
+  const messageLines = [
+    settlementName.length > 0
+      ? `Du möter ${participantLabel} från ${settlementName}.`
+      : `Du möter ${participantLabel}.`,
+  ];
+  if (settlementWinsInitiative) {
+    messageLines.push("De står lugnt och tittar på dig.");
+  } else {
+    messageLines.push("Du vinner initiativet.");
+  }
+
+  return {
+    event: {
+      type: "encounter-turn",
+      encounterId,
+      message: messageLines.join("\n"),
+      requiresAcknowledgement: true,
+      canAttack,
+    },
+    abandonedLootByNodeId,
+    encounter: {
+      id: encounterId,
+      type: "settlement-group",
+      disposition: "friendly",
+      turn: "player",
+      entryStyle: "travel-static",
+      phase: "active",
+      round: 1,
+      rollIndex: 0,
+      opponentInitiative: averageInitiative,
+      opponentDamageMin: averageDamageMin,
+      opponentDamageMax: averageDamageMax,
+      opponentMaxHealth: totalMaxHealth,
+      opponentHealth: totalHealth,
+      opponentMaxStamina: averageMaxStamina,
+      opponentStamina: averageStamina,
+      opponentMembers,
+      activeOpponentMemberId: null,
+      settlementId,
+      settlementName: settlementName.length > 0 ? settlementName : null,
+    },
+  };
+}
+
+function createAbandonedLootArrivalResult(
+  nodeId,
+  world,
+  playState,
+): NodeArrivalResult {
   const key = getAbandonedLootNodeKey(nodeId);
   const abandonedLootByNodeId = normalizeAbandonedLootByNodeId(
     playState?.abandonedLootByNodeId,
@@ -442,6 +674,7 @@ function createAbandonedLootArrivalResult(nodeId, world, playState) {
         nodeId,
         null,
       ),
+      encounter: null,
     };
   }
 
@@ -458,10 +691,15 @@ function createAbandonedLootArrivalResult(nodeId, world, playState) {
       nodeId,
       inventory,
     ),
+    encounter: null,
   };
 }
 
-function createSignpostDirectionsEvent(nodeId, world, graph = null) {
+function createSignpostDirectionsEvent(
+  nodeId,
+  world,
+  graph = null,
+): PlayJourneyEventSignpostDirections {
   const neighborNodeIds = getNeighborNodeIds(graph, nodeId);
   const entries = neighborNodeIds
     .map((neighborNodeId) => {
@@ -648,6 +886,70 @@ function cloneInventorySnapshot(inventory) {
     rows,
     items,
   };
+}
+
+function resolveEastDistanceFromStart(world, currentX) {
+  if (!Number.isFinite(currentX)) {
+    return 0;
+  }
+  const startNodeId = Number.isFinite(world?.playerStart?.nodeId)
+    ? Number(world.playerStart.nodeId)
+    : 0;
+  const startNode = world?.features?.nodes?.[startNodeId] ?? null;
+  const startX = Number(startNode?.x);
+  if (!Number.isFinite(startX)) {
+    return 0;
+  }
+  return Math.max(0, Number(currentX) - startX);
+}
+
+function averageSettlementStat(agents, key, fallback = 0) {
+  if (!Array.isArray(agents) || agents.length <= 0) {
+    return fallback;
+  }
+  let total = 0;
+  let count = 0;
+  for (const agent of agents) {
+    const value = Number(agent?.[key]);
+    if (!Number.isFinite(value)) {
+      continue;
+    }
+    total += value;
+    count += 1;
+  }
+  if (count <= 0) {
+    return fallback;
+  }
+  return total / count;
+}
+
+function normalizeSettlementStat(value, fallback = 0) {
+  const fallbackValue = Number.isFinite(fallback) ? Math.max(0, Math.floor(fallback)) : 0;
+  if (!Number.isFinite(value)) {
+    return fallbackValue;
+  }
+  return Math.max(0, Math.floor(Number(value)));
+}
+
+function formatSettlementEncounterParticipantNames(names) {
+  if (!Array.isArray(names) || names.length <= 0) {
+    return "";
+  }
+  const filteredNames = names
+    .map((entry) => String(entry ?? "").trim())
+    .filter((entry) => entry.length > 0);
+  if (filteredNames.length <= 0) {
+    return "";
+  }
+  if (filteredNames.length === 1) {
+    return filteredNames[0];
+  }
+  if (filteredNames.length === 2) {
+    return `${filteredNames[0]} och ${filteredNames[1]}`;
+  }
+  return `${filteredNames.slice(0, -1).join(", ")} och ${
+    filteredNames[filteredNames.length - 1]
+  }`;
 }
 
 function getPendingLootEvent(playState) {

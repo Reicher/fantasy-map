@@ -13,6 +13,7 @@ export function createInitialRunStats() {
     huntHours: 0,
     restHours: 0,
     distanceTraveled: 0,
+    maxEastDistance: 0,
   };
 }
 
@@ -29,6 +30,7 @@ export function normalizeRunStats(
     huntHours: normalizeElapsedHours(stats.huntHours),
     restHours: normalizeElapsedHours(stats.restHours),
     distanceTraveled: normalizeElapsedHours(stats.distanceTraveled),
+    maxEastDistance: normalizeElapsedHours(stats.maxEastDistance),
   };
 }
 

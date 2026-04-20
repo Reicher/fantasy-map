@@ -117,6 +117,7 @@ export function beginHunt(
   const wasTravelPaused = Boolean(playState.isTravelPaused);
   const priorPauseReason = playState.travelPauseReason ?? null;
   const startTimeOfDay = normalizeTimeOfDayHours(playState.timeOfDayHours);
+  const clearSettlementEncounter = canClearSettlementEncounterForTimedAction(playState);
   const outlook = describeHuntOutlook(
     context,
     startTimeOfDay,
@@ -132,6 +133,8 @@ export function beginHunt(
     isTravelPaused: hasTravel ? true : false,
     travelPauseReason: hasTravel ? "hunting" : null,
     pendingRestChoice: false,
+    pendingJourneyEvent: clearSettlementEncounter ? null : playState.pendingJourneyEvent,
+    encounter: clearSettlementEncounter ? null : playState.encounter,
     rest: null,
     hunt: {
       runId,
@@ -594,7 +597,20 @@ function nodeSettlementWeight(node: NodeLike | null | undefined) {
 }
 
 function hasBlockingActionInteraction(playState: PlayStateLike): boolean {
-  return Boolean(playState?.pendingJourneyEvent);
+  if (!playState?.pendingJourneyEvent) {
+    return false;
+  }
+  return !canClearSettlementEncounterForTimedAction(playState);
+}
+
+function canClearSettlementEncounterForTimedAction(playState: PlayStateLike): boolean {
+  if (playState?.pendingJourneyEvent?.type !== "encounter-turn") {
+    return false;
+  }
+  if (playState?.encounter?.type !== "settlement-group") {
+    return false;
+  }
+  return playState.encounter.disposition !== "hostile";
 }
 
 function shouldResumeTravelAfterHunt(

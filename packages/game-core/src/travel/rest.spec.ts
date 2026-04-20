@@ -73,4 +73,66 @@ describe("travel rest transitions", () => {
     expect(cancelled.stamina).toBe(12);
     expect(cancelled.latestHuntFeedback?.text).toContain("Vila avbruten");
   });
+
+  it("allows rest from non-hostile settlement encounter and clears encounter interaction", () => {
+    const playState = {
+      ...createBasePlayState(),
+      pendingJourneyEvent: {
+        type: "encounter-turn" as const,
+        encounterId: "settlement-enc-1",
+        message: "Du möter bosättare.",
+        canAttack: true,
+      },
+      encounter: {
+        id: "settlement-enc-1",
+        type: "settlement-group" as const,
+        disposition: "friendly" as const,
+        turn: "player" as const,
+        round: 1,
+        rollIndex: 0,
+        opponentInitiative: 4,
+        opponentDamageMin: 1,
+        opponentDamageMax: 2,
+        opponentMaxHealth: 4,
+        opponentHealth: 4,
+        opponentMaxStamina: 8,
+        opponentStamina: 8,
+      },
+    };
+
+    const next = beginRest(playState, 3);
+    expect(next).not.toBe(playState);
+    expect(next?.rest?.hours).toBe(3);
+    expect(next?.pendingJourneyEvent).toBeNull();
+    expect(next?.encounter).toBeNull();
+  });
+
+  it("blocks rest while hostile settlement encounter is active", () => {
+    const playState = {
+      ...createBasePlayState(),
+      pendingJourneyEvent: {
+        type: "encounter-turn" as const,
+        encounterId: "settlement-enc-hostile",
+        message: "Bosättarna är fientliga.",
+        canAttack: true,
+      },
+      encounter: {
+        id: "settlement-enc-hostile",
+        type: "settlement-group" as const,
+        disposition: "hostile" as const,
+        turn: "player" as const,
+        round: 1,
+        rollIndex: 0,
+        opponentInitiative: 4,
+        opponentDamageMin: 1,
+        opponentDamageMax: 2,
+        opponentMaxHealth: 4,
+        opponentHealth: 4,
+        opponentMaxStamina: 8,
+        opponentStamina: 8,
+      },
+    };
+
+    expect(beginRest(playState, 3)).toBe(playState);
+  });
 });

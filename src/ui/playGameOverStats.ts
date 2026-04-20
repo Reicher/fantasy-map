@@ -9,16 +9,19 @@ export interface GameOverRunStats {
   huntHours: number;
   restHours: number;
   distanceTraveled: number;
+  maxEastDistance: number;
 }
 
 interface GameOverStatRow {
   label: string;
   value: string;
   recordKey: string | null;
+  emphasis?: "normal" | "primary";
 }
 
 interface GameOverRunRecord {
   distanceTraveled: number;
+  maxEastDistance: number;
   meatEaten: number;
   travelHours: number;
   huntHours: number;
@@ -39,6 +42,7 @@ export function normalizeRunStatsForGameOver(
     huntHours: normalizeElapsedHours(stats?.huntHours),
     restHours: normalizeElapsedHours(stats?.restHours),
     distanceTraveled: normalizeElapsedHours(stats?.distanceTraveled),
+    maxEastDistance: normalizeElapsedHours(stats?.maxEastDistance),
   };
 }
 
@@ -51,6 +55,7 @@ export function buildRunStatsSignature(
     normalizeElapsedHours(stats?.huntHours).toFixed(3),
     normalizeElapsedHours(stats?.restHours).toFixed(3),
     normalizeElapsedHours(stats?.distanceTraveled).toFixed(3),
+    normalizeElapsedHours(stats?.maxEastDistance).toFixed(3),
   ].join("|");
 }
 
@@ -83,6 +88,9 @@ export function renderGameOverStats(
       typeof row.recordKey === "string" && newRecordKeys.has(row.recordKey);
     if (hasNewRecord) {
       rowElement.classList.add("play-game-over-stat-row--record");
+    }
+    if (row.emphasis === "primary") {
+      rowElement.classList.add("play-game-over-stat-row--primary");
     }
 
     const label = document.createElement("span");
@@ -148,6 +156,10 @@ export function updateAndLoadRunRecord(
     nextRecord.distanceTraveled = runStats.distanceTraveled;
     newRecordKeys.push("distanceTraveled");
   }
+  if (runStats.maxEastDistance > currentRecord.maxEastDistance + 1e-9) {
+    nextRecord.maxEastDistance = runStats.maxEastDistance;
+    newRecordKeys.push("maxEastDistance");
+  }
 
   persistRunRecord(nextRecord);
   return {
@@ -158,42 +170,42 @@ export function updateAndLoadRunRecord(
 
 function createGameOverStatRows(stats: GameOverRunStats): GameOverStatRow[] {
   const totalHours = getRunTotalHours(stats);
-  const huntShare = getHuntShare(stats);
   return [
     {
-      label: "Kött ätit",
-      value: formatInteger(stats.meatEaten),
-      recordKey: "meatEaten",
+      label: "Östligaste punkt:",
+      value: formatEastingWithUnit(stats.maxEastDistance),
+      recordKey: "maxEastDistance",
+      emphasis: "primary",
     },
     {
       label: "Restid",
       value: formatHoursValue(stats.travelHours),
       recordKey: "travelHours",
+      emphasis: "normal",
     },
     {
       label: "Jakt",
       value: formatHoursValue(stats.huntHours),
       recordKey: "huntHours",
+      emphasis: "normal",
     },
     {
       label: "Vila",
       value: formatHoursValue(stats.restHours),
       recordKey: "restHours",
+      emphasis: "normal",
     },
     {
       label: "Total tid",
       value: formatHoursValue(totalHours),
       recordKey: "totalHours",
+      emphasis: "normal",
     },
     {
       label: "Ressträcka",
       value: formatDistanceWithUnit(stats.distanceTraveled),
       recordKey: "distanceTraveled",
-    },
-    {
-      label: "Jaktandel",
-      value: formatPercent(huntShare),
-      recordKey: null,
+      emphasis: "normal",
     },
   ];
 }
@@ -247,6 +259,7 @@ function normalizeRunRecord(
 ): GameOverRunRecord {
   const normalized = {
     distanceTraveled: normalizeElapsedHours(record?.distanceTraveled),
+    maxEastDistance: normalizeElapsedHours(record?.maxEastDistance),
     meatEaten: normalizeStat(record?.meatEaten, 0),
     travelHours: normalizeElapsedHours(record?.travelHours),
     huntHours: normalizeElapsedHours(record?.huntHours),
@@ -274,16 +287,6 @@ function getRunTotalHours(
   );
 }
 
-function getHuntShare(
-  stats: PlayRunStats | Partial<GameOverRunStats> | null | undefined,
-): number {
-  const totalHours = getRunTotalHours(stats);
-  if (totalHours <= 0) {
-    return 0;
-  }
-  return normalizeElapsedHours(stats?.huntHours) / totalHours;
-}
-
 function formatHoursValue(value: number | null | undefined): string {
   const safeValue = normalizeElapsedHours(value);
   return `${safeValue.toLocaleString("sv-SE", {
@@ -292,16 +295,12 @@ function formatHoursValue(value: number | null | undefined): string {
   })} h`;
 }
 
-function formatInteger(value: number | null | undefined): string {
-  return normalizeStat(value, 0).toLocaleString("sv-SE");
-}
-
-function formatPercent(value: number): string {
-  const safeValue = Number.isFinite(value) ? Math.max(0, value) : 0;
-  return `${(safeValue * 100).toLocaleString("sv-SE", {
+function formatEastingWithUnit(value: number | null | undefined): string {
+  const safeValue = Number.isFinite(value) ? Math.max(0, Number(value)) : 0;
+  return `E +${safeValue.toLocaleString("sv-SE", {
     minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })}%`;
+    maximumFractionDigits: 1,
+  })} km`;
 }
 
 function normalizeStat(value: number | null | undefined, fallback = 0): number {

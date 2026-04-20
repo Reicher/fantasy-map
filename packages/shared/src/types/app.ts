@@ -73,6 +73,8 @@ export interface AppRefs {
   playJourneyEncounterGreetButton: HTMLButtonElement | null;
   playJourneyEncounterAttackButton: HTMLButtonElement | null;
   playJourneyEncounterFleeButton: HTMLButtonElement | null;
+  playJourneySettlementActions: HTMLElement | null;
+  playJourneySettlementActionsHint: HTMLElement | null;
   playSettlementDebug: HTMLElement | null;
   playSettlementDebugBody: HTMLElement | null;
   playRestDialog: HTMLElement | null;
@@ -85,6 +87,8 @@ export interface AppRefs {
   playActionResultOkButton: HTMLButtonElement | null;
   playRestButtons: HTMLButtonElement[];
   playHuntButtons: HTMLButtonElement[];
+  playSettlementEncounterRestButtons: HTMLButtonElement[];
+  playSettlementEncounterHuntButtons: HTMLButtonElement[];
   playGameOverDialog: HTMLElement | null;
   playGameOverBody: HTMLElement | null;
   playGameOverStats: HTMLElement | null;

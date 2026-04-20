@@ -24,6 +24,14 @@ import {
   renderGameOverStats,
   updateAndLoadRunRecord,
 } from "./playGameOverStats";
+import {
+  hideActionResultDialog,
+  syncActionResultDialog,
+} from "./playActionResultDialog";
+import {
+  buildSettlementDebugSummary,
+  getCurrentSettlementDebugContext,
+} from "./playSettlementDebug";
 
 interface JourneyPresentationSnapshot {
   viewW?: number;
@@ -70,6 +78,10 @@ export function createPlaySubViewController({
   let lastJourneyLootTakeAllEnabled = null;
   let lastJourneyEncounterActionsVisible = null;
   let lastJourneyEncounterCanAttack = null;
+  let lastSettlementActionMenuVisible = null;
+  let lastSettlementActionHintVisible = null;
+  let lastSettlementActionHintMessage = null;
+  let lastEncounterActionMenuEncounterId = null;
   let lastSettlementDebugVisible = null;
   let lastSettlementDebugSignature = null;
   let lastRestDialogVisible = null;
@@ -79,8 +91,10 @@ export function createPlaySubViewController({
   let lastHuntOutlookVisible = null;
   let lastRestOptionsVisible = null;
   let lastHuntCancelVisible = null;
-  let lastActionResultDialogVisible = null;
-  let lastActionResultMessage = null;
+  let actionResultDialogState = {
+    visible: null,
+    message: null,
+  };
   let lastGameOverVisible = null;
   let lastGameOverMessage = null;
   let lastGameOverStatsRenderSignature = null;
@@ -163,6 +177,10 @@ export function createPlaySubViewController({
     lastJourneyLootTakeAllEnabled = null;
     lastJourneyEncounterActionsVisible = null;
     lastJourneyEncounterCanAttack = null;
+    lastSettlementActionMenuVisible = null;
+    lastSettlementActionHintVisible = null;
+    lastSettlementActionHintMessage = null;
+    lastEncounterActionMenuEncounterId = null;
     lastSettlementDebugVisible = null;
     lastSettlementDebugSignature = null;
     lastRestDialogVisible = null;
@@ -172,8 +190,10 @@ export function createPlaySubViewController({
     lastHuntOutlookVisible = null;
     lastRestOptionsVisible = null;
     lastHuntCancelVisible = null;
-    lastActionResultDialogVisible = null;
-    lastActionResultMessage = null;
+    actionResultDialogState = {
+      visible: null,
+      message: null,
+    };
     lastGameOverVisible = null;
     lastGameOverMessage = null;
     lastGameOverStatsRenderSignature = null;
@@ -187,7 +207,10 @@ export function createPlaySubViewController({
     hideArrivalCue();
     hideJourneyEventDialog();
     hideRestDialog();
-    hideActionResultDialog();
+    actionResultDialogState = hideActionResultDialog({
+      dialog: refs.playActionResultDialog,
+      body: refs.playActionResultBody,
+    });
     hideGameOverDialog();
     hideSettlementDebugPanel();
     inventoryGrid.reset();
@@ -233,7 +256,10 @@ export function createPlaySubViewController({
       hideArrivalCue();
       hideJourneyEventDialog();
       hideRestDialog();
-      hideActionResultDialog();
+      actionResultDialogState = hideActionResultDialog({
+        dialog: refs.playActionResultDialog,
+        body: refs.playActionResultBody,
+      });
       hideGameOverDialog();
       hideSettlementDebugPanel();
       resetTravelCueTracking();
@@ -270,14 +296,25 @@ export function createPlaySubViewController({
     );
     inventoryGrid.render();
     syncRestDialog(playState, isPlay, world);
-    syncActionResultDialog(playState, isPlay);
+    actionResultDialogState = syncActionResultDialog(
+      {
+        dialog: refs.playActionResultDialog,
+        body: refs.playActionResultBody,
+      },
+      playState,
+      isPlay,
+      actionResultDialogState,
+    );
     syncGameOverDialog(playState, isPlay);
 
     if (playState.gameOver) {
       hideArrivalCue();
       hideJourneyEventDialog();
       hideRestDialog();
-      hideActionResultDialog();
+      actionResultDialogState = hideActionResultDialog({
+        dialog: refs.playActionResultDialog,
+        body: refs.playActionResultBody,
+      });
       hideSettlementDebugPanel();
       resetTravelCueTracking();
       return;
@@ -285,7 +322,7 @@ export function createPlaySubViewController({
 
     if (!isJourney) {
       hideArrivalCue();
-      hideJourneyEventDialog();
+      syncJourneyEventDialog(playState, false, {}, world);
       hideSettlementDebugPanel();
       return;
     }
@@ -303,7 +340,7 @@ export function createPlaySubViewController({
         ? journeyScene.getPresentationSnapshot()
         : {};
     maybeTriggerArrivalCue(world, playState, presentation);
-    syncJourneyEventDialog(playState, isJourney, presentation);
+    syncJourneyEventDialog(playState, isJourney, presentation, world);
     syncSettlementDebugPanel(world, playState, isJourney);
     profiler.setSnapshot(journeyScene.getDebugSnapshot());
   }
@@ -433,6 +470,7 @@ export function createPlaySubViewController({
     playState,
     isJourney,
     presentation: JourneyPresentationSnapshot = {},
+    world: World | null = null,
   ) {
     const dialog = refs.playJourneyEventDialog;
     const body = refs.playJourneyEventBody;
@@ -443,13 +481,15 @@ export function createPlaySubViewController({
     const event = playState?.pendingJourneyEvent ?? null;
     const isEncounterTurn = event?.type === "encounter-turn";
     const encounterId = String(event?.encounterId ?? "");
+    const requiresEncounterIntro =
+      isEncounterTurn && isJourney && Boolean(playState?.travel);
     const introReady =
-      !isEncounterTurn ||
+      !requiresEncounterIntro ||
       (encounterId.length <= 0
         ? true
         : String(presentation?.encounterId ?? "") === encounterId &&
           Boolean(presentation?.encounterIntroComplete));
-    const shouldShow = isJourney && Boolean(event) && introReady;
+    const shouldShow = Boolean(event) && introReady;
     if (lastJourneyEventDialogVisible !== shouldShow) {
       setElementVisible(dialog, shouldShow, "grid");
       lastJourneyEventDialogVisible = shouldShow;
@@ -459,8 +499,12 @@ export function createPlaySubViewController({
       lastJourneyEventDialogMessage = null;
       syncJourneyLootPanel(false, null);
       syncJourneyEncounterActions(false, false);
+      syncSettlementEncounterActionMenu(false, null, world);
       dialog.classList.remove("play-journey-event-dialog--loot");
       dialog.classList.remove("play-journey-event-dialog--encounter");
+      dialog.classList.remove("play-journey-event-dialog--settlement-encounter");
+      dialog.classList.remove("play-journey-event-dialog--actions-open");
+      lastEncounterActionMenuEncounterId = null;
       clearAutoClearJourneyEventTimer();
       return;
     }
@@ -474,6 +518,18 @@ export function createPlaySubViewController({
     const lootInventory = getLootInventory(playState);
     const showLootPanel = Boolean(lootInventory);
     const showEncounterActions = event?.type === "encounter-turn";
+    if (showEncounterActions) {
+      if (lastEncounterActionMenuEncounterId !== encounterId) {
+        lastEncounterActionMenuEncounterId = encounterId;
+        if (!state.playActionMenuOpen) {
+          state.playActionMenuOpen = true;
+        }
+      }
+    } else {
+      lastEncounterActionMenuEncounterId = null;
+    }
+    const isSettlementEncounter =
+      showEncounterActions && playState?.encounter?.type === "settlement-group";
     const canAttack =
       showEncounterActions &&
       Boolean(event?.canAttack) &&
@@ -483,9 +539,107 @@ export function createPlaySubViewController({
       "play-journey-event-dialog--encounter",
       showEncounterActions,
     );
+    dialog.classList.toggle(
+      "play-journey-event-dialog--settlement-encounter",
+      isSettlementEncounter,
+    );
     syncJourneyLootPanel(showLootPanel, lootInventory);
     syncJourneyEncounterActions(showEncounterActions, canAttack);
+    syncSettlementEncounterActionMenu(showEncounterActions, playState, world);
     scheduleAutoClearJourneyEvent(event);
+  }
+
+  function syncSettlementEncounterActionMenu(
+    showEncounterActions,
+    playState,
+    world,
+  ) {
+    const dialog = refs.playJourneyEventDialog;
+    const menu = refs.playJourneySettlementActions;
+    const hint = refs.playJourneySettlementActionsHint;
+    if (!menu) {
+      return;
+    }
+    const isSettlementEncounter = playState?.encounter?.type === "settlement-group";
+    const isHostileSettlementEncounter =
+      isSettlementEncounter && playState?.encounter?.disposition === "hostile";
+    const canUseTimedActions = isSettlementEncounter && !isHostileSettlementEncounter;
+    const shouldShowMenu =
+      Boolean(showEncounterActions) &&
+      Boolean(state.playActionMenuOpen);
+    if (lastSettlementActionMenuVisible !== shouldShowMenu) {
+      setElementVisible(menu, shouldShowMenu, "grid");
+      lastSettlementActionMenuVisible = shouldShowMenu;
+    }
+    dialog?.classList.toggle(
+      "play-journey-event-dialog--actions-open",
+      shouldShowMenu,
+    );
+    if (!shouldShowMenu) {
+      if (hint) {
+        setElementVisible(hint, false, "block");
+      }
+      lastSettlementActionHintVisible = false;
+      lastSettlementActionHintMessage = null;
+      return;
+    }
+
+    const huntSituation = describeHuntSituation(playState, world);
+    const restDisabled =
+      !canUseTimedActions ||
+      Boolean(playState?.rest) ||
+      Boolean(playState?.hunt) ||
+      Boolean(playState?.pendingRestChoice);
+    const huntDisabled =
+      restDisabled ||
+      normalizeStamina(playState?.stamina, 0) <= 0 ||
+      !huntSituation.available;
+    const restrictionReason = !isSettlementEncounter
+      ? "Vila och jakt är endast tillgängligt i bosättningsmöten."
+      : isHostileSettlementEncounter
+        ? "Du kan inte vila eller jaga medan någon part är fientlig."
+        : "";
+    const huntReason = !huntSituation.available
+      ? String(huntSituation.reason ?? "Jakt är inte tillgängligt här.")
+      : "";
+
+    for (const button of refs.playSettlementEncounterRestButtons ?? []) {
+      if (!button) {
+        continue;
+      }
+      button.disabled = restDisabled;
+      if (restrictionReason.length > 0) {
+        button.title = restrictionReason;
+      } else if (button.hasAttribute("title")) {
+        button.removeAttribute("title");
+      }
+    }
+
+    for (const button of refs.playSettlementEncounterHuntButtons ?? []) {
+      if (!button) {
+        continue;
+      }
+      button.disabled = huntDisabled;
+      const reason = restrictionReason || huntReason;
+      if (reason.length > 0) {
+        button.title = reason;
+      } else if (button.hasAttribute("title")) {
+        button.removeAttribute("title");
+      }
+    }
+
+    const hintMessage = restrictionReason || huntReason;
+    const showHint = hintMessage.length > 0;
+    if (hint && lastSettlementActionHintVisible !== showHint) {
+      setElementVisible(hint, showHint, "block");
+      lastSettlementActionHintVisible = showHint;
+    }
+    if (hint && showHint && hintMessage !== lastSettlementActionHintMessage) {
+      hint.textContent = hintMessage;
+      lastSettlementActionHintMessage = hintMessage;
+    } else if (!showHint) {
+      lastSettlementActionHintMessage = null;
+    }
   }
 
   function syncJourneyLootPanel(showLootPanel, lootInventory) {
@@ -535,14 +689,26 @@ export function createPlaySubViewController({
     refs.playJourneyEventDialog.classList.remove(
       "play-journey-event-dialog--encounter",
     );
+    refs.playJourneyEventDialog.classList.remove(
+      "play-journey-event-dialog--settlement-encounter",
+    );
+    refs.playJourneyEventDialog.classList.remove("play-journey-event-dialog--actions-open");
     setElementVisible(refs.playJourneyEventLoot, false, "grid");
     setElementVisible(refs.playJourneyEncounterActions, false, "flex");
+    setElementVisible(refs.playJourneySettlementActions, false, "grid");
+    if (refs.playJourneySettlementActionsHint) {
+      setElementVisible(refs.playJourneySettlementActionsHint, false, "block");
+    }
     lastJourneyEventDialogVisible = false;
     lastJourneyEventDialogMessage = null;
     lastJourneyLootPanelVisible = false;
     lastJourneyLootTakeAllEnabled = null;
     lastJourneyEncounterActionsVisible = false;
     lastJourneyEncounterCanAttack = null;
+    lastSettlementActionMenuVisible = false;
+    lastSettlementActionHintVisible = false;
+    lastSettlementActionHintMessage = null;
+    lastEncounterActionMenuEncounterId = null;
     clearAutoClearJourneyEventTimer();
   }
 
@@ -628,90 +794,65 @@ export function createPlaySubViewController({
       return;
     }
 
-    let message = "";
-    if (isResting) {
-      const totalHours = normalizeRestHours(restState?.hours);
-      const elapsedHours = normalizeElapsedHours(restState?.elapsedHours);
-      const remainingHours = Math.max(0, totalHours - elapsedHours);
-      message = `Vilar... ${formatRestHours(remainingHours)} kvar.`;
-    } else if (isHunting) {
-      const totalHours = normalizeRestHours(huntState?.hours);
-      const elapsedHours = normalizeElapsedHours(huntState?.elapsedHours);
-      const remainingHours = Math.max(0, totalHours - elapsedHours);
-      message = `Jagar... ${formatRestHours(remainingHours)} kvar.`;
-    } else if (needsRestChoice) {
-      message = "Staminan är slut. Du måste vila.";
+    if (lastRestBodyVisible !== false) {
+      setElementVisible(body, false, "block");
+      lastRestBodyVisible = false;
     }
-    const showBody = message.length > 0;
-    if (lastRestBodyVisible !== showBody) {
-      setElementVisible(body, showBody, "block");
-      lastRestBodyVisible = showBody;
-    }
-    if (!showBody) {
-      lastRestDialogMessage = null;
-    } else if (message !== lastRestDialogMessage) {
-      body.textContent = message;
-      lastRestDialogMessage = message;
-    }
+    lastRestDialogMessage = null;
 
     const optionsElement = refs.playRestOptions;
-    const showOptions = !isResting && !isHunting;
-    if (optionsElement && lastRestOptionsVisible !== showOptions) {
-      setElementVisible(optionsElement, showOptions, "grid");
-      lastRestOptionsVisible = showOptions;
+    if (optionsElement && lastRestOptionsVisible !== true) {
+      setElementVisible(optionsElement, true, "grid");
+      lastRestOptionsVisible = true;
     }
 
-    const huntOutlookElement = refs.playHuntOutlook;
-    const showHuntOutlook = showOptions && ((showIdleMenu && isActionMenuOpen) || needsRestChoice);
-    const huntOutlookMessage = showHuntOutlook
-      ? huntSituation.available
-        ? huntSituation.outlook
-        : huntSituation.reason
-      : "";
-    if (huntOutlookElement && lastHuntOutlookVisible !== showHuntOutlook) {
-      setElementVisible(huntOutlookElement, showHuntOutlook, "block");
-      lastHuntOutlookVisible = showHuntOutlook;
+    if (refs.playHuntOutlook && lastHuntOutlookVisible !== false) {
+      setElementVisible(refs.playHuntOutlook, false, "block");
+      lastHuntOutlookVisible = false;
     }
-    if (
-      showHuntOutlook &&
-      huntOutlookElement &&
-      huntOutlookMessage !== lastHuntOutlookMessage
-    ) {
-      huntOutlookElement.textContent = huntOutlookMessage;
-      lastHuntOutlookMessage = huntOutlookMessage;
-    } else if (!showHuntOutlook) {
-      lastHuntOutlookMessage = null;
-    }
+    lastHuntOutlookMessage = null;
 
-    const showRestChoices = showOptions;
-    const showHuntChoices = showOptions;
+    const activeRestHours = isResting ? normalizeRestHours(restState?.hours) : null;
+    const activeHuntHours = isHunting ? normalizeRestHours(huntState?.hours) : null;
+    const disableOtherButtons = isResting || isHunting;
+    const shouldDisableHuntWhenIdle =
+      needsRestChoice ||
+      normalizeStamina(playState?.stamina, 0) <= 0 ||
+      !huntSituation.available;
+    const huntUnavailableReason = needsRestChoice
+      ? "Du måste vila innan du kan jaga."
+      : !huntSituation.available
+        ? String(huntSituation.reason ?? "Jakt är inte tillgängligt här.")
+        : "";
 
     if (Array.isArray(refs.playRestButtons)) {
       for (const button of refs.playRestButtons) {
         if (!button) {
           continue;
         }
-        setElementVisible(button, showRestChoices, "inline-flex");
-        button.disabled = isResting || isHunting;
+        const requestedHours = normalizeRestHours(Number(button.dataset.restHours));
+        const isActiveButton = isResting && requestedHours === activeRestHours;
+        setElementVisible(button, true, "inline-flex");
+        button.textContent = isActiveButton ? "Avbryt" : getDefaultTimedActionButtonLabel(button);
+        button.disabled = disableOtherButtons ? !isActiveButton : false;
+        if (button.hasAttribute("title")) {
+          button.removeAttribute("title");
+        }
       }
     }
     if (Array.isArray(refs.playHuntButtons)) {
-      const disableHuntButtons =
-        isResting ||
-        isHunting ||
-        needsRestChoice ||
-        normalizeStamina(playState?.stamina, 0) <= 0 ||
-        !huntSituation.available;
-      const huntUnavailableReason = !huntSituation.available
-        ? String(huntSituation.reason ?? "Jakt är inte tillgängligt här.")
-        : "";
       for (const button of refs.playHuntButtons) {
         if (!button) {
           continue;
         }
-        setElementVisible(button, showHuntChoices, "inline-flex");
-        button.disabled = disableHuntButtons;
-        if (huntUnavailableReason) {
+        const requestedHours = normalizeRestHours(Number(button.dataset.huntHours));
+        const isActiveButton = isHunting && requestedHours === activeHuntHours;
+        setElementVisible(button, true, "inline-flex");
+        button.textContent = isActiveButton ? "Avbryt" : getDefaultTimedActionButtonLabel(button);
+        button.disabled = disableOtherButtons
+          ? !isActiveButton
+          : shouldDisableHuntWhenIdle;
+        if (!disableOtherButtons && huntUnavailableReason) {
           button.title = huntUnavailableReason;
         } else if (button.hasAttribute("title")) {
           button.removeAttribute("title");
@@ -719,17 +860,9 @@ export function createPlaySubViewController({
       }
     }
 
-    const showHuntCancel = isHunting || isResting;
-    if (refs.playActionCancelButton) {
-      refs.playActionCancelButton.textContent = isResting ? "Avbryt vila" : "Avbryt jakt";
-    }
-    if (refs.playActionCancelButton && lastHuntCancelVisible !== showHuntCancel) {
-      setElementVisible(
-        refs.playActionCancelButton,
-        showHuntCancel,
-        "inline-flex",
-      );
-      lastHuntCancelVisible = showHuntCancel;
+    if (refs.playActionCancelButton && lastHuntCancelVisible !== false) {
+      setElementVisible(refs.playActionCancelButton, false, "inline-flex");
+      lastHuntCancelVisible = false;
     }
   }
 
@@ -754,6 +887,7 @@ export function createPlaySubViewController({
       for (const button of refs.playRestButtons) {
         if (button) {
           setElementVisible(button, false, "flex");
+          button.textContent = getDefaultTimedActionButtonLabel(button);
           button.disabled = false;
         }
       }
@@ -762,6 +896,7 @@ export function createPlaySubViewController({
       for (const button of refs.playHuntButtons) {
         if (button) {
           setElementVisible(button, false, "flex");
+          button.textContent = getDefaultTimedActionButtonLabel(button);
           button.disabled = false;
         }
       }
@@ -773,41 +908,6 @@ export function createPlaySubViewController({
     lastHuntOutlookVisible = false;
     lastRestOptionsVisible = false;
     lastHuntCancelVisible = false;
-  }
-
-  function syncActionResultDialog(playState, isPlay) {
-    const dialog = refs.playActionResultDialog;
-    const body = refs.playActionResultBody;
-    if (!dialog || !body) {
-      return;
-    }
-    const resultMessage =
-      playState?.latestHuntFeedback?.type === "result"
-        ? String(playState.latestHuntFeedback.text ?? "")
-        : "";
-    const hasBlockingInteraction = Boolean(playState?.pendingJourneyEvent);
-    const shouldShow = isPlay && resultMessage.length > 0 && !hasBlockingInteraction;
-    if (lastActionResultDialogVisible !== shouldShow) {
-      setElementVisible(dialog, shouldShow, "grid");
-      lastActionResultDialogVisible = shouldShow;
-    }
-    if (!shouldShow) {
-      lastActionResultMessage = null;
-      return;
-    }
-    if (resultMessage !== lastActionResultMessage) {
-      body.textContent = resultMessage;
-      lastActionResultMessage = resultMessage;
-    }
-  }
-
-  function hideActionResultDialog() {
-    if (!refs.playActionResultDialog) {
-      return;
-    }
-    setElementVisible(refs.playActionResultDialog, false, "grid");
-    lastActionResultDialogVisible = false;
-    lastActionResultMessage = null;
   }
 
   function syncGameOverDialog(playState, isPlay) {
@@ -1182,9 +1282,15 @@ function syncBottomHudButtons(
     refs.playPanelToggleSettingsButton,
     isPlayHudPanelOpen(playActivePanels, "settings"),
   );
-  const nextModeLabel = playState?.viewMode === "journey" ? "Karta" : "Spelläge";
-  const modeDescription =
-    playState?.viewMode === "journey"
+  const isJourneyModeLocked = isJourneyModeLockedForDestinationChoice(playState);
+  const nextModeLabel = isJourneyModeLocked
+    ? "Låst"
+    : playState?.viewMode === "journey"
+      ? "Karta"
+      : "Spelläge";
+  const modeDescription = isJourneyModeLocked
+    ? "Välj en destination på kartan för att slutföra flykten."
+    : playState?.viewMode === "journey"
       ? "Byt till kartläge för överblick."
       : "Byt till spelläge för att fortsätta resa.";
   const tooltipText = formatHudTooltip(nextModeLabel, modeDescription, "M");
@@ -1195,7 +1301,7 @@ function syncBottomHudButtons(
   refs.playSwitchModeButton.dataset.nextMode =
     playState?.viewMode === "journey" ? "map" : "journey";
   refs.playSwitchModeButton.setAttribute("aria-label", `${nextModeLabel} (M)`);
-  refs.playSwitchModeButton.disabled = false;
+  refs.playSwitchModeButton.disabled = isJourneyModeLocked;
   return nextModeLabel === lastModeButtonLabel ? lastModeButtonLabel : nextModeLabel;
 }
 
@@ -1208,6 +1314,8 @@ function syncTravelToggleButton(playState, playActionMenuOpen, button, lastSigna
   const isPaused = Boolean(playState?.isTravelPaused);
   const isResting = Boolean(playState?.rest);
   const isHunting = Boolean(playState?.hunt);
+  const isEncounterTurnActive = playState?.pendingJourneyEvent?.type === "encounter-turn";
+  const isHostileOpponent = playState?.encounter?.disposition === "hostile";
   const isEncounterActive =
     Boolean(playState?.encounter) ||
     playState?.pendingJourneyEvent?.type === "encounter-turn" ||
@@ -1218,13 +1326,21 @@ function syncTravelToggleButton(playState, playActionMenuOpen, button, lastSigna
     isPaused &&
     !isResting &&
     !isHunting &&
-    normalizeStamina(playState?.stamina, 0) > 0;
+    normalizeStamina(playState?.stamina, 0) > 0 &&
+    !isHostileOpponent;
   let isDisabled = false;
   let label = "Handlingar";
   let description = "Öppna eller stäng handlingar i noder.";
   let isActive = Boolean(playActionMenuOpen && inNode);
 
-  if (isEncounterActive) {
+  if (isEncounterTurnActive) {
+    isDisabled = false;
+    label = "Handlingar";
+    description = playActionMenuOpen
+      ? "Stäng handlingar i mötet."
+      : "Öppna handlingar i mötet.";
+    isActive = Boolean(playActionMenuOpen);
+  } else if (isEncounterActive) {
     isDisabled = true;
     label = "Möte";
     description = "Hantera mötet i dialogen för att fortsätta färden.";
@@ -1244,7 +1360,9 @@ function syncTravelToggleButton(playState, playActionMenuOpen, button, lastSigna
       label = "Fortsätt";
       description = canResume
         ? "Fortsätt resan från paus."
-        : "Vila krävs innan resan kan fortsätta.";
+        : isHostileOpponent
+          ? "Du kan inte fortsätta färden medan motståndaren är fientlig."
+          : "Vila krävs innan resan kan fortsätta.";
       isDisabled = !canResume;
       isActive = true;
     } else {
@@ -1598,16 +1716,10 @@ function normalizeWeaponAccuracy(value, fallback = 0) {
 
 function describeTravelStatus(playState) {
   if (playState?.hunt) {
-    const totalHours = normalizeRestHours(playState.hunt.hours);
-    const elapsedHours = normalizeElapsedHours(playState.hunt.elapsedHours);
-    const remainingHours = Math.max(0, totalHours - elapsedHours);
-    return `Jagar (${formatRestHours(remainingHours)} kvar)`;
+    return "Jagar";
   }
   if (playState?.rest) {
-    const totalHours = normalizeRestHours(playState.rest.hours);
-    const elapsedHours = normalizeElapsedHours(playState.rest.elapsedHours);
-    const remainingHours = Math.max(0, totalHours - elapsedHours);
-    return `Vilar (${formatRestHours(remainingHours)} kvar)`;
+    return "Vilar";
   }
   if (playState?.pendingRestChoice) {
     return "Utmattad (vila krävs)";
@@ -1635,12 +1747,16 @@ function normalizeRestHours(value) {
   return Math.max(0, Math.floor(value));
 }
 
-function formatRestHours(value) {
-  const safeValue = Number.isFinite(value) ? Math.max(0, value) : 0;
-  if (safeValue >= 1) {
-    return `${Math.ceil(safeValue)}h`;
+function getDefaultTimedActionButtonLabel(button) {
+  const cachedLabel = String(button?.dataset?.defaultLabel ?? "").trim();
+  if (cachedLabel.length > 0) {
+    return cachedLabel;
   }
-  return `${safeValue.toFixed(1)}h`;
+  const resolvedLabel = String(button?.textContent ?? "").trim() || "Val";
+  if (button?.dataset) {
+    button.dataset.defaultLabel = resolvedLabel;
+  }
+  return resolvedLabel;
 }
 
 function getInventoryTypeCount(inventory, type) {
@@ -1671,114 +1787,6 @@ function buildJourneyEventKey(event) {
   ].join("|");
 }
 
-function getCurrentSettlementDebugContext(world, playState) {
-  if (!world || !playState || playState.currentNodeId == null) {
-    return null;
-  }
-  const features = world?.features as
-    | { nodes?: Array<(NodeLike & { id?: number }) | undefined> }
-    | null
-    | undefined;
-  const nodes = Array.isArray(features?.nodes) ? features.nodes : [];
-  const node = nodes?.[playState.currentNodeId] ?? null;
-  if (!node || node.marker !== "settlement") {
-    return null;
-  }
-  const settlementId = Number.isFinite(node.id)
-    ? Number(node.id)
-    : Number(playState.currentNodeId);
-  const settlementState = playState.settlementStates?.[String(settlementId)] ?? null;
-  if (!settlementState) {
-    return null;
-  }
-  return {
-    node,
-    settlementId,
-    settlementState,
-  };
-}
-
-function buildSettlementDebugSummary(context) {
-  const nodeName = getNodeTitle(context.node) || `Settlement ${context.settlementId + 1}`;
-  const agents = Array.isArray(context?.settlementState?.agents)
-    ? context.settlementState.agents
-    : [];
-  const inventory = context?.settlementState?.inventory ?? null;
-  const inventorySummary = summarizeInventory(inventory);
-  const residentLines = agents.length
-    ? agents.map((agent, index) => {
-        const name = String(agent?.name ?? "").trim() || `Agent ${index + 1}`;
-        const health = normalizePositiveInteger(agent?.health);
-        const maxHealth = Math.max(1, normalizePositiveInteger(agent?.maxHealth));
-        const stamina = normalizePositiveInteger(agent?.stamina);
-        const maxStamina = Math.max(1, normalizePositiveInteger(agent?.maxStamina));
-        const carriedFood = countInventoryFood(agent?.inventory);
-        const stateLabel = String(agent?.state ?? "okänd");
-        return `- ${name} (${stateLabel})\n  Hälsa: ${health}/${maxHealth}  Liv: ${health}/${maxHealth}  Stamina: ${stamina}/${maxStamina}  Mat: ${carriedFood}`;
-      })
-    : ["- Inga boende kvar."];
-
-  const inventoryLines = inventorySummary.length
-    ? inventorySummary.map((entry) => `- ${entry.label}: ${entry.count}`)
-    : ["- Tomt"];
-
-  return [
-    `${nodeName} (ID ${context.settlementId})`,
-    "",
-    `Boende (${agents.length}):`,
-    ...residentLines,
-    "",
-    "Settlement inventory:",
-    ...inventoryLines,
-  ].join("\n");
-}
-
-function summarizeInventory(inventory) {
-  if (!inventory || !Array.isArray(inventory.items)) {
-    return [];
-  }
-  const counts = new Map<string, number>();
-  for (const item of inventory.items) {
-    if (!item) {
-      continue;
-    }
-    const key = String(item.type ?? item.name ?? item.symbol ?? "okänd").trim() || "okänd";
-    const count = Number.isFinite(item.count) ? Math.max(1, Math.floor(item.count)) : 1;
-    counts.set(key, (counts.get(key) ?? 0) + count);
-  }
-  const labels = [...counts.keys()].sort((a, b) => a.localeCompare(b, "sv"));
-  return labels.map((label) => ({
-    label,
-    count: counts.get(label) ?? 0,
-  }));
-}
-
-function countInventoryFood(inventory) {
-  if (!inventory || !Array.isArray(inventory.items)) {
-    return 0;
-  }
-  let total = 0;
-  for (const item of inventory.items) {
-    if (!item) {
-      continue;
-    }
-    const type = String(item.type ?? "").trim().toLowerCase();
-    if (type !== "food" && type !== "meat") {
-      continue;
-    }
-    const count = Number.isFinite(item.count) ? Math.max(1, Math.floor(item.count)) : 1;
-    total += count;
-  }
-  return total;
-}
-
-function normalizePositiveInteger(value) {
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-  return Math.max(0, Math.floor(Number(value)));
-}
-
 function getLootEvent(playState) {
   const event = playState?.pendingJourneyEvent;
   return event?.type === "abandoned-loot" || event?.type === "encounter-loot"
@@ -1792,4 +1800,13 @@ function getLootInventory(playState) {
 
 function withUpdatedLootInventory(playState, nextLootInventory) {
   return updateAbandonedLootInventory(playState, nextLootInventory);
+}
+
+function isJourneyModeLockedForDestinationChoice(playState): boolean {
+  const event = playState?.pendingJourneyEvent;
+  return Boolean(
+    playState?.viewMode === "map" &&
+      event?.type === "signpost-directions" &&
+      event?.requiresDestinationChoice === true,
+  );
 }

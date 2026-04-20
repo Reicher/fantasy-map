@@ -78,6 +78,7 @@ export interface PlayRunStats {
   huntHours?: number;
   restHours?: number;
   distanceTraveled?: number;
+  maxEastDistance?: number;
 }
 
 export interface PlayRestState {
@@ -144,6 +145,7 @@ export interface PlayJourneyEventSignpostDirections
   extends PlayJourneyEventBase {
   type: "signpost-directions";
   neighborNodeIds?: number[];
+  requiresDestinationChoice?: boolean;
 }
 
 export interface PlayJourneyEventAgentGreeting extends PlayJourneyEventBase {
@@ -169,9 +171,13 @@ export type PlayJourneyEvent =
   | PlayJourneyEventEncounterTurn
   | PlayJourneyEventEncounterLoot;
 
-export type PlayEncounterType = "rabbit" | "wolf";
+export type PlayEncounterType = "rabbit" | "wolf" | "settlement-group";
 
-export type PlayEncounterDisposition = "neutral" | "hostile" | "fleeing";
+export type PlayEncounterDisposition =
+  | "friendly"
+  | "neutral"
+  | "hostile"
+  | "fleeing";
 
 export type PlayEncounterTurn = "player" | "opponent";
 
@@ -182,6 +188,17 @@ export type PlayEncounterOutcome =
   | "opponent-fled"
   | "player-died"
   | "opponent-died";
+
+export interface PlayEncounterOpponentMember {
+  id: string;
+  name: string;
+  damageMin: number;
+  damageMax: number;
+  maxHealth: number;
+  health: number;
+  maxStamina: number;
+  stamina: number;
+}
 
 export interface PlayEncounterState {
   id: string;
@@ -200,6 +217,10 @@ export interface PlayEncounterState {
   opponentHealth: number;
   opponentMaxStamina: number;
   opponentStamina: number;
+  opponentMembers?: PlayEncounterOpponentMember[];
+  activeOpponentMemberId?: string | null;
+  settlementId?: number | null;
+  settlementName?: string | null;
 }
 
 export interface PlayEncounterResolution {

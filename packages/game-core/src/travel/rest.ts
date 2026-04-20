@@ -34,6 +34,7 @@ export function beginRest(
   const hasTravel = Boolean(playState.travel);
   const wasTravelPaused = Boolean(playState.isTravelPaused);
   const priorPauseReason = playState.travelPauseReason ?? null;
+  const clearSettlementEncounter = canClearSettlementEncounterForTimedAction(playState);
 
   return withPlayActionMode({
     ...playState,
@@ -43,6 +44,8 @@ export function beginRest(
     travelPauseReason: hasTravel ? "resting" : null,
     pendingRestChoice: false,
     latestHuntFeedback: null,
+    pendingJourneyEvent: clearSettlementEncounter ? null : playState.pendingJourneyEvent,
+    encounter: clearSettlementEncounter ? null : playState.encounter,
     rest: {
       hours: restHours,
       elapsedHours: 0,
@@ -103,7 +106,20 @@ export function advanceRest(
 }
 
 function hasBlockingActionInteraction(playState: PlayStateLike): boolean {
-  return Boolean(playState?.pendingJourneyEvent);
+  if (!playState?.pendingJourneyEvent) {
+    return false;
+  }
+  return !canClearSettlementEncounterForTimedAction(playState);
+}
+
+function canClearSettlementEncounterForTimedAction(playState: PlayStateLike): boolean {
+  if (playState?.pendingJourneyEvent?.type !== "encounter-turn") {
+    return false;
+  }
+  if (playState?.encounter?.type !== "settlement-group") {
+    return false;
+  }
+  return playState.encounter.disposition !== "hostile";
 }
 
 function shouldResumeTravelAfterRest(

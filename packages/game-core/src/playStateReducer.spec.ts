@@ -3,11 +3,12 @@ import {
   reducePlayState,
   reducePlayStateWithMeta,
 } from "./playStateReducer";
+import { createPlayState } from "./travel";
 import { createInitialInventory } from "./inventory";
 import type { PlayState } from "@fardvag/shared/types/play";
 import type { World } from "@fardvag/shared/types/world";
 
-function createTravelWorld(): World {
+function createTravelWorld(startNodeId = 0): World {
   const width = 8;
   const height = 8;
   const size = width * height;
@@ -21,6 +22,22 @@ function createTravelWorld(): World {
       seed: "play-state-reducer",
       fogVisionRadius: 2,
     },
+    settlements: [
+      {
+        id: 0,
+        name: "Start",
+        x: 2,
+        y: 2,
+        score: 1,
+      },
+      {
+        id: 1,
+        name: "Mål",
+        x: 4,
+        y: 2,
+        score: 1,
+      },
+    ],
     terrain: {
       width,
       height,
@@ -49,6 +66,9 @@ function createTravelWorld(): World {
         biomeRegionId,
         lakeIdByCell,
       },
+    },
+    playerStart: {
+      nodeId: startNodeId,
     },
   } as unknown as World;
 }
@@ -118,6 +138,80 @@ describe("playStateReducer", () => {
     expect(next?.actionMode).toBe("travel-active");
   });
 
+  it("allows BEGIN_TRAVEL when encounter is non-hostile", () => {
+    const playState = createTravelPlayState();
+    const encounterId = "settlement-encounter-test";
+    const next = reducePlayState(
+      {
+        ...playState,
+        encounter: {
+          id: encounterId,
+          type: "settlement-group",
+          disposition: "friendly",
+          turn: "player",
+          round: 1,
+          opponentInitiative: 6,
+          opponentDamageMin: 2,
+          opponentDamageMax: 4,
+          opponentMaxHealth: 18,
+          opponentHealth: 18,
+          opponentMaxStamina: 14,
+          opponentStamina: 14,
+        },
+        pendingJourneyEvent: {
+          type: "encounter-turn",
+          encounterId,
+          message: "Du möter en grupp.",
+          requiresAcknowledgement: true,
+          canAttack: true,
+        },
+      },
+      {
+        type: "BEGIN_TRAVEL",
+        targetNodeId: 1,
+      },
+    );
+
+    expect(next).not.toBeNull();
+    expect(next).not.toBe(playState);
+    expect(next?.travel?.targetNodeId).toBe(1);
+    expect(next?.encounter).toBeNull();
+    expect(next?.pendingJourneyEvent).toBeNull();
+    expect(next?.viewMode).toBe("journey");
+  });
+
+  it("blocks BEGIN_TRAVEL when encounter is hostile", () => {
+    const playState = createTravelPlayState();
+    const next = reducePlayState(
+      {
+        ...playState,
+        encounter: {
+          id: "hostile-encounter",
+          type: "wolf",
+          disposition: "hostile",
+          turn: "player",
+          round: 1,
+          opponentInitiative: 9,
+          opponentDamageMin: 4,
+          opponentDamageMax: 8,
+          opponentMaxHealth: 12,
+          opponentHealth: 12,
+          opponentMaxStamina: 20,
+          opponentStamina: 20,
+        },
+      },
+      {
+        type: "BEGIN_TRAVEL",
+        targetNodeId: 1,
+      },
+    );
+
+    expect(next).toBeDefined();
+    expect(next?.travel).toBeNull();
+    expect(next?.encounter?.disposition).toBe("hostile");
+    expect(next?.currentNodeId).toBe(playState.currentNodeId);
+  });
+
   it("keeps state unchanged on ADVANCE_TRAVEL without world context", () => {
     const started = reducePlayState(createTravelPlayState(), {
       type: "BEGIN_TRAVEL",
@@ -171,6 +265,143 @@ describe("playStateReducer", () => {
     expect(advanced?.travel).not.toBeNull();
     expect(advanced?.travel?.progress).toBeCloseTo(0.75, 6);
     expect(advanced?.runStats?.distanceTraveled).toBeCloseTo(0.75, 6);
+  });
+
+  it("starts friendly settlement encounter on arrival when settlement has agents", () => {
+    const world = createTravelWorld();
+    const started = reducePlayState(
+      {
+        ...createTravelPlayState(),
+        initiative: 5,
+        settlementStates: {
+          "1": {
+            settlementId: 1,
+            inventory: createInitialInventory(),
+            agents: [
+              {
+                id: "settlement-agent-1",
+                name: "Sven Svensson",
+                settlementId: 1,
+                state: "resting",
+                initiative: 9,
+                vitality: 10,
+                maxHealth: 12,
+                health: 12,
+                maxStamina: 14,
+                stamina: 14,
+                inventory: createInitialInventory(),
+              },
+              {
+                id: "settlement-agent-2",
+                name: "Klara Kling",
+                settlementId: 1,
+                state: "resting",
+                initiative: 7,
+                vitality: 8,
+                maxHealth: 10,
+                health: 10,
+                maxStamina: 12,
+                stamina: 12,
+                inventory: createInitialInventory(),
+              },
+            ],
+          },
+        },
+      },
+      {
+        type: "BEGIN_TRAVEL",
+        targetNodeId: 1,
+      },
+    );
+    const arrived = reducePlayState(
+      started,
+      {
+        type: "ADVANCE_TRAVEL",
+        deltaMs: 1000,
+      },
+      { world },
+    );
+
+    expect(arrived?.travel).toBeNull();
+    expect(arrived?.encounter?.type).toBe("settlement-group");
+    expect(arrived?.encounter?.disposition).toBe("friendly");
+    expect(arrived?.encounter?.opponentMembers?.length).toBe(2);
+    expect(arrived?.encounter?.settlementName).toBe("Mål");
+    expect(arrived?.pendingJourneyEvent?.type).toBe("encounter-turn");
+    expect(arrived?.pendingJourneyEvent?.message).toContain(
+      "Du möter Sven Svensson och Klara Kling från Mål.",
+    );
+  });
+
+  it("does not start settlement encounter when all settlement agents are hunting", () => {
+    const world = createTravelWorld();
+    const started = reducePlayState(
+      {
+        ...createTravelPlayState(),
+        initiative: 5,
+        settlementStates: {
+          "1": {
+            settlementId: 1,
+            inventory: createInitialInventory(),
+            agents: [
+              {
+                id: "settlement-agent-1",
+                settlementId: 1,
+                state: "hunting",
+                initiative: 9,
+                vitality: 10,
+                maxHealth: 12,
+                health: 12,
+                maxStamina: 14,
+                stamina: 10,
+                inventory: createInitialInventory(),
+              },
+              {
+                id: "settlement-agent-2",
+                settlementId: 1,
+                state: "hunting",
+                initiative: 7,
+                vitality: 8,
+                maxHealth: 10,
+                health: 10,
+                maxStamina: 12,
+                stamina: 9,
+                inventory: createInitialInventory(),
+              },
+            ],
+          },
+        },
+      },
+      {
+        type: "BEGIN_TRAVEL",
+        targetNodeId: 1,
+      },
+    );
+    const arrived = reducePlayState(
+      started,
+      {
+        type: "ADVANCE_TRAVEL",
+        deltaMs: 1000,
+      },
+      { world },
+    );
+
+    expect(arrived?.travel).toBeNull();
+    expect(arrived?.encounter).toBeNull();
+    expect(arrived?.pendingJourneyEvent).toBeNull();
+    expect(arrived?.actionMode).toBe("idle");
+  });
+
+  it("starts settlement encounter on configured start settlement", () => {
+    const world = createTravelWorld(1);
+    const started = createPlayState(world);
+
+    expect(started?.travel).toBeNull();
+    expect(started?.currentNodeId).toBe(1);
+    expect(started?.encounter?.type).toBe("settlement-group");
+    expect(started?.encounter?.disposition).toBe("friendly");
+    expect(started?.pendingJourneyEvent?.type).toBe("encounter-turn");
+    expect(started?.actionMode).toBe("event");
   });
 
   it("advances world-hours through reducer event and updates run stats", () => {

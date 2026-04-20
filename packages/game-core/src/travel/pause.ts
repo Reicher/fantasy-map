@@ -13,6 +13,13 @@ export function toggleTravelPause(
   }
 
   if (playState.isTravelPaused) {
+    if (playState.encounter?.disposition === "hostile") {
+      return withPlayActionMode({
+        ...playState,
+        isTravelPaused: true,
+        travelPauseReason: "encounter",
+      });
+    }
     const stamina = normalizeStaminaValue(playState.stamina, 0);
     if (stamina <= 0) {
       return withPlayActionMode({
