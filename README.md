@@ -99,6 +99,22 @@ I editorn finns också:
 - export till PNG
 - statistikpanel
 
+### Delade editorinställningar (checkas in)
+
+Standardvärden för editor/spel läses nu från:
+
+- `public/editor-defaults.json`
+
+Så här uppdaterar du dem för GitHub Pages:
+
+1. Justera inställningarna i editorn.
+2. Klicka `Spara defaults-fil` (laddar ner en ny `editor-defaults.json`).
+3. Ersätt `public/editor-defaults.json` i repot med den nedladdade filen.
+4. Commit + push.
+
+Efter deploy används den filen som utgångsläge när man öppnar editorn eller startar ett nytt spel.
+Om du redan har gamla lokala värden sparade i webbläsaren kan du klicka `Återställ` för att gå tillbaka till filens värden.
+
 ### Spelläge
 
 Spelläget startar från `/` och börjar i kartvyn.

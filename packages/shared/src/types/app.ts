@@ -108,6 +108,7 @@ export interface AppRefs {
   zoom3Button: HTMLButtonElement | null;
   randomSeedButton: HTMLButtonElement;
   resetButton: HTMLButtonElement;
+  saveDefaultsButton: HTMLButtonElement | null;
   saveImageButton: HTMLButtonElement;
   enterPlayButtons: HTMLButtonElement[];
 }

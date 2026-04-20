@@ -34,6 +34,10 @@ import {
   persistEditorParams,
 } from "./app/editorPersistence";
 import {
+  downloadEditorDefaultsFile,
+  loadBundledEditorDefaults,
+} from "./app/editorDefaultsFile";
+import {
   createTransitionController,
   waitForNextPaintIfActive,
 } from "./ui/viewState";
@@ -101,18 +105,20 @@ const playSession = createPlaySession({
   syncModeUi,
 });
 
+const bundledEditorDefaults = await loadBundledEditorDefaults(DEFAULT_PARAMS);
 const persistedParams = loadPersistedEditorParams();
 const initialParams =
   initialMode === "play"
     ? {
-        ...(persistedParams ?? DEFAULT_PARAMS),
+        ...(persistedParams ?? bundledEditorDefaults),
         seed: randomSeed(),
       }
     : persistedParams ?? {
-        ...DEFAULT_PARAMS,
+        ...bundledEditorDefaults,
       };
 renderControlsFromSchema(refs.form, { initialTab: "karta" });
 hydrateForm(initialParams);
+state.currentRenderScale = normalizeParams(initialParams).renderScale;
 bindRangeLabels();
 
 refs.form.addEventListener("submit", (event) => {
@@ -127,11 +133,19 @@ refs.randomSeedButton.addEventListener("click", () => {
 });
 
 refs.resetButton.addEventListener("click", () => {
-  hydrateForm(DEFAULT_PARAMS);
+  hydrateForm(bundledEditorDefaults);
   updateLabels();
   persistCurrentForm();
   generateAndRender();
 });
+
+if (refs.saveDefaultsButton) {
+  refs.saveDefaultsButton.addEventListener("click", () => {
+    const formParams = getFormValues(refs.form);
+    persistEditorParams(formParams);
+    downloadEditorDefaultsFile(formParams);
+  });
+}
 
 const persistFormSettingsDebounced = createDebouncedFormPersistor(
   persistCurrentForm,

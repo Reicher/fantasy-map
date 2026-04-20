@@ -129,6 +129,7 @@ export function createAppRefs(): AppRefs {
     zoom3Button: queryOptional<HTMLButtonElement>("#zoom-3"),
     randomSeedButton: queryRequired<HTMLButtonElement>("#random-seed"),
     resetButton: queryRequired<HTMLButtonElement>("#reset"),
+    saveDefaultsButton: queryOptional<HTMLButtonElement>("#save-defaults"),
     saveImageButton: queryRequired<HTMLButtonElement>("#save-image"),
     enterPlayButtons: queryAll<HTMLButtonElement>("[data-enter-play]"),
   };
