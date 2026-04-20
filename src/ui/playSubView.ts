@@ -5,6 +5,11 @@ import {
   formatDistanceWithUnit,
   isInventoryEmpty,
   isNodeDiscovered,
+  normalizePlayerInjuryStatus,
+  resolveEffectiveWeaponAccuracy,
+  resolveHungerStaminaPenaltyPerHour,
+  resolvePlayerHungerStatus,
+  resolveRestStaminaGainPerHour,
   transferAllInventoryItems,
   transferInventoryItem,
   updateAbandonedLootInventory,
@@ -282,8 +287,9 @@ export function createPlaySubViewController({
       refs.playLocationLine.parentElement.setAttribute("title", locationTooltip);
     }
     lastJourneyVitalsSignature = syncJourneyVitals(
-      refs.playJourneyHearts,
       refs.playJourneyStamina,
+      refs.playJourneyHunger,
+      refs.playJourneyHearts,
       refs.playJourneyFoodCount,
       refs.playHudBulletsCount,
       playState,
@@ -481,6 +487,20 @@ export function createPlaySubViewController({
     const event = playState?.pendingJourneyEvent ?? null;
     const isEncounterTurn = event?.type === "encounter-turn";
     const encounterId = String(event?.encounterId ?? "");
+    const isSettlementEncounterTurn =
+      isEncounterTurn && playState?.encounter?.type === "settlement-group";
+    if (
+      isSettlementEncounterTurn &&
+      encounterId.length > 0 &&
+      lastEncounterActionMenuEncounterId !== encounterId
+    ) {
+      lastEncounterActionMenuEncounterId = encounterId;
+      if (!state.playActionMenuOpen) {
+        state.playActionMenuOpen = true;
+      }
+    }
+    const shouldShowEncounterDialog =
+      !isEncounterTurn || Boolean(state.playActionMenuOpen);
     const requiresEncounterIntro =
       isEncounterTurn && isJourney && Boolean(playState?.travel);
     const introReady =
@@ -489,7 +509,7 @@ export function createPlaySubViewController({
         ? true
         : String(presentation?.encounterId ?? "") === encounterId &&
           Boolean(presentation?.encounterIntroComplete));
-    const shouldShow = Boolean(event) && introReady;
+    const shouldShow = Boolean(event) && introReady && shouldShowEncounterDialog;
     if (lastJourneyEventDialogVisible !== shouldShow) {
       setElementVisible(dialog, shouldShow, "grid");
       lastJourneyEventDialogVisible = shouldShow;
@@ -504,7 +524,9 @@ export function createPlaySubViewController({
       dialog.classList.remove("play-journey-event-dialog--encounter");
       dialog.classList.remove("play-journey-event-dialog--settlement-encounter");
       dialog.classList.remove("play-journey-event-dialog--actions-open");
-      lastEncounterActionMenuEncounterId = null;
+      if (!isEncounterTurn) {
+        lastEncounterActionMenuEncounterId = null;
+      }
       clearAutoClearJourneyEventTimer();
       return;
     }
@@ -518,16 +540,10 @@ export function createPlaySubViewController({
     const lootInventory = getLootInventory(playState);
     const showLootPanel = Boolean(lootInventory);
     const showEncounterActions = event?.type === "encounter-turn";
-    if (showEncounterActions) {
-      if (lastEncounterActionMenuEncounterId !== encounterId) {
-        lastEncounterActionMenuEncounterId = encounterId;
-        if (!state.playActionMenuOpen) {
-          state.playActionMenuOpen = true;
-        }
-      }
-    } else {
+    if (!showEncounterActions) {
       lastEncounterActionMenuEncounterId = null;
     }
+    const isEncounterMenuOpen = showEncounterActions && Boolean(state.playActionMenuOpen);
     const isSettlementEncounter =
       showEncounterActions && playState?.encounter?.type === "settlement-group";
     const canAttack =
@@ -544,13 +560,13 @@ export function createPlaySubViewController({
       isSettlementEncounter,
     );
     syncJourneyLootPanel(showLootPanel, lootInventory);
-    syncJourneyEncounterActions(showEncounterActions, canAttack);
-    syncSettlementEncounterActionMenu(showEncounterActions, playState, world);
+    syncJourneyEncounterActions(isEncounterMenuOpen, canAttack);
+    syncSettlementEncounterActionMenu(isEncounterMenuOpen, playState, world);
     scheduleAutoClearJourneyEvent(event);
   }
 
   function syncSettlementEncounterActionMenu(
-    showEncounterActions,
+    showEncounterMenu,
     playState,
     world,
   ) {
@@ -564,9 +580,7 @@ export function createPlaySubViewController({
     const isHostileSettlementEncounter =
       isSettlementEncounter && playState?.encounter?.disposition === "hostile";
     const canUseTimedActions = isSettlementEncounter && !isHostileSettlementEncounter;
-    const shouldShowMenu =
-      Boolean(showEncounterActions) &&
-      Boolean(state.playActionMenuOpen);
+    const shouldShowMenu = Boolean(showEncounterMenu) && isSettlementEncounter;
     if (lastSettlementActionMenuVisible !== shouldShowMenu) {
       setElementVisible(menu, shouldShowMenu, "grid");
       lastSettlementActionMenuVisible = shouldShowMenu;
@@ -673,10 +687,10 @@ export function createPlaySubViewController({
       return;
     }
     if (lastJourneyEncounterCanAttack !== canAttack) {
+      lastJourneyEncounterCanAttack = canAttack;
       if (refs.playJourneyEncounterAttackButton) {
         refs.playJourneyEncounterAttackButton.disabled = !canAttack;
       }
-      lastJourneyEncounterCanAttack = canAttack;
     }
   }
 
@@ -1449,18 +1463,17 @@ function formatHudTooltip(
 }
 
 function syncJourneyVitals(
-  heartsElement,
   staminaElement,
+  hungerElement,
+  injuryElement,
   foodCountElement,
   bulletsCountElement,
   playState,
   lastSignature,
 ) {
-  if (!heartsElement || !staminaElement || !foodCountElement) {
+  if (!staminaElement || !hungerElement || !injuryElement || !foodCountElement) {
     return lastSignature;
   }
-  const maxHealth = normalizeHealth(playState?.maxHealth, 12);
-  const health = Math.min(maxHealth, normalizeHealth(playState?.health, maxHealth));
   const maxStamina = normalizeStamina(playState?.maxStamina, 60);
   const stamina = Math.min(
     maxStamina,
@@ -1468,43 +1481,66 @@ function syncJourneyVitals(
   );
   const foodCount = getInventoryTypeCount(playState?.inventory, "meat");
   const bulletsCount = getInventoryTypeCount(playState?.inventory, "bullets");
-  const visualHealth = getInterpolatedHealthValue(
-    playState,
-    health,
-    maxHealth,
-    foodCount,
-  );
   const visualStamina = getInterpolatedStaminaValue(playState, stamina, maxStamina);
-  const healthRatio = maxHealth > 0 ? Math.max(0, Math.min(1, visualHealth / maxHealth)) : 0;
   const staminaRatio =
     maxStamina > 0 ? Math.max(0, Math.min(1, visualStamina / maxStamina)) : 0;
+  const hungerHours = normalizeElapsedHours(playState?.hungerElapsedHours);
+  const hungerStatus = resolvePlayerHungerStatus(hungerHours);
+  const injuryStatus = normalizePlayerInjuryStatus(playState?.injuryStatus);
+  const baseAccuracy = normalizeWeaponAccuracy(playState?.vapenTraffsakerhet, 0);
+  const effectiveAccuracy = resolveEffectiveWeaponAccuracy(baseAccuracy, injuryStatus);
+  const accuracyPenalty = Math.max(0, baseAccuracy - effectiveAccuracy);
+  const restGainPerHour = resolveRestStaminaGainPerHour(
+    injuryStatus,
+    HUD_STAMINA_PER_REST_HOUR,
+  );
+  const restPenaltyPerHour = Math.max(0, HUD_STAMINA_PER_REST_HOUR - restGainPerHour);
+  const hungerPenaltyPerHour = resolveHungerStaminaPenaltyPerHour(hungerHours);
+  const hungerTooltip = buildHungerTooltip(
+    hungerStatus,
+    hungerHours,
+    hungerPenaltyPerHour,
+  );
+  const injuryTooltip = buildInjuryTooltip(
+    injuryStatus,
+    restPenaltyPerHour,
+    accuracyPenalty,
+  );
   const signature = [
-    `h:${visualHealth.toFixed(2)}/${maxHealth}`,
     `s:${visualStamina.toFixed(2)}/${maxStamina}`,
+    `hs:${hungerStatus}:${hungerHours.toFixed(2)}`,
+    `is:${injuryStatus}:${effectiveAccuracy}`,
+    `hv:${hungerStatus !== "fed" ? 1 : 0}`,
+    `iv:${injuryStatus !== "healthy" ? 1 : 0}`,
     `f:${foodCount}`,
     `b:${bulletsCount}`,
   ].join("|");
   if (signature === lastSignature) {
     return lastSignature;
   }
-  const healthFill = heartsElement.querySelector(".play-hud-status-fill");
   const staminaFill = staminaElement.querySelector(".play-hud-status-fill");
-  if (healthFill) {
-    healthFill.style.width = `${(healthRatio * 100).toFixed(2)}%`;
-  }
   if (staminaFill) {
     staminaFill.style.width = `${(staminaRatio * 100).toFixed(2)}%`;
   }
-  heartsElement.dataset.tone = getStatusTone(healthRatio);
   staminaElement.dataset.tone = getStatusTone(staminaRatio);
-  heartsElement.setAttribute(
-    "aria-label",
-    `Hälsa: ${Math.round(visualHealth)} av ${maxHealth}`,
-  );
   staminaElement.setAttribute(
     "aria-label",
     `Stamina: ${Math.round(visualStamina)} av ${maxStamina}`,
   );
+  const showHungerStatus = hungerStatus !== "fed";
+  const showInjuryStatus = injuryStatus !== "healthy";
+  if (hungerElement.parentElement) {
+    hungerElement.parentElement.style.display = showHungerStatus ? "inline-grid" : "none";
+  }
+  if (injuryElement.parentElement) {
+    injuryElement.parentElement.style.display = showInjuryStatus ? "inline-grid" : "none";
+  }
+  hungerElement.dataset.tone = getHungerTone(hungerStatus);
+  hungerElement.title = hungerTooltip;
+  hungerElement.setAttribute("aria-label", hungerTooltip);
+  injuryElement.dataset.tone = getInjuryTone(injuryStatus);
+  injuryElement.title = injuryTooltip;
+  injuryElement.setAttribute("aria-label", injuryTooltip);
   foodCountElement.textContent = String(foodCount);
   foodCountElement.setAttribute("aria-label", `Mat: ${foodCount}`);
   if (bulletsCountElement) {
@@ -1533,24 +1569,28 @@ function syncCharacterPanel(refs, playState, lastSignature) {
   const initiative = normalizeStat(playState?.initiative, 0);
   const vitality = normalizeHealth(
     playState?.vitality,
-    normalizeHealth(playState?.maxHealth, 12),
+    12,
   );
   const maxStamina = normalizeStamina(playState?.maxStamina, 60);
   const stamina = Math.min(
     maxStamina,
     normalizeStamina(playState?.stamina, maxStamina),
   );
-  const vapenTraffsakerhet = normalizeWeaponAccuracy(
+  const baseAccuracy = normalizeWeaponAccuracy(
     playState?.vapenTraffsakerhet,
     0,
   );
-  const statusLine = describeTravelStatus(playState);
+  const effectiveAccuracy = resolveEffectiveWeaponAccuracy(
+    baseAccuracy,
+    playState?.injuryStatus,
+  );
+  const statusLine = describeCharacterStatusLine(playState);
   const signature = [
     initiative,
     vitality,
     stamina,
     maxStamina,
-    vapenTraffsakerhet,
+    effectiveAccuracy,
     statusLine,
   ].join("|");
   if (signature === lastSignature) {
@@ -1560,7 +1600,7 @@ function syncCharacterPanel(refs, playState, lastSignature) {
   initiativeElement.textContent = `Initiativ: ${initiative}`;
   vitalityElement.textContent = `Vitalitet: ${vitality}`;
   staminaElement.textContent = `Stamina: ${stamina}/${maxStamina}`;
-  accuracyElement.textContent = `Vapenträffsäkerhet: ${vapenTraffsakerhet}%`;
+  accuracyElement.textContent = `Vapenträffsäkerhet: ${effectiveAccuracy}%`;
   statusElement.textContent = `Status: ${statusLine}`;
   return signature;
 }
@@ -1595,23 +1635,6 @@ function getLocationProgressRatio(playState): number {
   return Math.max(0, Math.min(1, (travelledDistance || 0) / totalDistance));
 }
 
-function getInterpolatedHealthValue(
-  playState,
-  health: number,
-  maxHealth: number,
-  foodCount: number,
-): number {
-  const clampedHealth = Math.max(0, Math.min(maxHealth, health));
-  if (foodCount > 0) {
-    return clampedHealth;
-  }
-  const fractionalHour = getFractionalWorldHourProgress(playState);
-  if (fractionalHour <= 0 || !isWorldTimeRunning(playState)) {
-    return clampedHealth;
-  }
-  return Math.max(0, clampedHealth - fractionalHour);
-}
-
 function getInterpolatedStaminaValue(
   playState,
   stamina: number,
@@ -1626,7 +1649,20 @@ function getInterpolatedStaminaValue(
     return Math.max(0, clampedStamina - fractionalHour * HUD_STAMINA_PER_TRAVEL_HOUR);
   }
   if (playState?.rest) {
-    return Math.min(maxStamina, clampedStamina + fractionalHour * HUD_STAMINA_PER_REST_HOUR);
+    const committedRestHours = normalizeElapsedHours(playState.rest?.elapsedHours);
+    const totalRestHours = normalizeRestHours(playState.rest?.hours);
+    const visualRestHours = Math.max(
+      0,
+      Math.min(totalRestHours, committedRestHours + fractionalHour),
+    );
+    const staminaGainPerHour = resolveRestStaminaGainPerHour(
+      playState?.injuryStatus,
+      HUD_STAMINA_PER_REST_HOUR,
+    );
+    return Math.min(
+      maxStamina,
+      clampedStamina + visualRestHours * staminaGainPerHour,
+    );
   }
   if (playState?.hunt) {
     return Math.max(0, clampedStamina - fractionalHour * HUD_STAMINA_PER_HUNT_HOUR);
@@ -1643,14 +1679,6 @@ function getFractionalWorldHourProgress(playState): number {
   return Math.max(0, Math.min(0.999, renderedElapsed - committedElapsed));
 }
 
-function isWorldTimeRunning(playState): boolean {
-  return Boolean(
-    (playState?.travel && !playState?.isTravelPaused && !playState?.rest && !playState?.hunt) ||
-      playState?.rest ||
-      playState?.hunt,
-  );
-}
-
 function getStatusTone(ratio: number): "normal" | "low" | "critical" {
   if (ratio <= 0.18) {
     return "critical";
@@ -1659,6 +1687,99 @@ function getStatusTone(ratio: number): "normal" | "low" | "critical" {
     return "low";
   }
   return "normal";
+}
+
+function getHungerTone(status): "normal" | "low" | "critical" {
+  if (status === "starving") {
+    return "critical";
+  }
+  if (status === "hungry") {
+    return "low";
+  }
+  return "normal";
+}
+
+function getInjuryTone(status): "normal" | "low" | "critical" {
+  if (status === "severely-injured") {
+    return "critical";
+  }
+  if (status === "injured") {
+    return "low";
+  }
+  return "normal";
+}
+
+function describeHungerStatusLabel(status): string {
+  if (status === "peckish") {
+    return "Småhungrig";
+  }
+  if (status === "hungry") {
+    return "Hungrig";
+  }
+  if (status === "starving") {
+    return "Svältande";
+  }
+  return "Mätt";
+}
+
+function describeInjuryStatusLabel(status): string {
+  if (status === "injured") {
+    return "Skadad";
+  }
+  if (status === "severely-injured") {
+    return "Svårt skadad";
+  }
+  return "Oskadad";
+}
+
+function buildHungerTooltip(status, hungerHours, staminaPenaltyPerHour): string {
+  const wholeHours = Number.isFinite(hungerHours) ? Math.max(0, Math.floor(hungerHours)) : 0;
+  const lines = [`Hungerstatus: ${describeHungerStatusLabel(status)}`];
+  if (staminaPenaltyPerHour > 0) {
+    lines.push(`Effekt: -${staminaPenaltyPerHour} stamina per timme.`);
+  } else {
+    lines.push("Effekt: Ingen direkt staminaförlust just nu.");
+  }
+  if (status === "fed") {
+    lines.push("Blir Småhungrig direkt om du inte kan äta under en timme.");
+    return lines.join("\n");
+  }
+  if (status === "peckish") {
+    const hoursInStage = Math.max(0, wholeHours);
+    const hoursUntilHungry = Math.max(1, 3 - hoursInStage);
+    lines.push(`Till Hungrig: ${hoursUntilHungry}h.`);
+    return lines.join("\n");
+  }
+  if (status === "hungry") {
+    const hoursInStage = Math.max(0, wholeHours - 3);
+    const hoursUntilStarving = Math.max(1, 3 - hoursInStage);
+    lines.push(`Till Svältande: ${hoursUntilStarving}h.`);
+    return lines.join("\n");
+  }
+  const hoursInStage = Math.max(0, wholeHours - 6);
+  const hoursUntilDeath = Math.max(1, 3 - hoursInStage);
+  lines.push(`Till död av svält: ${hoursUntilDeath}h.`);
+  return lines.join("\n");
+}
+
+function buildInjuryTooltip(
+  status,
+  restPenaltyPerHour: number,
+  accuracyPenalty: number,
+): string {
+  const lines = [`Skadestatus: ${describeInjuryStatusLabel(status)}`];
+  if (status === "healthy") {
+    lines.push("Effekt: Ingen negativ effekt.");
+    return lines.join("\n");
+  }
+  lines.push(
+    `Effekt: Vila återhämtar ${restPenaltyPerHour} mindre stamina per timme.`,
+  );
+  lines.push(`Effekt: Vapenträffsäkerhet -${accuracyPenalty}%.`);
+  if (status === "severely-injured") {
+    lines.push("Nästa träff dödar dig.");
+  }
+  return lines.join("\n");
 }
 
 function getVisibleNodeTitle(playState, node, fallbackTitle = "") {
@@ -1731,6 +1852,15 @@ function describeTravelStatus(playState) {
     return "Reser";
   }
   return "Stilla";
+}
+
+function describeCharacterStatusLine(playState) {
+  const parts = [describeTravelStatus(playState)];
+  const hungerStatus = resolvePlayerHungerStatus(playState?.hungerElapsedHours);
+  const injuryStatus = normalizePlayerInjuryStatus(playState?.injuryStatus);
+  parts.push(describeHungerStatusLabel(hungerStatus));
+  parts.push(describeInjuryStatusLabel(injuryStatus));
+  return parts.join(" · ");
 }
 
 function normalizeElapsedHours(value) {

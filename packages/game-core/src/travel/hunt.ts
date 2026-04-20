@@ -23,8 +23,8 @@ import {
   normalizeElapsedHours,
   normalizeHuntHours,
   normalizeStaminaValue,
-  normalizeWeaponAccuracy,
 } from "./normalizers";
+import { resolveEffectiveWeaponAccuracy } from "./playerStatus";
 import type {
   PlayHuntFeedback,
   PlayHuntState,
@@ -121,7 +121,10 @@ export function beginHunt(
   const outlook = describeHuntOutlook(
     context,
     startTimeOfDay,
-    playState.vapenTraffsakerhet,
+    resolveEffectiveWeaponAccuracy(
+      playState.vapenTraffsakerhet,
+      playState.injuryStatus,
+    ),
   );
 
   return withPlayActionMode({
@@ -274,7 +277,10 @@ export function describeHuntSituation(
   const outlook = describeHuntOutlook(
     context,
     playState.timeOfDayHours,
-    playState.vapenTraffsakerhet,
+    resolveEffectiveWeaponAccuracy(
+      playState.vapenTraffsakerhet,
+      playState.injuryStatus,
+    ),
   );
 
   return {
@@ -530,7 +536,8 @@ function resolveHuntSuccessChance(
   const timeFactor = huntTimeOfDayFactor(timeOfDayHours).factor;
   const biomeFactor = biomeHuntFactor(context.biomeKey);
   const skillFactor = clamp(
-    (normalizeWeaponAccuracy(weaponAccuracy) - 20) / 80,
+    (Math.max(0, Math.min(100, Math.floor(Number(weaponAccuracy) || 0)) - 20)) /
+      80,
     0,
     1,
   );
@@ -660,7 +667,10 @@ function resolveHuntMeatReward(
   const successChance = resolveHuntSuccessChance(
     context,
     hourTimeOfDay,
-    playState.vapenTraffsakerhet,
+    resolveEffectiveWeaponAccuracy(
+      playState.vapenTraffsakerhet,
+      playState.injuryStatus,
+    ),
   );
   const seed = String(huntState.seed ?? "seed");
   const hourRng = createRng(`${seed}:hour:${hourNumber}`);

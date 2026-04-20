@@ -45,12 +45,9 @@ describe("travel survival invariants", () => {
     fc.assert(
       fc.property(
         fc.array(fc.integer({ min: 0, max: 6 }), { maxLength: 40 }),
-        fc.integer({ min: 0, max: 8 }),
         fc.integer({ min: 1, max: 30 }),
-        (hourSteps, initialHealth, initialStamina) => {
+        (hourSteps, initialStamina) => {
           let state = createBaseSurvivalState({
-            health: initialHealth,
-            maxHealth: Math.max(1, initialHealth),
             stamina: initialStamina,
             maxStamina: Math.max(1, initialStamina),
           });
@@ -60,8 +57,6 @@ describe("travel survival invariants", () => {
             state = applyHourlyTravelStamina(state, elapsedHours) ?? state;
             state = finalizeHourlySurvival(state) ?? state;
 
-            expect(state.health).toBeGreaterThanOrEqual(0);
-            expect(state.health).toBeLessThanOrEqual(state.maxHealth);
             expect(state.stamina).toBeGreaterThanOrEqual(0);
             expect(state.stamina).toBeLessThanOrEqual(state.maxStamina);
 
@@ -71,7 +66,8 @@ describe("travel survival invariants", () => {
             }
 
             if (state.gameOver) {
-              expect(state.health).toBe(0);
+              expect(state.gameOver.reason).toBe("starved");
+              expect(state.hungerElapsedHours).toBeGreaterThanOrEqual(9);
               expect(state.travel).toBeNull();
               expect(state.rest).toBeNull();
               expect(state.hunt).toBeNull();

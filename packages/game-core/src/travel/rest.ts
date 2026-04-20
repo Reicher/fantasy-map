@@ -9,6 +9,7 @@ import {
   normalizeRestHours,
   normalizeStaminaValue,
 } from "./normalizers";
+import { resolveRestStaminaGainPerHour } from "./playerStatus";
 import type { PlayRestState, PlayState } from "@fardvag/shared/types/play";
 
 type PlayStateLike = PlayState | null | undefined;
@@ -35,6 +36,10 @@ export function beginRest(
   const wasTravelPaused = Boolean(playState.isTravelPaused);
   const priorPauseReason = playState.travelPauseReason ?? null;
   const clearSettlementEncounter = canClearSettlementEncounterForTimedAction(playState);
+  const staminaGainPerHour = resolveRestStaminaGainPerHour(
+    playState.injuryStatus,
+    STAMINA_PER_REST_HOUR,
+  );
 
   return withPlayActionMode({
     ...playState,
@@ -49,7 +54,7 @@ export function beginRest(
     rest: {
       hours: restHours,
       elapsedHours: 0,
-      staminaGain: restHours * STAMINA_PER_REST_HOUR,
+      staminaGain: restHours * staminaGainPerHour,
       resumeTravelOnFinish: hasTravel && !wasTravelPaused,
       priorWasTravelPaused: wasTravelPaused,
       priorTravelPauseReason: priorPauseReason,
@@ -150,7 +155,11 @@ function finishRest(
     maxStamina,
     normalizeStaminaValue(playState.stamina, maxStamina),
   );
-  const requestedGain = countedHours * STAMINA_PER_REST_HOUR;
+  const staminaGainPerHour = resolveRestStaminaGainPerHour(
+    playState.injuryStatus,
+    STAMINA_PER_REST_HOUR,
+  );
+  const requestedGain = countedHours * staminaGainPerHour;
   const nextStamina = Math.min(maxStamina, currentStamina + requestedGain);
   const actualGain = Math.max(0, nextStamina - currentStamina);
 

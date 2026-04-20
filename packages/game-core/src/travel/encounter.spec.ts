@@ -190,7 +190,57 @@ describe("travel encounters", () => {
 
     const next = resolveEncounterPlayerAction(state, "greet") ?? state;
     expect(next.pendingJourneyEvent?.type).toBe("encounter-turn");
-    expect(next.pendingJourneyEvent?.message).toContain("Sven Svensson anfaller");
+    expect(next.pendingJourneyEvent?.message).toContain("Sven Svensson träffar dig");
+  });
+
+  it("lets multiple hostile settlement members attack in the same round", () => {
+    const state = createBasePlayState({
+      encounter: {
+        id: "enc-settlement-hostile-volley",
+        type: "settlement-group",
+        disposition: "hostile",
+        turn: "player",
+        round: 1,
+        rollIndex: 0,
+        opponentInitiative: 8,
+        opponentDamageMin: 1,
+        opponentDamageMax: 3,
+        opponentMaxHealth: 28,
+        opponentHealth: 28,
+        opponentMaxStamina: 12,
+        opponentStamina: 12,
+        opponentMembers: [
+          {
+            id: "agent-1",
+            name: "Sven Svensson",
+            damageMin: 2,
+            damageMax: 2,
+            maxHealth: 14,
+            health: 14,
+            maxStamina: 12,
+            stamina: 12,
+          },
+          {
+            id: "agent-2",
+            name: "Klara Kling",
+            damageMin: 2,
+            damageMax: 2,
+            maxHealth: 14,
+            health: 14,
+            maxStamina: 12,
+            stamina: 12,
+          },
+        ],
+        settlementName: "Karlskoga",
+      },
+    });
+
+    const next = resolveEncounterPlayerAction(state, "greet") ?? state;
+    expect(next.pendingJourneyEvent?.type).toBe("encounter-turn");
+    expect(next.pendingJourneyEvent?.message).toContain("Sven Svensson träffar dig");
+    expect(next.pendingJourneyEvent?.message).toContain("Klara Kling träffar dig");
+    expect(next.injuryStatus).toBe("severely-injured");
+    expect(next.encounter?.turn).toBe("player");
   });
 
   it("keeps friendly settlement encounter active when greeting", () => {
@@ -252,13 +302,13 @@ describe("travel encounters", () => {
     expect(next.encounter?.turn).toBe("player");
     expect(next.pendingJourneyEvent?.type).toBe("encounter-turn");
     expect(next.pendingJourneyEvent?.message).toContain("Du hälsar.");
-    expect(next.pendingJourneyEvent?.message).toContain("Sven Svensson svarar: hej.");
+    expect(next.pendingJourneyEvent?.message).toContain("Bosättarna svarar: hej.");
     expect(next.latestEncounterResolution).toBeNull();
   });
 
   it("includes attacker and settlement in slain game-over message", () => {
     const state = createBasePlayState({
-      health: 2,
+      injuryStatus: "severely-injured",
       encounter: {
         id: "enc-settlement-slain",
         type: "settlement-group",

@@ -40,6 +40,7 @@ export interface AppRefs {
   playJourneyCanvas: HTMLCanvasElement | null;
   playBottomHud: HTMLElement | null;
   playJourneyHearts: HTMLElement | null;
+  playJourneyHunger: HTMLElement | null;
   playJourneyStamina: HTMLElement | null;
   playJourneyFoodCount: HTMLElement | null;
   playHudBulletsCount: HTMLElement | null;

@@ -56,6 +56,19 @@ export {
   isWorldTimeAdvancingActionMode,
 } from "./travel/actionMode";
 export {
+  HUNGER_FATAL_HOURS,
+  HUNGER_STAGE_HOURS,
+  isPlayerStarved,
+  normalizeHungerElapsedHours,
+  normalizePlayerInjuryStatus,
+  normalizePlayerStatuses,
+  resolveEffectiveWeaponAccuracy,
+  resolveHungerStaminaPenaltyPerHour,
+  resolvePlayerHungerStatus,
+  resolveRestStaminaGainPerHour,
+  worsenPlayerInjuryStatus,
+} from "./travel/playerStatus";
+export {
   normalizeElapsedHours,
   normalizeHuntHours,
   normalizeRestHours,

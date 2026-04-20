@@ -25,6 +25,7 @@ import {
   formatDistanceWithUnit,
   normalizeRunStats,
 } from "./travel/runStats";
+import { resolvePlayerHungerStatus } from "./travel/playerStatus";
 import { measureGraphPathDistance } from "./travel/pathGeometry";
 import type {
   PlayEncounterOpponentMember,
@@ -117,6 +118,7 @@ export function createPlayState(world): PlayState {
     abandonedLootByNodeId: {},
     inventory: playerProfile.inventory,
     hungerElapsedHours: playerProfile.hungerElapsedHours,
+    hungerStatus: resolvePlayerHungerStatus(playerProfile.hungerElapsedHours),
     journeyElapsedHours: 0,
     runStats: createInitialRunStats(),
     initiative: playerProfile.initiative,
@@ -127,6 +129,7 @@ export function createPlayState(world): PlayState {
     maxStamina: playerProfile.maxStamina,
     stamina: playerProfile.stamina,
     staminaElapsedHours: playerProfile.staminaElapsedHours,
+    injuryStatus: "healthy",
     isTravelPaused: false,
     travelPauseReason: null,
     pendingRestChoice: false,

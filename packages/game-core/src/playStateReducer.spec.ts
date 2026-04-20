@@ -418,7 +418,11 @@ describe("playStateReducer", () => {
         progress: 0.1,
         targetNodeId: 1,
       },
-      inventory: createInitialInventory(),
+      inventory: {
+        columns: 4,
+        rows: 4,
+        items: [],
+      },
       maxHealth: 5,
       health: 5,
       maxStamina: 10,

@@ -1,15 +1,20 @@
 import { consumeInventoryItemsByType } from "../inventory";
 import { withPlayActionMode } from "./actionMode";
 import {
-  DEFAULT_MAX_HEALTH,
   DEFAULT_MAX_STAMINA,
   STAMINA_PER_TRAVEL_HOUR,
 } from "./constants";
 import {
   normalizeElapsedHours,
-  normalizeHealthValue,
   normalizeStaminaValue,
 } from "./normalizers";
+import {
+  isPlayerStarved,
+  normalizeHungerElapsedHours,
+  normalizePlayerInjuryStatus,
+  resolveHungerStaminaPenaltyPerHour,
+  resolvePlayerHungerStatus,
+} from "./playerStatus";
 import { normalizeRunStats, snapshotRunStats } from "./runStats";
 import type { PlayState } from "@fardvag/shared/types/play";
 
@@ -29,36 +34,34 @@ export function applyHourlyHunger(
   if (safeElapsedHours <= 0) {
     return withPlayActionMode(playState);
   }
+  let inventory = playState.inventory;
+  let hungerElapsedHours = normalizeHungerElapsedHours(playState.hungerElapsedHours);
   const runStats = normalizeRunStats(playState.runStats);
-
-  const previousElapsed = Number.isFinite(playState.hungerElapsedHours)
-    ? Math.max(0, Math.floor(playState.hungerElapsedHours))
-    : 0;
-  const nextElapsed = previousElapsed + safeElapsedHours;
-  const mealsNeeded = Math.max(
-    0,
-    Math.floor(nextElapsed + 1e-9) - Math.floor(previousElapsed + 1e-9),
+  let meatEaten = 0;
+  const maxStamina = normalizeStaminaValue(
+    playState.maxStamina,
+    DEFAULT_MAX_STAMINA,
+  );
+  let stamina = Math.min(
+    maxStamina,
+    normalizeStaminaValue(playState.stamina, maxStamina),
   );
 
-  if (mealsNeeded === 0) {
-    return withPlayActionMode({
-      ...playState,
-      hungerElapsedHours: nextElapsed,
-    });
+  for (let hour = 0; hour < safeElapsedHours; hour += 1) {
+    const meal = consumeInventoryItemsByType(inventory, "meat", 1);
+    inventory = meal.inventory;
+    if (meal.consumed > 0) {
+      hungerElapsedHours = 0;
+      meatEaten += meal.consumed;
+    } else {
+      hungerElapsedHours += 1;
+    }
+    const hungerPenalty = resolveHungerStaminaPenaltyPerHour(hungerElapsedHours);
+    if (hungerPenalty > 0) {
+      stamina = Math.max(0, stamina - hungerPenalty);
+    }
   }
 
-  const { inventory, missing } = consumeInventoryItemsByType(
-    playState.inventory,
-    "meat",
-    mealsNeeded,
-  );
-  const maxHealth = normalizeHealthValue(
-    playState.maxHealth,
-    DEFAULT_MAX_HEALTH,
-  );
-  const currentHealth = normalizeHealthValue(playState.health, maxHealth);
-  const nextHealth = Math.max(0, currentHealth - missing);
-  const meatEaten = Math.max(0, mealsNeeded - missing);
   const nextRunStats =
     meatEaten > 0
       ? {
@@ -66,15 +69,39 @@ export function applyHourlyHunger(
           meatEaten: runStats.meatEaten + meatEaten,
         }
       : runStats;
-
-  return withPlayActionMode({
+  const nextState: PlayState = {
     ...playState,
     inventory,
-    hungerElapsedHours: nextElapsed,
+    maxStamina,
+    stamina,
+    hungerElapsedHours,
+    hungerStatus: resolvePlayerHungerStatus(hungerElapsedHours),
+    injuryStatus: normalizePlayerInjuryStatus(playState.injuryStatus),
     runStats: nextRunStats,
-    maxHealth,
-    health: nextHealth,
-  });
+  };
+
+  if (
+    nextState.travel &&
+    !nextState.isTravelPaused &&
+    !nextState.rest &&
+    !nextState.hunt &&
+    stamina <= 0
+  ) {
+    return withPlayActionMode({
+      ...nextState,
+      viewMode: "journey",
+      isTravelPaused: true,
+      travelPauseReason: "exhausted",
+      pendingRestChoice: true,
+      rest: null,
+      hunt: null,
+      latestHuntFeedback: null,
+      hoveredNodeId: null,
+      pressedNodeId: null,
+    });
+  }
+
+  return withPlayActionMode(nextState);
 }
 
 export function finalizeHourlySurvival(playState: PlayStateLike): PlayStateLike {
@@ -82,29 +109,31 @@ export function finalizeHourlySurvival(playState: PlayStateLike): PlayStateLike 
     return withPlayActionMode(playState);
   }
 
-  const maxHealth = normalizeHealthValue(
-    playState.maxHealth,
-    DEFAULT_MAX_HEALTH,
-  );
-  const health = Math.min(
-    maxHealth,
-    normalizeHealthValue(playState.health, maxHealth),
-  );
-  if (health > 0) {
-    if (playState.health === health && playState.maxHealth === maxHealth) {
+  const hungerElapsedHours = normalizeHungerElapsedHours(playState.hungerElapsedHours);
+  const hungerStatus = resolvePlayerHungerStatus(hungerElapsedHours);
+  const injuryStatus = normalizePlayerInjuryStatus(playState.injuryStatus);
+
+  if (!isPlayerStarved(hungerElapsedHours)) {
+    if (
+      playState.hungerElapsedHours === hungerElapsedHours &&
+      playState.hungerStatus === hungerStatus &&
+      playState.injuryStatus === injuryStatus
+    ) {
       return withPlayActionMode(playState);
     }
     return withPlayActionMode({
       ...playState,
-      maxHealth,
-      health,
+      hungerElapsedHours,
+      hungerStatus,
+      injuryStatus,
     });
   }
 
   return withPlayActionMode({
     ...playState,
-    maxHealth,
-    health: 0,
+    hungerElapsedHours,
+    hungerStatus,
+    injuryStatus,
     travel: null,
     pendingJourneyEvent: null,
     isTravelPaused: false,

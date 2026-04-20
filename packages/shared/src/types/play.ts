@@ -183,6 +183,17 @@ export type PlayEncounterTurn = "player" | "opponent";
 
 export type PlayEncounterPhase = "approaching" | "active";
 
+export type PlayerHungerStatus =
+  | "fed"
+  | "peckish"
+  | "hungry"
+  | "starving";
+
+export type PlayerInjuryStatus =
+  | "healthy"
+  | "injured"
+  | "severely-injured";
+
 export type PlayEncounterOutcome =
   | "player-fled"
   | "opponent-fled"
@@ -296,6 +307,7 @@ export interface PlayState {
   timeOfDayHours?: number;
   journeyElapsedHours?: number;
   hungerElapsedHours?: number;
+  hungerStatus?: PlayerHungerStatus;
   renderTimeOfDayHours?: number;
   renderElapsedWorldHours?: number;
   initiative?: number;
@@ -306,6 +318,7 @@ export interface PlayState {
   maxStamina?: number;
   stamina?: number;
   staminaElapsedHours?: number;
+  injuryStatus?: PlayerInjuryStatus;
   huntAreaStates?: Record<string, PlayHuntAreaState>;
   nextHuntRunId?: number;
   settlementStates?: Record<string, PlaySettlementState>;

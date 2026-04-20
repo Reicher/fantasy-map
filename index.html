@@ -473,38 +473,59 @@
           <div class="play-bottom-hud-main">
             <section class="play-hud-section play-hud-section--status" aria-label="Status">
               <div class="play-hud-status-stack">
-                <div class="play-hud-status-row">
-                  <span class="play-hud-status-icon" aria-hidden="true">
-                    <img
-                      src="./src/assets/journey/heart.png"
-                      alt=""
-                      class="play-hud-status-icon-image"
-                    />
-                  </span>
-                  <div
-                    id="play-journey-hearts"
-                    class="play-hud-status-track play-hud-status-track--health"
-                    role="img"
-                    aria-label="Hälsa: 0 av 0"
-                  >
-                    <span class="play-hud-status-fill" aria-hidden="true"></span>
+                <div class="play-hud-status-top">
+                  <div class="play-hud-status-row">
+                    <span class="play-hud-status-icon" aria-hidden="true">
+                      <img
+                        src="./src/assets/journey/flame.png"
+                        alt=""
+                        class="play-hud-status-icon-image"
+                      />
+                    </span>
+                    <div
+                      id="play-journey-stamina"
+                      class="play-hud-status-track play-hud-status-track--stamina"
+                      role="img"
+                      aria-label="Stamina: 0 av 0"
+                    >
+                      <span class="play-hud-status-fill" aria-hidden="true"></span>
+                    </div>
                   </div>
                 </div>
-                <div class="play-hud-status-row">
-                  <span class="play-hud-status-icon" aria-hidden="true">
-                    <img
-                      src="./src/assets/journey/flame.png"
-                      alt=""
-                      class="play-hud-status-icon-image"
-                    />
-                  </span>
+                <div class="play-hud-status-bottom" aria-label="Aktiva statusar">
                   <div
-                    id="play-journey-stamina"
-                    class="play-hud-status-track play-hud-status-track--stamina"
-                    role="img"
-                    aria-label="Stamina: 0 av 0"
+                    class="play-hud-status-row play-hud-status-row--icon-only"
+                    style="display: none"
                   >
-                    <span class="play-hud-status-fill" aria-hidden="true"></span>
+                    <span
+                      id="play-journey-hunger"
+                      class="play-hud-status-icon"
+                      role="img"
+                      aria-label="Hungerstatus: Mätt"
+                    >
+                      <img
+                        src="./src/assets/journey/bread.png"
+                        alt=""
+                        class="play-hud-status-icon-image"
+                      />
+                    </span>
+                  </div>
+                  <div
+                    class="play-hud-status-row play-hud-status-row--icon-only"
+                    style="display: none"
+                  >
+                    <span
+                      id="play-journey-hearts"
+                      class="play-hud-status-icon"
+                      role="img"
+                      aria-label="Skadestatus: Oskadad"
+                    >
+                      <img
+                        src="./src/assets/journey/heart.png"
+                        alt=""
+                        class="play-hud-status-icon-image"
+                      />
+                    </span>
                   </div>
                 </div>
               </div>

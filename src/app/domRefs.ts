@@ -31,6 +31,7 @@ export function createAppRefs(): AppRefs {
     playJourneyCanvas: queryOptional<HTMLCanvasElement>("#play-journey-canvas"),
     playBottomHud: queryOptional<HTMLElement>("#play-bottom-hud"),
     playJourneyHearts: queryOptional<HTMLElement>("#play-journey-hearts"),
+    playJourneyHunger: queryOptional<HTMLElement>("#play-journey-hunger"),
     playJourneyStamina: queryOptional<HTMLElement>("#play-journey-stamina"),
     playJourneyFoodCount: queryOptional<HTMLElement>("#play-journey-food-count"),
     playHudBulletsCount: queryOptional<HTMLElement>("#play-hud-bullets-count"),
