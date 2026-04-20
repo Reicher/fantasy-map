@@ -405,11 +405,18 @@ export function createPlayController({
         }
       }
 
+      const hasBlockingJourneyInteraction = Boolean(
+        state.playState?.pendingJourneyEvent ||
+          (state.playState?.encounter &&
+            state.playState.encounter.phase !== "approaching"),
+      );
+
       if (
         state.playState?.travel &&
         !state.playState?.gameOver &&
         !state.playState?.isTravelPaused &&
-        !state.playState?.rest
+        !state.playState?.rest &&
+        !hasBlockingJourneyInteraction
       ) {
         const activeWorld = state.currentWorld as World | null;
         if (!activeWorld) {

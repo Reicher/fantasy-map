@@ -368,22 +368,32 @@ function completeHunt(
   }
   const huntState = playState.hunt;
   const isExhausted = feedback?.type === "exhausted";
-  const shouldResumeTravel = shouldResumeTravelAfterHunt(huntState) && !isExhausted;
+  const hasBlockingEncounter = hasActiveEncounterInteraction(playState);
+  const shouldResumeTravel =
+    shouldResumeTravelAfterHunt(huntState) &&
+    !isExhausted &&
+    !hasBlockingEncounter;
 
   const nextState: PlayState = {
     ...playState,
     hunt: null,
     pendingRestChoice: isExhausted,
-    isTravelPaused: shouldResumeTravel
-      ? false
-      : Boolean(huntState.priorWasTravelPaused || isExhausted),
-    travelPauseReason: shouldResumeTravel
-      ? null
-      : isExhausted
-        ? "exhausted"
-        : huntState.priorWasTravelPaused
-          ? (huntState.priorTravelPauseReason ?? "manual")
-          : null,
+    isTravelPaused: hasBlockingEncounter
+      ? Boolean(playState.travel)
+      : shouldResumeTravel
+        ? false
+        : Boolean(huntState.priorWasTravelPaused || isExhausted),
+    travelPauseReason: hasBlockingEncounter
+      ? playState.travel
+        ? "encounter"
+        : (playState.travelPauseReason ?? null)
+      : shouldResumeTravel
+        ? null
+        : isExhausted
+          ? "exhausted"
+          : huntState.priorWasTravelPaused
+            ? (huntState.priorTravelPauseReason ?? "manual")
+            : null,
   };
 
   if (!feedback?.text) {
@@ -624,6 +634,17 @@ function shouldResumeTravelAfterHunt(
   huntState: PlayHuntState | null | undefined,
 ): boolean {
   return Boolean(huntState?.resumeTravelOnFinish);
+}
+
+function hasActiveEncounterInteraction(playState: PlayStateLike): boolean {
+  if (!playState) {
+    return false;
+  }
+  if (playState.encounter) {
+    return true;
+  }
+  const eventType = playState.pendingJourneyEvent?.type;
+  return eventType === "encounter-turn" || eventType === "encounter-loot";
 }
 
 function resolveHuntHourOutcome(

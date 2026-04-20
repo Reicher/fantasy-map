@@ -267,6 +267,55 @@ describe("playStateReducer", () => {
     expect(advanced?.runStats?.distanceTraveled).toBeCloseTo(0.75, 6);
   });
 
+  it("does not advance travel while a blocking encounter interaction is active", () => {
+    const world = createTravelWorld();
+    const started = reducePlayState(createTravelPlayState(), {
+      type: "BEGIN_TRAVEL",
+      targetNodeId: 1,
+    });
+    const withEncounter = {
+      ...started,
+      isTravelPaused: false,
+      travelPauseReason: null,
+      pendingJourneyEvent: {
+        type: "encounter-turn" as const,
+        encounterId: "enc-blocking-travel",
+        message: "En varg blockerar vägen.",
+        requiresAcknowledgement: true,
+        canAttack: false,
+      },
+      encounter: {
+        id: "enc-blocking-travel",
+        type: "wolf" as const,
+        disposition: "hostile" as const,
+        turn: "player" as const,
+        phase: "active" as const,
+        round: 1,
+        rollIndex: 0,
+        opponentInitiative: 9,
+        opponentDamageMin: 4,
+        opponentDamageMax: 8,
+        opponentMaxHealth: 12,
+        opponentHealth: 12,
+        opponentMaxStamina: 20,
+        opponentStamina: 20,
+      },
+    };
+
+    const advanced = reducePlayState(
+      withEncounter,
+      {
+        type: "ADVANCE_TRAVEL",
+        deltaMs: 1000,
+      },
+      { world },
+    );
+
+    expect(advanced?.travel?.progress).toBe(withEncounter?.travel?.progress);
+    expect(advanced?.pendingJourneyEvent?.type).toBe("encounter-turn");
+    expect(advanced?.encounter?.id).toBe("enc-blocking-travel");
+  });
+
   it("starts friendly settlement encounter on arrival when settlement has agents", () => {
     const world = createTravelWorld();
     const started = reducePlayState(

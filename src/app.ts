@@ -84,6 +84,7 @@ const state: AppState = {
   playProfiler: createPlayProfiler() as PlayProfilerLike,
   playActivePanels: [],
   playActionMenuOpen: false,
+  playPresentedEncounterId: null,
   playSettlementDebugOpen: false,
 };
 const generateTransition = createTransitionController();
@@ -319,7 +320,12 @@ if (refs.playJourneyEncounterGreetButton) {
     if (state.currentMode !== "play" || !state.playState) {
       return;
     }
-    playSession.encounterGreet();
+    const previousPlayState = state.playState;
+    if (!playSession.encounterGreet()) {
+      return;
+    }
+    autoCloseActionMenuAfterEncounter(previousPlayState);
+    playSession.updatePlaySubView();
   });
 }
 
@@ -328,7 +334,12 @@ if (refs.playJourneyEncounterAttackButton) {
     if (state.currentMode !== "play" || !state.playState) {
       return;
     }
-    playSession.encounterAttack();
+    const previousPlayState = state.playState;
+    if (!playSession.encounterAttack()) {
+      return;
+    }
+    autoCloseActionMenuAfterEncounter(previousPlayState);
+    playSession.updatePlaySubView();
   });
 }
 
@@ -337,7 +348,12 @@ if (refs.playJourneyEncounterFleeButton) {
     if (state.currentMode !== "play" || !state.playState) {
       return;
     }
-    playSession.encounterFlee();
+    const previousPlayState = state.playState;
+    if (!playSession.encounterFlee()) {
+      return;
+    }
+    autoCloseActionMenuAfterEncounter(previousPlayState);
+    playSession.updatePlaySubView();
   });
 }
 
@@ -432,13 +448,35 @@ window.addEventListener("keydown", (event) => {
     return;
   }
 
-  if ((event.key === " " || event.code === "Space") && state.playState?.travel) {
+  if (event.key === " " || event.code === "Space") {
     event.preventDefault();
-    if (isEncounterTurn(state.playState) && !isNonHostileEncounterTurn(state.playState)) {
+    if (isEncounterIntroLocked(state.playState)) {
+      if (state.playActionMenuOpen) {
+        state.playActionMenuOpen = false;
+        playSession.updatePlaySubView();
+      }
       return;
     }
-    if (isNonHostileEncounterTurn(state.playState)) {
+    if (
+      state.playState?.travel &&
+      isEncounterTurn(state.playState) &&
+      !isNonHostileEncounterTurn(state.playState)
+    ) {
+      return;
+    }
+    if (state.playState?.travel && isNonHostileEncounterTurn(state.playState)) {
+      if (!hasPresentedCurrentEncounter(state.playState)) {
+        if (!state.playActionMenuOpen) {
+          state.playActionMenuOpen = true;
+          playSession.updatePlaySubView();
+        }
+        return;
+      }
+      const previousPlayState = state.playState;
       const resolved = playSession.encounterFlee();
+      if (resolved) {
+        autoCloseActionMenuAfterEncounter(previousPlayState);
+      }
       const canResumeAfterEncounter =
         resolved &&
         Boolean(state.playState?.travel) &&
@@ -516,10 +554,6 @@ window.addEventListener("keydown", (event) => {
     togglePlayHudPanel("settings");
   }
 
-  if (event.key === "a" || event.key === "A") {
-    event.preventDefault();
-    runPrimaryActionButton();
-  }
 });
 
 async function generateAndRender(
@@ -558,6 +592,7 @@ async function generateAndRender(
   state.playState = playSession.createInitialPlayState(state.currentWorld);
   state.playActivePanels = [];
   state.playActionMenuOpen = false;
+  state.playPresentedEncounterId = null;
   state.playSettlementDebugOpen = false;
   state.cameraState = editorSession.createDefaultCamera();
   if (state.currentMode === "editor") {
@@ -660,6 +695,7 @@ function restartPlayAfterGameOver() {
   playSession.resetJourney();
   state.playActivePanels = [];
   state.playActionMenuOpen = false;
+  state.playPresentedEncounterId = null;
   state.playSettlementDebugOpen = false;
   state.playState = playSession.createInitialPlayState(state.currentWorld);
   clearHover(refs.playTooltip);
@@ -672,23 +708,17 @@ function runPrimaryActionButton() {
   if (!playState || playState.gameOver) {
     return;
   }
+  if (isEncounterIntroLocked(playState)) {
+    if (state.playActionMenuOpen) {
+      state.playActionMenuOpen = false;
+      playSession.updatePlaySubView();
+    }
+    return;
+  }
 
   if (isEncounterTurn(playState)) {
     state.playActionMenuOpen = !state.playActionMenuOpen;
     if (state.playActionMenuOpen) {
-      state.playActivePanels = [];
-    }
-    playSession.updatePlaySubView();
-    return;
-  }
-
-  if (playState.travel) {
-    if (!playSession.toggleTravelPause()) {
-      return;
-    }
-    const isNowPaused = Boolean(state.playState?.isTravelPaused);
-    state.playActionMenuOpen = isNowPaused;
-    if (isNowPaused) {
       state.playActivePanels = [];
     }
     playSession.updatePlaySubView();
@@ -701,6 +731,29 @@ function runPrimaryActionButton() {
       state.playActivePanels = [];
       playSession.updatePlaySubView();
     }
+    return;
+  }
+
+  const isSettlementContext =
+    !playState.travel && isPlayerInSettlement(playState, state.currentWorld);
+  if (playState.travel) {
+    if (isSettlementContext) {
+      state.playActionMenuOpen = !state.playActionMenuOpen;
+      if (state.playActionMenuOpen) {
+        state.playActivePanels = [];
+      }
+      playSession.updatePlaySubView();
+      return;
+    }
+    if (!playSession.toggleTravelPause()) {
+      return;
+    }
+    const isNowPaused = Boolean(state.playState?.isTravelPaused);
+    state.playActionMenuOpen = isNowPaused;
+    if (isNowPaused) {
+      state.playActivePanels = [];
+    }
+    playSession.updatePlaySubView();
     return;
   }
 
@@ -731,12 +784,44 @@ function isEncounterTurn(playState): boolean {
   return playState?.pendingJourneyEvent?.type === "encounter-turn";
 }
 
+function isEncounterIntroLocked(playState): boolean {
+  return Boolean(
+    playState?.travel &&
+      playState?.encounter &&
+      playState.encounter.phase === "approaching" &&
+      !playState?.pendingJourneyEvent,
+  );
+}
+
 function isNonHostileEncounterTurn(playState): boolean {
   return Boolean(
     playState?.pendingJourneyEvent?.type === "encounter-turn" &&
       playState?.encounter &&
       playState.encounter.disposition !== "hostile",
   );
+}
+
+function hasPresentedCurrentEncounter(playState): boolean {
+  const encounterId = String(playState?.pendingJourneyEvent?.encounterId ?? "");
+  if (encounterId.length <= 0) {
+    return false;
+  }
+  return encounterId === String(state.playPresentedEncounterId ?? "");
+}
+
+function autoCloseActionMenuAfterEncounter(previousPlayState): void {
+  if (!previousPlayState || !state.playState) {
+    return;
+  }
+  if (
+    isEncounterTurn(previousPlayState) &&
+    !isEncounterTurn(state.playState) &&
+    !state.playState.rest &&
+    !state.playState.hunt
+  ) {
+    state.playActionMenuOpen = false;
+    state.playPresentedEncounterId = null;
+  }
 }
 
 function normalizeTimedActionHours(value): number {

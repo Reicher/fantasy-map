@@ -208,4 +208,74 @@ describe("travel hunt invariants", () => {
 
     expect(totalMeat / totalHours).toBeGreaterThan(1);
   });
+
+  it("keeps travel paused by encounter when hunt completes during encounter interaction", () => {
+    const world = createTestWorld("hunt-complete-encounter");
+    const state = createBaseHuntState({
+      travel: {
+        startNodeId: 0,
+        targetNodeId: 0,
+        routeType: "road",
+        points: [
+          { x: 4, y: 4 },
+          { x: 5, y: 4 },
+        ],
+        segmentLengths: [1],
+        totalLength: 1,
+        progress: 0.25,
+      },
+      isTravelPaused: true,
+      travelPauseReason: "encounter",
+      pendingJourneyEvent: {
+        type: "encounter-turn",
+        encounterId: "enc-hunt",
+        message: "En varg blockerar vägen.",
+        requiresAcknowledgement: true,
+        canAttack: false,
+      },
+      encounter: {
+        id: "enc-hunt",
+        type: "wolf",
+        disposition: "hostile",
+        turn: "player",
+        round: 1,
+        rollIndex: 0,
+        opponentInitiative: 9,
+        opponentDamageMin: 4,
+        opponentDamageMax: 8,
+        opponentMaxHealth: 12,
+        opponentHealth: 12,
+        opponentMaxStamina: 20,
+        opponentStamina: 20,
+      },
+      hunt: {
+        runId: 1,
+        seed: "hunt-seed",
+        hours: 1,
+        elapsedHours: 0,
+        completedHours: 0,
+        successfulHours: 0,
+        totalMeatGained: 0,
+        areaKey: "stretch:road:0:0",
+        areaLabel: "Sträckan",
+        areaType: "stretch",
+        biomeKey: "forest",
+        areaCapacity: 1,
+        worldSeed: "world",
+        startedAtJourneyHours: 0,
+        startedTimeOfDayHours: 12,
+        resumeTravelOnFinish: true,
+        priorWasTravelPaused: false,
+        priorTravelPauseReason: null,
+        lastMessage: "Bra läge",
+      },
+    });
+
+    const finished = advanceHunt(state, world, 1);
+    expect(finished?.hunt).toBeNull();
+    expect(finished?.pendingJourneyEvent?.type).toBe("encounter-turn");
+    expect(finished?.encounter?.id).toBe("enc-hunt");
+    expect(finished?.isTravelPaused).toBe(true);
+    expect(finished?.travelPauseReason).toBe("encounter");
+  });
 });

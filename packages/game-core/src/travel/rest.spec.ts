@@ -135,4 +135,50 @@ describe("travel rest transitions", () => {
 
     expect(beginRest(playState, 3)).toBe(playState);
   });
+
+  it("keeps travel paused by encounter when rest completes during encounter interaction", () => {
+    const playState = {
+      ...createBasePlayState(),
+      travel: { routeType: "road" },
+      isTravelPaused: true,
+      travelPauseReason: "encounter" as const,
+      pendingJourneyEvent: {
+        type: "encounter-turn" as const,
+        encounterId: "enc-rest",
+        message: "En varg blockerar vägen.",
+        requiresAcknowledgement: true,
+        canAttack: false,
+      },
+      encounter: {
+        id: "enc-rest",
+        type: "wolf" as const,
+        disposition: "hostile" as const,
+        turn: "player" as const,
+        round: 1,
+        rollIndex: 0,
+        opponentInitiative: 9,
+        opponentDamageMin: 4,
+        opponentDamageMax: 8,
+        opponentMaxHealth: 12,
+        opponentHealth: 12,
+        opponentMaxStamina: 20,
+        opponentStamina: 20,
+      },
+      rest: {
+        hours: 1,
+        elapsedHours: 0,
+        staminaGain: 9,
+        resumeTravelOnFinish: true,
+        priorWasTravelPaused: false,
+        priorTravelPauseReason: null,
+      },
+    };
+
+    const finished = advanceRest(playState, 1);
+    expect(finished?.rest).toBeNull();
+    expect(finished?.pendingJourneyEvent?.type).toBe("encounter-turn");
+    expect(finished?.encounter?.id).toBe("enc-rest");
+    expect(finished?.isTravelPaused).toBe(true);
+    expect(finished?.travelPauseReason).toBe("encounter");
+  });
 });

@@ -162,20 +162,29 @@ function finishRest(
   const requestedGain = countedHours * staminaGainPerHour;
   const nextStamina = Math.min(maxStamina, currentStamina + requestedGain);
   const actualGain = Math.max(0, nextStamina - currentStamina);
+  const hasBlockingEncounter = hasActiveEncounterInteraction(playState);
+  const shouldResumeTravel =
+    shouldResumeTravelAfterRest(playState.rest) && !hasBlockingEncounter;
 
   return withPlayActionMode({
     ...playState,
     maxStamina,
     stamina: nextStamina,
     rest: null,
-    isTravelPaused: shouldResumeTravelAfterRest(playState.rest)
-      ? false
-      : Boolean(playState.rest.priorWasTravelPaused),
-    travelPauseReason: shouldResumeTravelAfterRest(playState.rest)
-      ? null
-      : playState.rest.priorWasTravelPaused
-        ? (playState.rest.priorTravelPauseReason ?? "manual")
-        : null,
+    isTravelPaused: hasBlockingEncounter
+      ? Boolean(playState.travel)
+      : shouldResumeTravel
+        ? false
+        : Boolean(playState.rest.priorWasTravelPaused),
+    travelPauseReason: hasBlockingEncounter
+      ? playState.travel
+        ? "encounter"
+        : (playState.travelPauseReason ?? null)
+      : shouldResumeTravel
+        ? null
+        : playState.rest.priorWasTravelPaused
+          ? (playState.rest.priorTravelPauseReason ?? "manual")
+          : null,
     pendingRestChoice: false,
     latestHuntFeedback: {
       type: "result",
@@ -184,6 +193,17 @@ function finishRest(
         : countedHours > 0
           ? `Vila avbruten: ${countedHours}h räknas, +${actualGain} stamina.`
           : "Vila avbruten: ingen full timme räknas (+0 stamina).",
-    },
+      },
   });
+}
+
+function hasActiveEncounterInteraction(playState: PlayStateLike): boolean {
+  if (!playState) {
+    return false;
+  }
+  if (playState.encounter) {
+    return true;
+  }
+  const eventType = playState.pendingJourneyEvent?.type;
+  return eventType === "encounter-turn" || eventType === "encounter-loot";
 }

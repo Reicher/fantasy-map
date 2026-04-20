@@ -487,10 +487,8 @@ export function createPlaySubViewController({
     const event = playState?.pendingJourneyEvent ?? null;
     const isEncounterTurn = event?.type === "encounter-turn";
     const encounterId = String(event?.encounterId ?? "");
-    const isSettlementEncounterTurn =
-      isEncounterTurn && playState?.encounter?.type === "settlement-group";
     if (
-      isSettlementEncounterTurn &&
+      isEncounterTurn &&
       encounterId.length > 0 &&
       lastEncounterActionMenuEncounterId !== encounterId
     ) {
@@ -513,6 +511,9 @@ export function createPlaySubViewController({
     if (lastJourneyEventDialogVisible !== shouldShow) {
       setElementVisible(dialog, shouldShow, "grid");
       lastJourneyEventDialogVisible = shouldShow;
+    }
+    if (isEncounterTurn && shouldShow && encounterId.length > 0) {
+      state.playPresentedEncounterId = encounterId;
     }
 
     if (!shouldShow) {
@@ -1391,7 +1392,7 @@ function syncTravelToggleButton(playState, playActionMenuOpen, button, lastSigna
     description = "Handlingar är tillgängliga i noder.";
   }
 
-  const tooltip = formatHudTooltip(label, description, "A");
+  const tooltip = formatHudTooltip(label, description, "Space");
 
   const signature = [
     hasTravel ? "travel" : "idle",
@@ -1409,7 +1410,7 @@ function syncTravelToggleButton(playState, playActionMenuOpen, button, lastSigna
 
   button.title = tooltip;
   button.dataset.tooltip = tooltip;
-  button.setAttribute("aria-label", `${label} (A)`);
+  button.setAttribute("aria-label", `${label} (Space)`);
   button.disabled = isDisabled;
   button.dataset.active = isActive ? "true" : "false";
   return signature;

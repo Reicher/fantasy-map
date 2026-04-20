@@ -140,6 +140,7 @@ export interface AppState {
   playProfiler: PlayProfilerLike;
   playActivePanels: PlayHudPanelName[];
   playActionMenuOpen: boolean;
+  playPresentedEncounterId?: string | null;
   playSettlementDebugOpen?: boolean;
   playMapCamera?: CameraState;
   [key: string]: unknown;

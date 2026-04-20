@@ -246,12 +246,17 @@ export function beginTravel(playState, targetNodeId, world = null) {
 }
 
 export function advanceTravel(playState, world, deltaMs) {
+  const hasBlockingEncounter = Boolean(
+    playState?.encounter && playState.encounter.phase !== "approaching",
+  );
   if (
     !playState?.travel ||
     !playState.position ||
     playState.isTravelPaused ||
     playState.rest ||
-    playState.hunt
+    playState.hunt ||
+    playState.pendingJourneyEvent ||
+    hasBlockingEncounter
   ) {
     return withPlayActionMode(playState);
   }
