@@ -439,6 +439,84 @@ describe("travel encounters", () => {
     expect(next.inventory?.items?.[0]?.count).toBe(3);
   });
 
+  it("allows attacking without bullets by throwing a stone", () => {
+    let resolved: PlayState | null = null;
+    for (let attempt = 0; attempt < 64; attempt += 1) {
+      const state = createBasePlayState({
+        inventory: {
+          columns: 4,
+          rows: 4,
+          items: [],
+        },
+        encounter: {
+          id: `enc-stone-miss-${attempt}`,
+          type: "wolf",
+          disposition: "hostile",
+          turn: "player",
+          round: 1,
+          rollIndex: 0,
+          opponentInitiative: 9,
+          opponentDamageMin: 6,
+          opponentDamageMax: 6,
+          opponentMaxHealth: 12,
+          opponentHealth: 12,
+          opponentMaxStamina: 18,
+          opponentStamina: 18,
+        },
+      });
+      const next = resolveEncounterPlayerAction(state, "attack") ?? state;
+      if (next.pendingJourneyEvent?.type === "encounter-turn") {
+        resolved = next;
+        break;
+      }
+    }
+
+    expect(resolved).toBeTruthy();
+    const encounterTurnEvent = resolved?.pendingJourneyEvent;
+    expect(encounterTurnEvent?.type).toBe("encounter-turn");
+    if (encounterTurnEvent?.type !== "encounter-turn") {
+      throw new Error("Expected encounter-turn event for stone attack.");
+    }
+    expect(encounterTurnEvent.canAttack).toBe(true);
+    expect(encounterTurnEvent.message).toContain("sten");
+    expect(resolved?.inventory?.items ?? []).toHaveLength(0);
+  });
+
+  it("gives stone attacks a non-zero kill chance without bullets", () => {
+    let killedByStone = false;
+    for (let attempt = 0; attempt < 512; attempt += 1) {
+      const state = createBasePlayState({
+        inventory: {
+          columns: 4,
+          rows: 4,
+          items: [],
+        },
+        encounter: {
+          id: `enc-stone-kill-${attempt}`,
+          type: "wolf",
+          disposition: "hostile",
+          turn: "player",
+          round: 1,
+          rollIndex: 0,
+          opponentInitiative: 9,
+          opponentDamageMin: 6,
+          opponentDamageMax: 6,
+          opponentMaxHealth: 12,
+          opponentHealth: 12,
+          opponentMaxStamina: 18,
+          opponentStamina: 18,
+        },
+      });
+      const next = resolveEncounterPlayerAction(state, "attack") ?? state;
+      if (next.latestEncounterResolution?.outcome === "opponent-died") {
+        killedByStone = true;
+        break;
+      }
+    }
+
+    expect(killedByStone).toBe(true);
+  });
+
   it("fails flee against hostile opponent with higher stamina", () => {
     const state = createBasePlayState({
       encounter: {
@@ -814,6 +892,50 @@ describe("travel encounters", () => {
     expect(triggered).toBe(true);
   });
 
+  it("raises wolf encounter rate at night while resting in wilderness", () => {
+    const world = {
+      params: {
+        seed: "encounter-rest-night-rate-seed",
+      },
+    };
+    let dayHits = 0;
+    let nightHits = 0;
+    for (let hour = 0; hour < 512; hour += 1) {
+      const dayResting = createBasePlayState({
+        journeyElapsedHours: hour,
+        timeOfDayHours: 13,
+        isTravelPaused: true,
+        travelPauseReason: "resting",
+        pendingJourneyEvent: null,
+        encounter: null,
+        rest: {
+          hours: 8,
+          elapsedHours: 0,
+          staminaGain: 72,
+          resumeTravelOnFinish: false,
+          priorWasTravelPaused: true,
+          priorTravelPauseReason: "manual",
+        },
+        hunt: null,
+      });
+      const dayNext = maybeTriggerWildernessHostileEncounter(dayResting, world) ?? dayResting;
+      if (dayNext.encounter || dayNext.pendingJourneyEvent?.type === "encounter-turn") {
+        dayHits += 1;
+      }
+
+      const nightResting = {
+        ...dayResting,
+        timeOfDayHours: 23,
+      };
+      const nightNext = maybeTriggerWildernessHostileEncounter(nightResting, world) ?? nightResting;
+      if (nightNext.encounter || nightNext.pendingJourneyEvent?.type === "encounter-turn") {
+        nightHits += 1;
+      }
+    }
+
+    expect(nightHits).toBeGreaterThan(dayHits);
+  });
+
   it("does not trigger hostile wilderness encounter on sea route", () => {
     const world = {
       params: {
@@ -985,6 +1107,66 @@ describe("travel encounters", () => {
       }
     }
     expect(triggered).toBe(true);
+  });
+
+  it("favors wolves at night and rabbits at day during travel encounters", () => {
+    const world = {
+      params: {
+        seed: "encounter-travel-day-night-balance-seed",
+      },
+    };
+    let dayWolf = 0;
+    let nightWolf = 0;
+    let dayRabbit = 0;
+    let nightRabbit = 0;
+
+    for (let hour = 0; hour < 768; hour += 1) {
+      const baseTravelState = {
+        isTravelPaused: false,
+        travelPauseReason: null,
+        pendingJourneyEvent: null,
+        encounter: null,
+        journeyElapsedHours: hour,
+        travel: {
+          startNodeId: 0,
+          targetNodeId: 1,
+          points: [
+            { x: 1, y: 1 },
+            { x: 220, y: 1 },
+          ],
+          segmentLengths: [219],
+          totalLength: 219,
+          progress: 16,
+        },
+      };
+
+      const dayTravel = createBasePlayState({
+        ...baseTravelState,
+        timeOfDayHours: 13,
+      });
+      const dayNext = maybeTriggerTravelEncounter(dayTravel, world) ?? dayTravel;
+      if (dayNext.encounter?.type === "wolf") {
+        dayWolf += 1;
+      }
+      if (dayNext.encounter?.type === "rabbit") {
+        dayRabbit += 1;
+      }
+
+      const nightTravel = createBasePlayState({
+        ...baseTravelState,
+        timeOfDayHours: 23,
+      });
+      const nightNext = maybeTriggerTravelEncounter(nightTravel, world) ?? nightTravel;
+      if (nightNext.encounter?.type === "wolf") {
+        nightWolf += 1;
+      }
+      if (nightNext.encounter?.type === "rabbit") {
+        nightRabbit += 1;
+      }
+    }
+
+    expect(nightWolf).toBeGreaterThan(dayWolf);
+    expect(dayRabbit).toBeGreaterThan(nightRabbit);
   });
 
   it("does not trigger rabbit encounter while hunting on sea route", () => {

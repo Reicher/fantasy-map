@@ -990,7 +990,7 @@ canvas[data-dragging="true"] {
 
 .play-rest-options {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 10px;
   width: 100%;
@@ -1100,56 +1100,52 @@ canvas[data-dragging="true"] {
 }
 
 .play-journey-event-dialog--encounter.play-journey-event-dialog--actions-open {
-  width: fit-content;
-  max-width: min(calc(var(--play-surface-width) - 12px), 860px);
-  grid-template-columns: auto auto auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  column-gap: 10px;
-  row-gap: 8px;
+  row-gap: 7px;
 }
 
 .play-journey-event-dialog--settlement-encounter.play-journey-event-dialog--actions-open {
-  min-height: 224px;
+  min-height: 0;
 }
 
 .play-journey-event-dialog--encounter.play-journey-event-dialog--actions-open .play-journey-event-body {
-  grid-column: 1 / -1;
+  grid-column: 1;
   max-width: 72ch;
 }
 
 .play-journey-event-dialog--encounter.play-journey-event-dialog--actions-open .play-journey-settlement-actions {
-  grid-column: 2 / span 2;
+  grid-column: 1;
   align-self: start;
 }
 
 .play-journey-event-dialog--encounter.play-journey-event-dialog--actions-open .play-journey-encounter-actions {
   grid-column: 1;
-  width: max-content;
-  display: flex;
-  flex-direction: column;
+  width: 100%;
+  display: grid;
   align-content: start;
-  gap: 6px;
+  gap: 5px;
   justify-self: start;
   align-self: start;
 }
 
 .play-journey-event-dialog--settlement-encounter.play-journey-event-dialog--actions-open .play-journey-encounter-actions {
-  width: auto;
-  min-width: 148px;
-  gap: 4px;
-  padding-top: 16px;
+  width: 100%;
+  min-width: 0;
+  gap: 5px;
+  padding-top: 0;
 }
 
 .play-journey-encounter-actions {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   align-content: start;
-  width: auto;
+  width: 100%;
 }
 
 .play-journey-event-dialog--settlement-encounter .play-journey-encounter-actions {
-  width: auto;
+  width: 100%;
 }
 
 .play-journey-encounter-action {
@@ -1179,11 +1175,11 @@ canvas[data-dragging="true"] {
   display: grid;
   gap: 6px;
   align-content: start;
-  width: auto;
-  min-width: max-content;
-  padding: 0 0 0 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
   border: 0;
-  border-left: 1px solid rgba(166, 138, 103, 0.42);
+  border-left: 0;
   border-radius: 0;
   background: transparent;
 }
@@ -1194,40 +1190,17 @@ canvas[data-dragging="true"] {
 
 .play-journey-settlement-actions-grid {
   display: grid;
-  grid-template-columns: auto auto;
-  align-items: start;
-  justify-content: flex-start;
-  gap: 0 12px;
-  min-width: max-content;
-  overflow: visible;
-}
-
-.play-journey-settlement-actions .play-rest-column {
-  display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  gap: 4px;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
-.play-journey-settlement-actions .play-rest-column:nth-child(2) {
-  padding-left: 12px;
-  border-left: 1px solid rgba(166, 138, 103, 0.35);
-}
-
-.play-journey-settlement-actions .play-rest-column-title {
-  flex: none;
-  margin: 0;
-  font-size: 0.62rem;
-  letter-spacing: 0.06em;
+  justify-content: stretch;
+  gap: 5px;
+  min-width: 0;
+  overflow: visible;
 }
 
 .play-journey-settlement-option {
   min-height: 28px;
-  width: 72px;
+  width: 100%;
   min-width: 0;
   padding: 3px 8px;
   font-size: 0.62rem;
@@ -1745,6 +1718,34 @@ canvas[data-dragging="true"] {
   top: 5px;
   width: 14px;
   height: 4px;
+}
+
+.play-inventory-item-symbol--letter {
+  width: 14px;
+  height: 10px;
+  border: 2px solid currentColor;
+  border-radius: 2px;
+}
+
+.play-inventory-item-symbol--letter::before,
+.play-inventory-item-symbol--letter::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  width: 2px;
+  height: 8px;
+  background: currentColor;
+  border-radius: 1px;
+}
+
+.play-inventory-item-symbol--letter::before {
+  left: 3px;
+  transform: rotate(52deg);
+}
+
+.play-inventory-item-symbol--letter::after {
+  right: 3px;
+  transform: rotate(-52deg);
 }
 
 .play-inventory-item-symbol--tobacco {

@@ -6,6 +6,7 @@ import { addInventoryItemsByType } from "../inventory";
 import { biomeKeyAtPoint } from "./biomeBands";
 import { withPlayActionMode } from "./actionMode";
 import {
+  CONTINUOUS_ACTION_HOURS,
   DEFAULT_MAX_STAMINA,
   HUNT_BIOME_FACTORS,
   HUNT_SEA_ROUTE_REASON,
@@ -83,7 +84,8 @@ export function beginHunt(
   }
 
   const huntHours = normalizeHuntHours(requestedHours);
-  if (huntHours <= 0) {
+  const isContinuousHunt = huntHours === CONTINUOUS_ACTION_HOURS;
+  if (huntHours <= 0 && !isContinuousHunt) {
     return withPlayActionMode(playState);
   }
 
@@ -142,7 +144,7 @@ export function beginHunt(
     hunt: {
       runId,
       seed: `${String(world?.params?.seed ?? "seed")}:hunt:${runId}:${context.areaKey}`,
-      hours: huntHours,
+      hours: isContinuousHunt ? CONTINUOUS_ACTION_HOURS : huntHours,
       elapsedHours: 0,
       completedHours: 0,
       successfulHours: 0,
@@ -179,7 +181,10 @@ export function cancelHunt(
   const huntState = playState.hunt;
   const totalHours = normalizeHuntHours(huntState.hours);
   const elapsedHours = normalizeElapsedHours(huntState.elapsedHours);
-  const roundedTargetHours = clamp(Math.round(elapsedHours), 0, totalHours);
+  const isContinuousHunt = totalHours === CONTINUOUS_ACTION_HOURS;
+  const roundedTargetHours = isContinuousHunt
+    ? Math.max(0, Math.floor(elapsedHours))
+    : clamp(Math.round(elapsedHours), 0, totalHours);
 
   let nextState: PlayState = playState;
   if (roundedTargetHours > normalizeCompletedHours(huntState.completedHours)) {
@@ -216,17 +221,20 @@ export function advanceHunt(
 
   const huntState = playState.hunt;
   const totalHours = normalizeHuntHours(huntState.hours);
+  const isContinuousHunt = totalHours === CONTINUOUS_ACTION_HOURS;
   const previousElapsed = Math.floor(
     normalizeElapsedHours(huntState.elapsedHours),
   );
-  const nextElapsed = Math.min(totalHours, previousElapsed + safeElapsedHours);
+  const nextElapsed = isContinuousHunt
+    ? previousElapsed + safeElapsedHours
+    : Math.min(totalHours, previousElapsed + safeElapsedHours);
   const completedHours = Math.floor(nextElapsed + 1e-9);
 
   let nextState: PlayState = {
     ...playState,
     hunt: {
       ...huntState,
-      hours: totalHours,
+      hours: isContinuousHunt ? CONTINUOUS_ACTION_HOURS : totalHours,
       elapsedHours: nextElapsed,
     },
   };
@@ -236,7 +244,7 @@ export function advanceHunt(
     return withPlayActionMode(nextState);
   }
 
-  if (nextElapsed >= totalHours - 1e-6) {
+  if (!isContinuousHunt && nextElapsed >= totalHours - 1e-6) {
     return withPlayActionMode(completeHunt(nextState, {
       type: "completed",
       text: "Jakten är avslutad för den planerade tiden.",
@@ -302,7 +310,10 @@ function resolveHuntHours(
 
   const huntState = playState.hunt;
   const totalHours = normalizeHuntHours(huntState.hours);
-  const normalizedTarget = clamp(Math.floor(targetCompletedHours), 0, totalHours);
+  const isContinuousHunt = totalHours === CONTINUOUS_ACTION_HOURS;
+  const normalizedTarget = isContinuousHunt
+    ? Math.max(0, Math.floor(targetCompletedHours))
+    : clamp(Math.floor(targetCompletedHours), 0, totalHours);
   let nextState = playState;
   let completedHours = normalizeCompletedHours(huntState.completedHours);
   while (completedHours < normalizedTarget) {
@@ -400,8 +411,11 @@ function completeHunt(
     return withPlayActionMode(nextState);
   }
   const totalHours = normalizeHuntHours(huntState.hours);
+  const isContinuousHunt = totalHours === CONTINUOUS_ACTION_HOURS;
   const completedHours = normalizeCompletedHours(huntState.completedHours);
-  const summaryText = `Jaktpass: ${completedHours}/${totalHours}h genomförda.`;
+  const summaryText = isContinuousHunt
+    ? `Jaktpass: ${completedHours}h genomförda.`
+    : `Jaktpass: ${completedHours}/${totalHours}h genomförda.`;
   const statusText =
     feedback?.type === "completed"
       ? "Jakten är avslutad."
@@ -416,7 +430,7 @@ function completeHunt(
       type: "result",
       text: statusText ? `${summaryText} ${statusText}` : summaryText,
       runId: huntState.runId,
-      hour: totalHours,
+      hour: isContinuousHunt ? completedHours : totalHours,
     },
   });
 }

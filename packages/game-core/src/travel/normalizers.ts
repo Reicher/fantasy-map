@@ -1,5 +1,9 @@
 import { clamp } from "@fardvag/shared/utils";
-import { HUNT_HOUR_OPTIONS, REST_HOUR_OPTIONS } from "./constants";
+import {
+  CONTINUOUS_ACTION_HOURS,
+  HUNT_HOUR_OPTIONS,
+  REST_HOUR_OPTIONS,
+} from "./constants";
 
 export function normalizeActionCounter(value: unknown): number {
   const numeric = Number(value);
@@ -11,7 +15,13 @@ export function normalizeActionCounter(value: unknown): number {
 
 export function normalizeHuntHours(value: unknown): number {
   const numeric = Number(value);
-  const wholeHours = Number.isFinite(numeric) ? Math.floor(numeric) : 0;
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+  const wholeHours = Math.floor(numeric);
+  if (wholeHours === CONTINUOUS_ACTION_HOURS) {
+    return CONTINUOUS_ACTION_HOURS;
+  }
   if (!HUNT_HOUR_OPTIONS.includes(wholeHours)) {
     return 0;
   }
@@ -79,7 +89,13 @@ export function normalizeElapsedHours(value: unknown): number {
 
 export function normalizeRestHours(value: unknown): number {
   const numeric = Number(value);
-  const wholeHours = Number.isFinite(numeric) ? Math.floor(numeric) : 0;
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+  const wholeHours = Math.floor(numeric);
+  if (wholeHours === CONTINUOUS_ACTION_HOURS) {
+    return CONTINUOUS_ACTION_HOURS;
+  }
   if (!REST_HOUR_OPTIONS.includes(wholeHours)) {
     return 0;
   }

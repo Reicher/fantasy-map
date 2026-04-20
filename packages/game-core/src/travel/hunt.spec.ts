@@ -158,6 +158,21 @@ describe("travel hunt invariants", () => {
     expect(run()).toEqual(run());
   });
 
+  it("keeps hunting continuously until cancelled in continuous mode", () => {
+    const world = createTestWorld("continuous-hunt-seed");
+    const started = beginHunt(createBaseHuntState(), world, -1);
+    expect(started?.hunt?.hours).toBe(-1);
+
+    const progressed = advanceHunt(started, world, 2);
+    expect(progressed?.hunt?.hours).toBe(-1);
+    expect(progressed?.hunt?.elapsedHours).toBe(2);
+    expect(progressed?.hunt?.completedHours).toBe(2);
+
+    const cancelled = cancelHunt(progressed, world);
+    expect(cancelled?.hunt).toBeNull();
+    expect(cancelled?.latestHuntFeedback?.text).toContain("Jakten avbröts efter 2h");
+  });
+
   it("blocks hunt start while player is in a settlement node", () => {
     const world = createTestWorld("settlement-hunt-guard", "settlement");
     const started = beginHunt(createBaseHuntState(), world, 3);

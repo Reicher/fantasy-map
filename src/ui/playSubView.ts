@@ -1,4 +1,5 @@
 import {
+  CONTINUOUS_ACTION_HOURS,
   describePlayHud,
   canTransferInventoryItem,
   describeHuntSituation,
@@ -549,8 +550,7 @@ export function createPlaySubViewController({
       showEncounterActions && playState?.encounter?.type === "settlement-group";
     const canAttack =
       showEncounterActions &&
-      Boolean(event?.canAttack) &&
-      getInventoryTypeCount(playState?.inventory, "bullets") > 0;
+      Boolean(event?.canAttack);
     dialog.classList.toggle("play-journey-event-dialog--loot", showLootPanel);
     dialog.classList.toggle(
       "play-journey-event-dialog--encounter",
@@ -680,7 +680,7 @@ export function createPlaySubViewController({
 
   function syncJourneyEncounterActions(showActions, canAttack) {
     if (lastJourneyEncounterActionsVisible !== showActions) {
-      setElementVisible(refs.playJourneyEncounterActions, showActions, "flex");
+      setElementVisible(refs.playJourneyEncounterActions, showActions, "grid");
       lastJourneyEncounterActionsVisible = showActions;
     }
     if (!showActions) {
@@ -709,7 +709,7 @@ export function createPlaySubViewController({
     );
     refs.playJourneyEventDialog.classList.remove("play-journey-event-dialog--actions-open");
     setElementVisible(refs.playJourneyEventLoot, false, "grid");
-    setElementVisible(refs.playJourneyEncounterActions, false, "flex");
+    setElementVisible(refs.playJourneyEncounterActions, false, "grid");
     setElementVisible(refs.playJourneySettlementActions, false, "grid");
     if (refs.playJourneySettlementActionsHint) {
       setElementVisible(refs.playJourneySettlementActionsHint, false, "block");
@@ -1652,10 +1652,12 @@ function getInterpolatedStaminaValue(
   if (playState?.rest) {
     const committedRestHours = normalizeElapsedHours(playState.rest?.elapsedHours);
     const totalRestHours = normalizeRestHours(playState.rest?.hours);
-    const visualRestHours = Math.max(
-      0,
-      Math.min(totalRestHours, committedRestHours + fractionalHour),
-    );
+    const visualRestHours = totalRestHours === CONTINUOUS_ACTION_HOURS
+      ? Math.max(0, committedRestHours + fractionalHour)
+      : Math.max(
+          0,
+          Math.min(totalRestHours, committedRestHours + fractionalHour),
+        );
     const staminaGainPerHour = resolveRestStaminaGainPerHour(
       playState?.injuryStatus,
       HUD_STAMINA_PER_REST_HOUR,
@@ -1875,7 +1877,11 @@ function normalizeRestHours(value) {
   if (!Number.isFinite(value)) {
     return 0;
   }
-  return Math.max(0, Math.floor(value));
+  const wholeHours = Math.floor(value);
+  if (wholeHours === CONTINUOUS_ACTION_HOURS) {
+    return CONTINUOUS_ACTION_HOURS;
+  }
+  return Math.max(0, wholeHours);
 }
 
 function getDefaultTimedActionButtonLabel(button) {

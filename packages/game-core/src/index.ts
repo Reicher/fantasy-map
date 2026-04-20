@@ -48,6 +48,7 @@ export {
 } from "./inventory";
 export {
   ACTION_HOUR_OPTIONS,
+  CONTINUOUS_ACTION_HOURS,
   HUNT_HOUR_OPTIONS,
   REST_HOUR_OPTIONS,
 } from "./travel/constants";

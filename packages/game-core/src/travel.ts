@@ -1,5 +1,5 @@
 import {
-  countInventoryItemsByType,
+  addInventoryItemsByType,
   isInventoryEmpty,
 } from "./inventory";
 import { createGeneratedAgentProfile } from "./agentFactory";
@@ -76,6 +76,10 @@ export function createPlayState(world): PlayState {
   const playerProfile = createGeneratedAgentProfile(world, "player", {
     inventorySeedSuffix: "player",
   });
+  const playerInventory = createPlayerStartingInventoryWithWelcomeLetter(
+    playerProfile.inventory,
+    world,
+  );
   const settlementStates = createInitialSettlementStates(world);
   const currentNodeId =
     world.playerStart?.nodeId ?? world.features?.nodes?.[0]?.id ?? null;
@@ -116,7 +120,7 @@ export function createPlayState(world): PlayState {
     encounter: null,
     latestEncounterResolution: null,
     abandonedLootByNodeId: {},
-    inventory: playerProfile.inventory,
+    inventory: playerInventory,
     hungerElapsedHours: playerProfile.hungerElapsedHours,
     hungerStatus: resolvePlayerHungerStatus(playerProfile.hungerElapsedHours),
     journeyElapsedHours: 0,
@@ -173,6 +177,112 @@ export function createPlayState(world): PlayState {
     },
     { force: true },
   );
+}
+
+function createPlayerStartingInventoryWithWelcomeLetter(
+  inventory: PlayState["inventory"],
+  world,
+): PlayState["inventory"] {
+  const settlementName =
+    resolveEasternmostSettlementName(world) ?? "den östligaste bosättningen";
+  const letterContent = [
+    "Välkommen till nya världen",
+    `Jag bor i ${settlementName}`,
+    "/Pappa",
+  ].join("\n");
+
+  const letterResult = addInventoryItemsByType(inventory, "letter", 1, {
+    idPrefix: "welcome-letter",
+  });
+  if (!letterResult.inventory || letterResult.added <= 0) {
+    return inventory;
+  }
+
+  return {
+    ...letterResult.inventory,
+    items: letterResult.inventory.items.map((item) => {
+      if (!item || !String(item.id ?? "").startsWith("welcome-letter")) {
+        return item;
+      }
+      return {
+        ...item,
+        letterContent,
+      };
+    }),
+  };
+}
+
+function resolveEasternmostSettlementName(world): string | null {
+  const settlements: Array<{ id?: number; x?: number; name?: unknown } | undefined> =
+    Array.isArray(world?.settlements) ? world.settlements : [];
+  let easternmost: { id?: number; x?: number; name?: unknown } | null = null;
+
+  for (const settlement of settlements) {
+    if (!settlement || !Number.isFinite(settlement.x)) {
+      continue;
+    }
+    if (!easternmost || Number(settlement.x) > Number(easternmost.x)) {
+      easternmost = settlement;
+      continue;
+    }
+    if (Number(settlement.x) < Number(easternmost.x)) {
+      continue;
+    }
+    const currentId = Number.isFinite(settlement.id)
+      ? Math.floor(Number(settlement.id))
+      : Number.POSITIVE_INFINITY;
+    const bestId = Number.isFinite(easternmost.id)
+      ? Math.floor(Number(easternmost.id))
+      : Number.POSITIVE_INFINITY;
+    if (currentId < bestId) {
+      easternmost = settlement;
+    }
+  }
+
+  const settlementName = String(easternmost?.name ?? "").trim();
+  if (settlementName.length > 0) {
+    return settlementName;
+  }
+  const easternNode = findEasternmostSettlementNode(world);
+  if (!easternNode) {
+    return null;
+  }
+  return getNodeTitle(easternNode);
+}
+
+function findEasternmostSettlementNode(
+  world,
+): { id?: number; marker?: string; x?: number; name?: unknown } | null {
+  const nodes: Array<
+    { id?: number; marker?: string; x?: number; name?: unknown } | undefined
+  > =
+    Array.isArray(world?.features?.nodes) ? world.features.nodes : [];
+  let easternmost: { id?: number; marker?: string; x?: number; name?: unknown } | null = null;
+
+  for (const node of nodes) {
+    if (!node || node.marker !== "settlement" || !Number.isFinite(node.x)) {
+      continue;
+    }
+    if (!easternmost || Number(node.x) > Number(easternmost.x)) {
+      easternmost = node;
+      continue;
+    }
+    if (Number(node.x) < Number(easternmost.x)) {
+      continue;
+    }
+
+    const currentId = Number.isFinite(node.id)
+      ? Math.floor(Number(node.id))
+      : Number.POSITIVE_INFINITY;
+    const bestId = Number.isFinite(easternmost.id)
+      ? Math.floor(Number(easternmost.id))
+      : Number.POSITIVE_INFINITY;
+    if (currentId < bestId) {
+      easternmost = node;
+    }
+  }
+
+  return easternmost;
 }
 
 export function beginTravel(playState, targetNodeId, world = null) {
@@ -592,7 +702,6 @@ function createSettlementEncounterArrivalResult(
   const encounterId = `settlement-encounter-${settlementId}-${hourIndex}-${encounterRng.int(100, 999)}`;
   const playerInitiative = normalizeSettlementStat(playState?.initiative, 0);
   const settlementWinsInitiative = averageInitiative > playerInitiative;
-  const canAttack = countInventoryItemsByType(playState?.inventory, "bullets") > 0;
   const participantNames = opponentMembers
     .map((member) => String(member?.name ?? "").trim())
     .filter((name) => name.length > 0);
@@ -616,7 +725,7 @@ function createSettlementEncounterArrivalResult(
       encounterId,
       message: messageLines.join("\n"),
       requiresAcknowledgement: true,
-      canAttack,
+      canAttack: true,
     },
     abandonedLootByNodeId,
     encounter: {

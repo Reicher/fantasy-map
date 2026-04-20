@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { countInventoryItemsByType } from "../inventory";
 import { advanceRest, beginRest, cancelRest } from "./rest";
 import type { PlayState } from "@fardvag/shared/types/play";
 
@@ -72,6 +73,20 @@ describe("travel rest transitions", () => {
     expect(cancelled.rest).toBeNull();
     expect(cancelled.stamina).toBe(12);
     expect(cancelled.latestHuntFeedback?.text).toContain("Vila avbruten");
+  });
+
+  it("keeps resting continuously until cancelled in continuous mode", () => {
+    const started = beginRest(createBasePlayState(), -1);
+    expect(started?.rest?.hours).toBe(-1);
+
+    const progressed = advanceRest(started, 2);
+    expect(progressed?.rest?.hours).toBe(-1);
+    expect(progressed?.rest?.elapsedHours).toBe(2);
+
+    const cancelled = cancelRest(progressed);
+    expect(cancelled?.rest).toBeNull();
+    expect(cancelled?.stamina).toBe(12);
+    expect(cancelled?.latestHuntFeedback?.text).toContain("Vila avbruten");
   });
 
   it("allows rest from non-hostile settlement encounter and clears encounter interaction", () => {
@@ -180,5 +195,75 @@ describe("travel rest transitions", () => {
     expect(finished?.encounter?.id).toBe("enc-rest");
     expect(finished?.isTravelPaused).toBe(true);
     expect(finished?.travelPauseReason).toBe("encounter");
+  });
+
+  it("uses medicine during rest when injured and heals all damage", () => {
+    const started = beginRest(
+      {
+        ...createBasePlayState(),
+        injuryStatus: "severely-injured",
+        maxHealth: 12,
+        health: 3,
+        inventory: {
+          columns: 4,
+          rows: 4,
+          items: [
+            {
+              id: "medicine-1",
+              type: "medicine",
+              name: "Medicin",
+              symbol: "medicine",
+              count: 2,
+              width: 1,
+              height: 1,
+              column: 0,
+              row: 0,
+            },
+          ],
+        },
+      },
+      1,
+    );
+    const finished = advanceRest(started, 1);
+
+    expect(finished?.injuryStatus).toBe("healthy");
+    expect(finished?.health).toBe(12);
+    expect(countInventoryItemsByType(finished?.inventory, "medicine")).toBe(1);
+    expect(finished?.latestHuntFeedback?.text).toContain("läkte alla skador");
+  });
+
+  it("does not use medicine during rest when no healing is needed", () => {
+    const started = beginRest(
+      {
+        ...createBasePlayState(),
+        injuryStatus: "healthy",
+        maxHealth: 12,
+        health: 12,
+        inventory: {
+          columns: 4,
+          rows: 4,
+          items: [
+            {
+              id: "medicine-1",
+              type: "medicine",
+              name: "Medicin",
+              symbol: "medicine",
+              count: 2,
+              width: 1,
+              height: 1,
+              column: 0,
+              row: 0,
+            },
+          ],
+        },
+      },
+      1,
+    );
+    const finished = advanceRest(started, 1);
+
+    expect(finished?.injuryStatus).toBe("healthy");
+    expect(finished?.health).toBe(12);
+    expect(countInventoryItemsByType(finished?.inventory, "medicine")).toBe(2);
+    expect(finished?.latestHuntFeedback?.text).not.toContain("läkte alla skador");
   });
 });

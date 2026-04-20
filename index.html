@@ -252,54 +252,20 @@
               hidden
             >
               <div class="play-journey-settlement-actions-grid">
-                <section class="play-rest-column">
-                  <h5 class="play-rest-column-title">Vila</h5>
-                  <button
-                    type="button"
-                    class="ghost-button play-rest-option play-journey-settlement-option"
-                    data-settlement-rest-hours="1"
-                  >
-                    1 h
-                  </button>
-                  <button
-                    type="button"
-                    class="ghost-button play-rest-option play-journey-settlement-option"
-                    data-settlement-rest-hours="3"
-                  >
-                    3 h
-                  </button>
-                  <button
-                    type="button"
-                    class="ghost-button play-rest-option play-journey-settlement-option"
-                    data-settlement-rest-hours="8"
-                  >
-                    8 h
-                  </button>
-                </section>
-                <section class="play-rest-column">
-                  <h5 class="play-rest-column-title">Jakt</h5>
-                  <button
-                    type="button"
-                    class="ghost-button play-rest-option play-journey-settlement-option"
-                    data-settlement-hunt-hours="1"
-                  >
-                    1 h
-                  </button>
-                  <button
-                    type="button"
-                    class="ghost-button play-rest-option play-journey-settlement-option"
-                    data-settlement-hunt-hours="3"
-                  >
-                    3 h
-                  </button>
-                  <button
-                    type="button"
-                    class="ghost-button play-rest-option play-journey-settlement-option"
-                    data-settlement-hunt-hours="8"
-                  >
-                    8 h
-                  </button>
-                </section>
+                <button
+                  type="button"
+                  class="ghost-button play-rest-option play-journey-settlement-option"
+                  data-settlement-rest-hours="-1"
+                >
+                  Vila
+                </button>
+                <button
+                  type="button"
+                  class="ghost-button play-rest-option play-journey-settlement-option"
+                  data-settlement-hunt-hours="-1"
+                >
+                  Jaga
+                </button>
               </div>
               <p
                 id="play-journey-settlement-actions-hint"
@@ -330,58 +296,24 @@
             hidden
           >
             <p id="play-rest-body" class="play-rest-body">
-              Du är utmattad. Välj hur länge du vill vila.
+              Du är utmattad. Vila tills du avbryter.
             </p>
             <div id="play-rest-options" class="play-rest-options">
-              <section class="play-rest-column">
-                <h4 class="play-rest-column-title">Jakt</h4>
-                <button
-                  type="button"
-                  class="ghost-button play-rest-option"
-                  data-hunt-hours="1"
-                >
-                  1 h
-                </button>
-                <button
-                  type="button"
-                  class="ghost-button play-rest-option"
-                  data-hunt-hours="3"
-                >
-                  3 h
-                </button>
-                <button
-                  type="button"
-                  class="ghost-button play-rest-option"
-                  data-hunt-hours="8"
-                >
-                  8 h
-                </button>
-                <p id="play-hunt-outlook" class="play-hunt-outlook" hidden></p>
-              </section>
-              <section class="play-rest-column">
-                <h4 class="play-rest-column-title">Vila</h4>
-                <button
-                  type="button"
-                  class="ghost-button play-rest-option"
-                  data-rest-hours="1"
-                >
-                  1 h
-                </button>
-                <button
-                  type="button"
-                  class="ghost-button play-rest-option"
-                  data-rest-hours="3"
-                >
-                  3 h
-                </button>
-                <button
-                  type="button"
-                  class="ghost-button play-rest-option"
-                  data-rest-hours="8"
-                >
-                  8 h
-                </button>
-              </section>
+              <button
+                type="button"
+                class="ghost-button play-rest-option"
+                data-rest-hours="-1"
+              >
+                Vila
+              </button>
+              <button
+                type="button"
+                class="ghost-button play-rest-option"
+                data-hunt-hours="-1"
+              >
+                Jaga
+              </button>
+              <p id="play-hunt-outlook" class="play-hunt-outlook" hidden></p>
             </div>
             <div class="play-rest-footer">
               <button

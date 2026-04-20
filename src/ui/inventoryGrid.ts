@@ -367,10 +367,18 @@ function createItemElement(item: InventoryItem, isSelected: boolean): HTMLButton
     : 1;
   const count = normalizeItemCount(item?.count);
 
-  itemButton.title =
+  const baseTitle =
     count > 1
       ? `${label} x${count} (${width}x${height})`
       : `${label} (${width}x${height})`;
+  const normalizedType = String(item.type ?? "").trim().toLowerCase();
+  const letterContent =
+    normalizedType === "letter" ? String(item["letterContent"] ?? "").trim() : "";
+  itemButton.title = letterContent
+    ? `${label}\n${letterContent}`
+    : normalizedType === "medicine"
+      ? `${baseTitle} - Måste vila för att använda.`
+      : baseTitle;
   itemButton.setAttribute("aria-label", itemButton.title);
 
   const symbol = document.createElement("span");

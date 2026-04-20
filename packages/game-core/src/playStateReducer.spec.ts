@@ -453,6 +453,19 @@ describe("playStateReducer", () => {
     expect(started?.actionMode).toBe("event");
   });
 
+  it("gives the player a welcome letter that references the easternmost settlement", () => {
+    const world = createTravelWorld(0);
+    const started = createPlayState(world);
+    const letter = started?.inventory?.items?.find((item) => item?.type === "letter");
+    const letterContent = String(letter?.["letterContent"] ?? "");
+
+    expect(letter).toBeTruthy();
+    expect(letter?.name).toBe("Brev");
+    expect(letterContent).toContain("Välkommen till nya världen");
+    expect(letterContent).toContain("Jag bor i Mål");
+    expect(letterContent).toContain("/Pappa");
+  });
+
   it("advances world-hours through reducer event and updates run stats", () => {
     const world = createTravelWorld();
     const travelActiveState = {

@@ -435,6 +435,10 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
       viewH,
       skyState,
       markerSnapshot.settlementLightAnchors ?? [],
+      {
+        x: playerX,
+        y: playerFeetY - 34,
+      },
     );
 
     if (debug) {
@@ -450,6 +454,7 @@ function drawNightVeilWithCampfireCutout(
   viewH,
   skyState,
   anchors,
+  playerGlowAnchor = null,
 ) {
   const overlay = ensureNightVeilOverlay(sceneState, viewW, viewH);
   if (!overlay) {
@@ -460,6 +465,7 @@ function drawNightVeilWithCampfireCutout(
   overlay.clearRect(0, 0, viewW, viewH);
   drawNightVeil(overlay, viewW, viewH, skyState);
   carveCampfireVisibilityInVeil(overlay, anchors, skyState);
+  carvePlayerNightGlowInVeil(overlay, playerGlowAnchor, skyState);
   ctx.drawImage(sceneState.nightVeilCanvas, 0, 0);
 }
 
@@ -832,6 +838,61 @@ function carveCampfireVisibilityInVeil(overlayCtx, anchors, skyState) {
     overlayCtx.arc(anchor.x, anchor.y, innerRadius, 0, Math.PI * 2);
     overlayCtx.fill();
   }
+
+  overlayCtx.restore();
+}
+
+function carvePlayerNightGlowInVeil(overlayCtx, anchor, skyState) {
+  if (!anchor || !Number.isFinite(anchor.x) || !Number.isFinite(anchor.y)) {
+    return;
+  }
+  const nightFactor = clamp01(
+    (Number(skyState?.night) || 0) * 1.1 +
+      (Number(skyState?.twilight) || 0) * 0.28 -
+      (Number(skyState?.daylight) || 0) * 0.26,
+  );
+  if (nightFactor <= 0.02) return;
+
+  // Keep this noticeably weaker and tighter than settlement campfire visibility.
+  const innerCutAlpha = 0.12 + nightFactor * 0.2;
+  const outerCutAlpha = 0.08 + nightFactor * 0.12;
+  const innerRadius = 26 + nightFactor * 18;
+  const outerRadius = 62 + nightFactor * 38;
+
+  overlayCtx.save();
+  overlayCtx.globalCompositeOperation = "destination-out";
+
+  const outerCut = overlayCtx.createRadialGradient(
+    anchor.x,
+    anchor.y,
+    0,
+    anchor.x,
+    anchor.y,
+    outerRadius,
+  );
+  outerCut.addColorStop(0, `rgba(0, 0, 0, ${outerCutAlpha})`);
+  outerCut.addColorStop(0.56, `rgba(0, 0, 0, ${outerCutAlpha * 0.48})`);
+  outerCut.addColorStop(1, "rgba(0, 0, 0, 0)");
+  overlayCtx.fillStyle = outerCut;
+  overlayCtx.beginPath();
+  overlayCtx.arc(anchor.x, anchor.y, outerRadius, 0, Math.PI * 2);
+  overlayCtx.fill();
+
+  const innerCut = overlayCtx.createRadialGradient(
+    anchor.x,
+    anchor.y,
+    0,
+    anchor.x,
+    anchor.y,
+    innerRadius,
+  );
+  innerCut.addColorStop(0, `rgba(0, 0, 0, ${innerCutAlpha})`);
+  innerCut.addColorStop(0.52, `rgba(0, 0, 0, ${innerCutAlpha * 0.58})`);
+  innerCut.addColorStop(1, "rgba(0, 0, 0, 0)");
+  overlayCtx.fillStyle = innerCut;
+  overlayCtx.beginPath();
+  overlayCtx.arc(anchor.x, anchor.y, innerRadius, 0, Math.PI * 2);
+  overlayCtx.fill();
 
   overlayCtx.restore();
 }

@@ -1,4 +1,5 @@
 import { DEFAULT_PARAMS } from "@fardvag/shared/config";
+import { CONTINUOUS_ACTION_HOURS } from "@fardvag/game-core";
 import {
   generateWorld,
   normalizeParams,
@@ -295,7 +296,16 @@ for (const button of refs.playSettlementEncounterRestButtons) {
     if (state.currentMode !== "play" || !state.playState) {
       return;
     }
-    const requestedHours = Number(button.dataset.settlementRestHours);
+    const requestedHours = normalizeTimedActionHours(
+      button.dataset.settlementRestHours,
+    );
+    const activeRestHours = state.playState.rest
+      ? normalizeTimedActionHours(state.playState.rest.hours)
+      : null;
+    if (activeRestHours != null && requestedHours === activeRestHours) {
+      playSession.cancelTimedAction();
+      return;
+    }
     if (!playSession.startRest(requestedHours)) {
       return;
     }
@@ -310,7 +320,16 @@ for (const button of refs.playSettlementEncounterHuntButtons) {
     if (state.currentMode !== "play" || !state.playState) {
       return;
     }
-    const requestedHours = Number(button.dataset.settlementHuntHours);
+    const requestedHours = normalizeTimedActionHours(
+      button.dataset.settlementHuntHours,
+    );
+    const activeHuntHours = state.playState.hunt
+      ? normalizeTimedActionHours(state.playState.hunt.hours)
+      : null;
+    if (activeHuntHours != null && requestedHours === activeHuntHours) {
+      playSession.cancelTimedAction();
+      return;
+    }
     if (!playSession.startHunt(requestedHours)) {
       return;
     }
@@ -833,16 +852,27 @@ function autoCloseActionMenuAfterEncounter(previousPlayState): void {
     !state.playState.rest &&
     !state.playState.hunt
   ) {
-    state.playActionMenuOpen = false;
+    const shouldKeepActionMenuOpen = Boolean(
+      state.playState.travel && state.playState.isTravelPaused,
+    );
+    state.playActionMenuOpen = shouldKeepActionMenuOpen;
+    if (shouldKeepActionMenuOpen) {
+      state.playActivePanels = [];
+    }
     state.playPresentedEncounterId = null;
   }
 }
 
 function normalizeTimedActionHours(value): number {
-  if (!Number.isFinite(Number(value))) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
     return 0;
   }
-  return Math.max(0, Math.floor(Number(value)));
+  const normalizedHours = Math.floor(numericValue);
+  if (normalizedHours === CONTINUOUS_ACTION_HOURS) {
+    return CONTINUOUS_ACTION_HOURS;
+  }
+  return Math.max(0, normalizedHours);
 }
 
 function syncViewUi() {

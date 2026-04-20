@@ -96,7 +96,7 @@ const PARAM_LABELS: Record<NumericWorldParamKey, (value: number) => string> = {
   roadConnectivity: (value: number) =>
     value <= 1
       ? "Alla kortare genvägar"
-      : `Minst ${Math.round(value)}x kortare`,
+      : `Minst ${formatShortcutFactor(value)}x kortare`,
   abandonedMaxSegmentLength: (value: number) => `${Math.round(value)} celler`,
   settlementRandomness: (value: number) =>
     value < 15
@@ -388,7 +388,7 @@ export const PARAM_SCHEMA = {
     type: "number",
     min: 1,
     max: 5,
-    step: 1,
+    step: 0.05,
     formatLabel: PARAM_LABELS.roadConnectivity,
     ui: {
       label: "Genvägskrav",
@@ -464,3 +464,7 @@ export const NUMERIC_PARAM_KEYS = PARAM_KEYS.filter(
 );
 
 export { BIOME_INFO, BIOME_KEYS } from "./biomes/index";
+
+function formatShortcutFactor(value: number): string {
+  return Number(value.toFixed(2)).toString();
+}

@@ -3,6 +3,7 @@ export const DEFAULT_MAX_STAMINA = 60;
 export const STAMINA_PER_TRAVEL_HOUR = 3;
 export const STAMINA_PER_HUNT_HOUR = 6;
 export const STAMINA_PER_REST_HOUR = 9;
+export const CONTINUOUS_ACTION_HOURS = -1;
 export const ACTION_HOUR_OPTIONS = Object.freeze([1, 3, 8]);
 export const REST_HOUR_OPTIONS = ACTION_HOUR_OPTIONS;
 export const HUNT_HOUR_OPTIONS = ACTION_HOUR_OPTIONS;

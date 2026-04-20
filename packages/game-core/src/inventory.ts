@@ -17,6 +17,7 @@ const STACK_MAX_COUNT_BY_TYPE: Readonly<Record<string, number>> = Object.freeze(
   meat: 12,
   bullets: 30,
   medicine: 6,
+  letter: 1,
   tobacco: 12,
   coffee: 12,
 });
@@ -24,6 +25,7 @@ const ITEM_METADATA_BY_TYPE = Object.freeze({
   meat: Object.freeze({ name: "Köttbit", symbol: "meat" }),
   bullets: Object.freeze({ name: "Kulor", symbol: "bullets" }),
   medicine: Object.freeze({ name: "Medicin", symbol: "medicine" }),
+  letter: Object.freeze({ name: "Brev", symbol: "letter" }),
   tobacco: Object.freeze({ name: "Tobak", symbol: "tobacco" }),
   coffee: Object.freeze({ name: "Kaffe", symbol: "coffee" }),
 });

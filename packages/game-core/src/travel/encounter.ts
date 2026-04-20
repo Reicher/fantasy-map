@@ -11,6 +11,7 @@ import {
   worsenPlayerInjuryStatus,
 } from "./playerStatus";
 import { snapshotRunStats } from "./runStats";
+import { normalizeTimeOfDayHours } from "../timeOfDay";
 import { createRng } from "@fardvag/shared/random";
 import type {
   PlayEncounterOpponentMember,
@@ -40,6 +41,12 @@ interface EncounterDefinition {
 
 const ENCOUNTER_CHANCE_PER_TRAVEL_HOUR = 0.4;
 const ENCOUNTER_CHANCE_PER_WILDERNESS_ACTION_HOUR = 0.25;
+const ENCOUNTER_WILDERNESS_REST_NIGHT_MULTIPLIER = 1.6;
+const ENCOUNTER_WILDERNESS_REST_DAY_MULTIPLIER = 0.65;
+const ENCOUNTER_TRAVEL_WOLF_WEIGHT_NIGHT_MULTIPLIER = 1.75;
+const ENCOUNTER_TRAVEL_WOLF_WEIGHT_DAY_MULTIPLIER = 0.7;
+const ENCOUNTER_TRAVEL_RABBIT_WEIGHT_NIGHT_MULTIPLIER = 0.72;
+const ENCOUNTER_TRAVEL_RABBIT_WEIGHT_DAY_MULTIPLIER = 1.45;
 const ENCOUNTER_CHANCE_PER_HUNT_RABBIT_HOUR = 0.35;
 const ENCOUNTER_HUNT_RABBIT_BONUS_OVER_TRAVEL_BASE = 0.08;
 const ENCOUNTER_LOOT_COLUMNS = 4;
@@ -47,6 +54,9 @@ const ENCOUNTER_LOOT_ROWS = 4;
 const ENCOUNTER_APPROACH_DISTANCE_WORLD = 18;
 const ENCOUNTER_MIN_APPROACH_WORLD = 6;
 const ENCOUNTER_ENDPOINT_SAFE_DISTANCE_WORLD = 4.5;
+const ENCOUNTER_NIGHT_START_HOUR = 20;
+const ENCOUNTER_NIGHT_END_HOUR = 6;
+const STONE_ATTACK_KILL_CHANCE = 0.05;
 const ENCOUNTER_DEFINITIONS: readonly EncounterDefinition[] = Object.freeze([
   Object.freeze({
     type: "rabbit",
@@ -106,9 +116,8 @@ export function maybeTriggerTravelEncounter(
     return withPlayActionMode(playState);
   }
 
-  const definition = rng.weighted(
-    ENCOUNTER_DEFINITIONS,
-    (entry) => entry.weight,
+  const definition = rng.weighted(ENCOUNTER_DEFINITIONS, (entry) =>
+    resolveTravelEncounterWeight(entry, playState),
   );
   const encounter = createEncounterFromDefinition(playState, rng, definition, {
     entryStyle: "travel-static",
@@ -185,7 +194,8 @@ export function maybeTriggerWildernessHostileEncounter(
   const rng = createRng(
     `${worldSeed}:wilderness-hostile-encounter:${modeLabel}:${hourIndex}`,
   );
-  if (!rng.chance(ENCOUNTER_CHANCE_PER_WILDERNESS_ACTION_HOUR)) {
+  const hostileEncounterChance = resolveWildernessHostileEncounterChance(playState);
+  if (!rng.chance(hostileEncounterChance)) {
     return withPlayActionMode(playState);
   }
 
@@ -499,17 +509,16 @@ function handlePlayerAttack(
   encounter: PlayEncounterState,
 ): PlayState {
   const bulletsBefore = countInventoryItemsByType(playState.inventory, "bullets");
-  if (bulletsBefore <= 0) {
-    return withEncounterTurnEvent(playState, [
-      "Du har inga kulor kvar.",
-    ]);
-  }
-
-  const consumedAmmo = consumeInventoryItemsByType(
-    playState.inventory,
-    "bullets",
-    1,
-  );
+  const usesStone = bulletsBefore <= 0;
+  const consumedAmmo = usesStone
+    ? {
+        inventory: playState.inventory,
+      }
+    : consumeInventoryItemsByType(
+        playState.inventory,
+        "bullets",
+        1,
+      );
   let nextEncounter: PlayEncounterState = {
     ...encounter,
   };
@@ -533,18 +542,24 @@ function handlePlayerAttack(
     }
   }
 
-  const accuracy = clamp01(
-    resolveEffectiveWeaponAccuracy(
-      playState.vapenTraffsakerhet,
-      playState.injuryStatus,
-    ) / 100,
+  const accuracy = usesStone
+    ? STONE_ATTACK_KILL_CHANCE
+    : clamp01(
+        resolveEffectiveWeaponAccuracy(
+          playState.vapenTraffsakerhet,
+          playState.injuryStatus,
+        ) / 100,
+      );
+  const hitRoll = rollEncounterChance(
+    nextEncounter,
+    usesStone ? "player-stone-hit" : "player-attack-hit",
+    accuracy,
   );
-  const hitRoll = rollEncounterChance(nextEncounter, "player-attack-hit", accuracy);
   nextEncounter = hitRoll.encounter;
-  const lines = ["Du attackerar."];
+  const lines = [usesStone ? "Du attackerar med en sten." : "Du attackerar."];
 
   if (!hitRoll.success) {
-    lines.push("Skottet missar.");
+    lines.push(usesStone ? "Stenen missar." : "Skottet missar.");
     return advanceEncounterUntilPlayerTurn(
       {
         ...playState,
@@ -570,7 +585,11 @@ function handlePlayerAttack(
       nextEncounter,
     );
     const targetName = settlementDamage.targetName ?? "Målet";
-    lines.push(`Träff. ${targetName} faller direkt.`);
+    lines.push(
+      usesStone
+        ? `Stenen träffar. ${targetName} faller direkt.`
+        : `Träff. ${targetName} faller direkt.`,
+    );
     if (nextEncounter.opponentHealth <= 0) {
       return finishEncounterWithOpponentDefeat(
         syncedSettlementState,
@@ -592,7 +611,11 @@ function handlePlayerAttack(
       lines,
     );
   } else {
-    lines.push("Träff. Motståndaren dör direkt.");
+    lines.push(
+      usesStone
+        ? "Stenen träffar. Motståndaren dör direkt."
+        : "Träff. Motståndaren dör direkt.",
+    );
     return finishEncounterWithOpponentDefeat(
       syncedSettlementState,
       {
@@ -960,7 +983,6 @@ function withEncounterTurnEvent(
   const normalizedLines = lines
     .map((line) => String(line ?? "").trim())
     .filter((line) => line.length > 0);
-  const canAttack = countInventoryItemsByType(playState.inventory, "bullets") > 0;
   return {
     ...playState,
     pendingJourneyEvent: {
@@ -968,7 +990,7 @@ function withEncounterTurnEvent(
       encounterId: encounter.id,
       message: normalizedLines.join("\n"),
       requiresAcknowledgement: true,
-      canAttack,
+      canAttack: true,
     },
     isTravelPaused: playState.travel ? true : playState.isTravelPaused,
     travelPauseReason: playState.travel ? "encounter" : playState.travelPauseReason,
@@ -1453,6 +1475,48 @@ function clamp01(value: number): number {
     return 1;
   }
   return value;
+}
+
+function resolveTravelEncounterWeight(
+  definition: EncounterDefinition,
+  playState: PlayState,
+): number {
+  const baseWeight = Number.isFinite(definition.weight) ? Number(definition.weight) : 0;
+  if (baseWeight <= 0) {
+    return 0;
+  }
+  const isNight = isNightTimeForEncounter(playState);
+  if (definition.type === "wolf") {
+    return baseWeight *
+      (isNight
+        ? ENCOUNTER_TRAVEL_WOLF_WEIGHT_NIGHT_MULTIPLIER
+        : ENCOUNTER_TRAVEL_WOLF_WEIGHT_DAY_MULTIPLIER);
+  }
+  if (definition.type === "rabbit") {
+    return baseWeight *
+      (isNight
+        ? ENCOUNTER_TRAVEL_RABBIT_WEIGHT_NIGHT_MULTIPLIER
+        : ENCOUNTER_TRAVEL_RABBIT_WEIGHT_DAY_MULTIPLIER);
+  }
+  return baseWeight;
+}
+
+function resolveWildernessHostileEncounterChance(playState: PlayState): number {
+  if (!playState?.rest) {
+    return ENCOUNTER_CHANCE_PER_WILDERNESS_ACTION_HOUR;
+  }
+  const multiplier = isNightTimeForEncounter(playState)
+    ? ENCOUNTER_WILDERNESS_REST_NIGHT_MULTIPLIER
+    : ENCOUNTER_WILDERNESS_REST_DAY_MULTIPLIER;
+  return clamp01(ENCOUNTER_CHANCE_PER_WILDERNESS_ACTION_HOUR * multiplier);
+}
+
+function isNightTimeForEncounter(playState: PlayState): boolean {
+  const normalizedHour = normalizeTimeOfDayHours(playState?.timeOfDayHours);
+  return (
+    normalizedHour >= ENCOUNTER_NIGHT_START_HOUR ||
+    normalizedHour < ENCOUNTER_NIGHT_END_HOUR
+  );
 }
 
 function capitalize(value: string): string {
