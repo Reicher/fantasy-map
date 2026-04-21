@@ -19,6 +19,12 @@ import { getNodeTitle } from "@fardvag/shared/node/model";
 import type { NodeLike } from "@fardvag/shared/node/model";
 import { createInventoryGridController } from "./inventoryGrid";
 import { setElementVisible } from "./viewState";
+import {
+  canCloseActionMenu,
+  isDestinationChoicePending,
+  isEncounterTurn,
+  shouldForceActionMenuOpen,
+} from "./playActionMenuPolicy";
 import type { PlaySubViewDeps } from "@fardvag/shared/types/runtime";
 import type { InventoryDragPayload, InventoryState } from "@fardvag/shared/types/inventory";
 import type { PlayState } from "@fardvag/shared/types/play";
@@ -486,10 +492,13 @@ export function createPlaySubViewController({
     }
 
     const event = playState?.pendingJourneyEvent ?? null;
-    const isEncounterTurn = event?.type === "encounter-turn";
+    const isEncounterTurnActive = isEncounterTurn(playState);
     const encounterId = String(event?.encounterId ?? "");
+    if (isEncounterTurnActive && shouldForceActionMenuOpen(playState)) {
+      state.playActionMenuOpen = true;
+    }
     if (
-      isEncounterTurn &&
+      isEncounterTurnActive &&
       encounterId.length > 0 &&
       lastEncounterActionMenuEncounterId !== encounterId
     ) {
@@ -499,9 +508,9 @@ export function createPlaySubViewController({
       }
     }
     const shouldShowEncounterDialog =
-      !isEncounterTurn || Boolean(state.playActionMenuOpen);
+      !isEncounterTurnActive || Boolean(state.playActionMenuOpen);
     const requiresEncounterIntro =
-      isEncounterTurn && isJourney && Boolean(playState?.travel);
+      isEncounterTurnActive && isJourney && Boolean(playState?.travel);
     const introReady =
       !requiresEncounterIntro ||
       (encounterId.length <= 0
@@ -513,7 +522,7 @@ export function createPlaySubViewController({
       setElementVisible(dialog, shouldShow, "grid");
       lastJourneyEventDialogVisible = shouldShow;
     }
-    if (isEncounterTurn && shouldShow && encounterId.length > 0) {
+    if (isEncounterTurnActive && shouldShow && encounterId.length > 0) {
       state.playPresentedEncounterId = encounterId;
     }
 
@@ -526,7 +535,7 @@ export function createPlaySubViewController({
       dialog.classList.remove("play-journey-event-dialog--encounter");
       dialog.classList.remove("play-journey-event-dialog--settlement-encounter");
       dialog.classList.remove("play-journey-event-dialog--actions-open");
-      if (!isEncounterTurn) {
+      if (!isEncounterTurnActive) {
         lastEncounterActionMenuEncounterId = null;
       }
       clearAutoClearJourneyEventTimer();
@@ -643,18 +652,11 @@ export function createPlaySubViewController({
       }
     }
 
-    const hintMessage = restrictionReason || huntReason;
-    const showHint = hintMessage.length > 0;
-    if (hint && lastSettlementActionHintVisible !== showHint) {
-      setElementVisible(hint, showHint, "block");
-      lastSettlementActionHintVisible = showHint;
+    if (hint) {
+      setElementVisible(hint, false, "block");
     }
-    if (hint && showHint && hintMessage !== lastSettlementActionHintMessage) {
-      hint.textContent = hintMessage;
-      lastSettlementActionHintMessage = hintMessage;
-    } else if (!showHint) {
-      lastSettlementActionHintMessage = null;
-    }
+    lastSettlementActionHintVisible = false;
+    lastSettlementActionHintMessage = null;
   }
 
   function syncJourneyLootPanel(showLootPanel, lootInventory) {
@@ -1331,7 +1333,7 @@ function syncTravelToggleButton(playState, playActionMenuOpen, button, lastSigna
   const isPaused = Boolean(playState?.isTravelPaused);
   const isResting = Boolean(playState?.rest);
   const isHunting = Boolean(playState?.hunt);
-  const isEncounterTurnActive = playState?.pendingJourneyEvent?.type === "encounter-turn";
+  const isEncounterTurnActive = isEncounterTurn(playState);
   const isHostileOpponent = playState?.encounter?.disposition === "hostile";
   const isEncounterActive =
     Boolean(playState?.encounter) ||
@@ -1351,10 +1353,13 @@ function syncTravelToggleButton(playState, playActionMenuOpen, button, lastSigna
   let isActive = Boolean(playActionMenuOpen && inNode);
 
   if (isEncounterTurnActive) {
-    isDisabled = false;
+    const canCloseEncounterMenu = canCloseActionMenu(playState);
+    isDisabled = Boolean(playActionMenuOpen && !canCloseEncounterMenu);
     label = "Handlingar";
     description = playActionMenuOpen
-      ? "Stäng handlingar i mötet."
+      ? canCloseEncounterMenu
+        ? "Stäng handlingar i mötet."
+        : "Handlingar måste vara öppna under fientliga möten."
       : "Öppna handlingar i mötet.";
     isActive = Boolean(playActionMenuOpen);
   } else if (isEncounterActive) {
@@ -1942,10 +1947,8 @@ function withUpdatedLootInventory(playState, nextLootInventory) {
 }
 
 function isJourneyModeLockedForDestinationChoice(playState): boolean {
-  const event = playState?.pendingJourneyEvent;
   return Boolean(
     playState?.viewMode === "map" &&
-      event?.type === "signpost-directions" &&
-      event?.requiresDestinationChoice === true,
+      isDestinationChoicePending(playState),
   );
 }

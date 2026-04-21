@@ -26,6 +26,12 @@ import { createEditorSession } from "./ui/editorSession";
 import { clearHover } from "./ui/hoverPanel";
 import { createPlaySession } from "./ui/playSession";
 import {
+  canCloseActionMenu,
+  isEncounterTurn,
+  isNonHostileEncounterTurn,
+  shouldKeepActionMenuOpenAfterEncounter,
+} from "./ui/playActionMenuPolicy";
+import {
   createAppRefs,
   initializeCanvasSizes,
 } from "./app/domRefs";
@@ -533,7 +539,8 @@ window.addEventListener("keydown", (event) => {
       !state.playState?.isTravelPaused &&
       !state.playState?.rest &&
       !state.playState?.hunt &&
-      !state.playState?.pendingRestChoice
+      !state.playState?.pendingRestChoice &&
+      canCloseActionMenu(state.playState)
     ) {
       event.preventDefault();
       state.playActionMenuOpen = false;
@@ -750,7 +757,9 @@ function runPrimaryActionButton() {
   }
 
   if (isEncounterTurn(playState)) {
-    state.playActionMenuOpen = !state.playActionMenuOpen;
+    const shouldClose =
+      state.playActionMenuOpen && canCloseActionMenu(playState);
+    state.playActionMenuOpen = shouldClose ? false : true;
     if (state.playActionMenuOpen) {
       state.playActivePanels = [];
     }
@@ -767,17 +776,7 @@ function runPrimaryActionButton() {
     return;
   }
 
-  const isSettlementContext =
-    !playState.travel && isPlayerInSettlement(playState, state.currentWorld);
   if (playState.travel) {
-    if (isSettlementContext) {
-      state.playActionMenuOpen = !state.playActionMenuOpen;
-      if (state.playActionMenuOpen) {
-        state.playActivePanels = [];
-      }
-      playSession.updatePlaySubView();
-      return;
-    }
     if (!playSession.toggleTravelPause()) {
       return;
     }
@@ -813,24 +812,12 @@ function isPlayerInSettlement(playState, world): boolean {
   return node?.marker === "settlement";
 }
 
-function isEncounterTurn(playState): boolean {
-  return playState?.pendingJourneyEvent?.type === "encounter-turn";
-}
-
 function isEncounterIntroLocked(playState): boolean {
   return Boolean(
     playState?.travel &&
       playState?.encounter &&
       playState.encounter.phase === "approaching" &&
       !playState?.pendingJourneyEvent,
-  );
-}
-
-function isNonHostileEncounterTurn(playState): boolean {
-  return Boolean(
-    playState?.pendingJourneyEvent?.type === "encounter-turn" &&
-      playState?.encounter &&
-      playState.encounter.disposition !== "hostile",
   );
 }
 
@@ -852,9 +839,8 @@ function autoCloseActionMenuAfterEncounter(previousPlayState): void {
     !state.playState.rest &&
     !state.playState.hunt
   ) {
-    const shouldKeepActionMenuOpen = Boolean(
-      state.playState.travel && state.playState.isTravelPaused,
-    );
+    const shouldKeepActionMenuOpen =
+      shouldKeepActionMenuOpenAfterEncounter(state.playState);
     state.playActionMenuOpen = shouldKeepActionMenuOpen;
     if (shouldKeepActionMenuOpen) {
       state.playActivePanels = [];

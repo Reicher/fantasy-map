@@ -16,6 +16,7 @@ import type { NodeLike } from "@fardvag/shared/node/model";
 import type { PlayControllerDeps } from "@fardvag/shared/types/runtime";
 import type { PlayState } from "@fardvag/shared/types/play";
 import type { World } from "@fardvag/shared/types/world";
+import { isDestinationChoicePending } from "./playActionMenuPolicy";
 
 interface MapPanState {
   pointerId: number;
@@ -259,6 +260,7 @@ export function createPlayController({
       return;
     }
 
+    const wasDestinationChoicePending = isDestinationChoicePending(state.playState);
     const targetNodeId = state.playState.travel
       ? null
       : findPlayableNodeAtEvent(event);
@@ -283,6 +285,10 @@ export function createPlayController({
       );
       if (nextPlayState && nextPlayState !== state.playState) {
         state.playState = nextPlayState;
+        if (wasDestinationChoicePending) {
+          state.playActionMenuOpen = false;
+          state.playPresentedEncounterId = null;
+        }
         ensureAnimation();
         playCanvas.style.cursor = "default";
       }

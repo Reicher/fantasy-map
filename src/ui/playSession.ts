@@ -22,6 +22,7 @@ import { clearHover, showHoverHit } from "./hoverPanel";
 import { createMapAtlasCacheManager } from "./mapAtlasCache";
 import { createPlayController } from "./playController";
 import { createPlaySubViewController } from "./playSubView";
+import { isDestinationChoicePending } from "./playActionMenuPolicy";
 import {
   createTransitionController,
   waitForNextPaintIfActive,
@@ -212,11 +213,9 @@ export function createPlaySession({ refs, state, syncModeUi }: PlaySessionDeps) 
   }
 
   function isJourneyModeLockedForDestinationChoice(playState: PlayState): boolean {
-    const event = playState?.pendingJourneyEvent;
     return Boolean(
       playState?.viewMode === "map" &&
-        event?.type === "signpost-directions" &&
-        event?.requiresDestinationChoice === true,
+        isDestinationChoicePending(playState),
     );
   }
 
