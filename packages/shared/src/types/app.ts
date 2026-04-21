@@ -52,10 +52,8 @@ export interface AppRefs {
   playPanelToggleInventoryButton: HTMLButtonElement | null;
   playPanelToggleSettingsButton: HTMLButtonElement | null;
   playCharacterInitiative: HTMLElement | null;
-  playCharacterVitality: HTMLElement | null;
   playCharacterStamina: HTMLElement | null;
   playCharacterAccuracy: HTMLElement | null;
-  playCharacterStatus: HTMLElement | null;
   playLocationLine: HTMLElement | null;
   playToggleTravelButton: HTMLButtonElement | null;
   playInventoryList: HTMLElement | null;

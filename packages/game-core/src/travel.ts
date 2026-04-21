@@ -126,7 +126,6 @@ export function createPlayState(world): PlayState {
     journeyElapsedHours: 0,
     runStats: createInitialRunStats(),
     initiative: playerProfile.initiative,
-    vitality: playerProfile.vitality,
     vapenTraffsakerhet: playerProfile.vapenTraffsakerhet,
     maxHealth: playerProfile.maxHealth,
     health: playerProfile.health,
@@ -629,7 +628,6 @@ function createSettlementEncounterArrivalResult(
   const opponentMembers: PlayEncounterOpponentMember[] = agents.map((agent, index) => {
     const fallbackName = `Bosättare ${index + 1}`;
     const name = String(agent?.name ?? "").trim() || fallbackName;
-    const vitality = normalizeSettlementStat(agent?.vitality, 9);
     const maxHealth = Math.max(4, normalizeSettlementStat(agent?.maxHealth, 12));
     const health = Math.max(
       1,
@@ -643,8 +641,8 @@ function createSettlementEncounterArrivalResult(
       1,
       Math.min(maxStamina, normalizeSettlementStat(agent?.stamina, maxStamina)),
     );
-    const damageMin = Math.max(1, Math.floor(vitality * 0.28));
-    const damageMax = Math.max(damageMin, Math.ceil(vitality * 0.52));
+    const damageMin = Math.max(1, Math.floor(maxHealth * 0.28));
+    const damageMax = Math.max(damageMin, Math.ceil(maxHealth * 0.52));
     return {
       id: String(agent?.id ?? `settlement-member-${settlementId}-${index + 1}`),
       name,

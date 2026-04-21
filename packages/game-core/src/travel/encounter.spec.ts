@@ -517,7 +517,74 @@ describe("travel encounters", () => {
     expect(killedByStone).toBe(true);
   });
 
-  it("fails flee against hostile opponent with higher stamina", () => {
+  it("stone attacks use one quarter of effective accuracy", () => {
+    const state = createBasePlayState({
+      vapenTraffsakerhet: 0,
+      inventory: {
+        columns: 4,
+        rows: 4,
+        items: [],
+      },
+      encounter: {
+        id: "enc-stone-zero-accuracy",
+        type: "wolf",
+        disposition: "hostile",
+        turn: "player",
+        round: 1,
+        rollIndex: 0,
+        opponentInitiative: 9,
+        opponentDamageMin: 0,
+        opponentDamageMax: 0,
+        opponentMaxHealth: 12,
+        opponentHealth: 12,
+        opponentMaxStamina: 18,
+        opponentStamina: 18,
+      },
+    });
+
+    const next = resolveEncounterPlayerAction(state, "attack") ?? state;
+    expect(next.latestEncounterResolution?.outcome).not.toBe("opponent-died");
+    expect(next.pendingJourneyEvent?.type).toBe("encounter-turn");
+    if (next.pendingJourneyEvent?.type !== "encounter-turn") {
+      throw new Error("Expected encounter-turn event for zero-accuracy stone attack.");
+    }
+    expect(next.pendingJourneyEvent.message).toContain("Stenen missar.");
+  });
+
+  it("gives at least some flee successes against hostile opponents with higher stamina", () => {
+    let succeeded = false;
+    for (let attempt = 0; attempt < 256; attempt += 1) {
+      const state = createBasePlayState({
+        encounter: {
+          id: `enc-flee-base-success-${attempt}`,
+          type: "wolf",
+          disposition: "hostile",
+          turn: "player",
+          round: 1,
+          rollIndex: 0,
+          opponentInitiative: 9,
+          opponentDamageMin: 0,
+          opponentDamageMax: 0,
+          opponentMaxHealth: 12,
+          opponentHealth: 12,
+          opponentMaxStamina: 18,
+          opponentStamina: 12,
+        },
+        stamina: 5,
+        health: 10,
+      });
+
+      const next = resolveEncounterPlayerAction(state, "flee") ?? state;
+      if (next.latestEncounterResolution?.outcome === "player-fled") {
+        succeeded = true;
+        break;
+      }
+    }
+
+    expect(succeeded).toBe(true);
+  });
+
+  it("can still fail flee against hostile opponent with higher stamina", () => {
     const state = createBasePlayState({
       encounter: {
         id: "enc-flee-fail",
@@ -539,6 +606,9 @@ describe("travel encounters", () => {
     });
 
     const next = resolveEncounterPlayerAction(state, "flee") ?? state;
+    if (next.latestEncounterResolution?.outcome === "player-fled") {
+      throw new Error("Expected this deterministic flee attempt to fail.");
+    }
     expect(next.encounter).toBeTruthy();
     expect(next.latestEncounterResolution).toBeNull();
     expect(next.pendingJourneyEvent?.type).toBe("encounter-turn");

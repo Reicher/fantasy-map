@@ -394,11 +394,20 @@
               hidden
             >
               <h3 class="play-hud-panel-title">Karaktär</h3>
-              <p id="play-character-initiative" class="play-hud-line"></p>
-              <p id="play-character-vitality" class="play-hud-line"></p>
-              <p id="play-character-stamina" class="play-hud-line"></p>
-              <p id="play-character-accuracy" class="play-hud-line"></p>
-              <p id="play-character-status" class="play-hud-line play-hud-line--soft"></p>
+              <div class="play-character-stats">
+                <p class="play-hud-line play-hud-line--split">
+                  <span class="play-hud-line-label">Initiativ</span>
+                  <span id="play-character-initiative" class="play-hud-line-value"></span>
+                </p>
+                <p class="play-hud-line play-hud-line--split">
+                  <span class="play-hud-line-label">Stamina</span>
+                  <span id="play-character-stamina" class="play-hud-line-value"></span>
+                </p>
+                <p class="play-hud-line play-hud-line--split">
+                  <span class="play-hud-line-label">Vapenträffsäkerhet</span>
+                  <span id="play-character-accuracy" class="play-hud-line-value"></span>
+                </p>
+              </div>
             </section>
             <section
               id="play-panel-inventory"

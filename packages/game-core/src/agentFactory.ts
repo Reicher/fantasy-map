@@ -2,7 +2,7 @@ import { createInitialInventory } from "./inventory";
 import { createRng } from "@fardvag/shared/random";
 
 const AGENT_INITIATIVE_RANGE = Object.freeze({ min: 5, max: 10 });
-const AGENT_VITALITY_RANGE = Object.freeze({ min: 8, max: 16 });
+const AGENT_HEALTH_RANGE = Object.freeze({ min: 8, max: 16 });
 const AGENT_STAMINA_RANGE = Object.freeze({ min: 36, max: 84 });
 const AGENT_WEAPON_ACCURACY_RANGE = Object.freeze({ min: 40, max: 90 });
 
@@ -13,7 +13,6 @@ interface GeneratedAgentOptions {
 
 export interface GeneratedAgentProfile {
   initiative: number;
-  vitality: number;
   vapenTraffsakerhet: number;
   maxHealth: number;
   health: number;
@@ -32,9 +31,9 @@ export function createGeneratedAgentProfile(
   const baseSeed = String(world?.params?.seed ?? "seed");
   const profileSeed = `${baseSeed}:agent:${String(key ?? "unknown")}`;
   const rng = createRng(profileSeed);
-  const vitality = rng
-    .fork("vitality")
-    .int(AGENT_VITALITY_RANGE.min, AGENT_VITALITY_RANGE.max);
+  const maxHealth = rng
+    .fork("health")
+    .int(AGENT_HEALTH_RANGE.min, AGENT_HEALTH_RANGE.max);
   const maxStamina = rng
     .fork("stamina")
     .int(AGENT_STAMINA_RANGE.min, AGENT_STAMINA_RANGE.max);
@@ -46,15 +45,14 @@ export function createGeneratedAgentProfile(
     initiative: rng
       .fork("initiative")
       .int(AGENT_INITIATIVE_RANGE.min, AGENT_INITIATIVE_RANGE.max),
-    vitality,
     vapenTraffsakerhet: rng
       .fork("weapon-accuracy")
       .int(
         AGENT_WEAPON_ACCURACY_RANGE.min,
         AGENT_WEAPON_ACCURACY_RANGE.max,
       ),
-    maxHealth: vitality,
-    health: vitality,
+    maxHealth,
+    health: maxHealth,
     maxStamina,
     stamina,
     staminaElapsedHours: 0,

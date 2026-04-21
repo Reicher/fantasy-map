@@ -317,7 +317,6 @@ function buildSettlementState(
       state: "resting",
       greeting,
       initiative: profile.initiative,
-      vitality: profile.vitality,
       vapenTraffsakerhet: profile.vapenTraffsakerhet,
       maxHealth: profile.maxHealth,
       health: profile.health,

@@ -59,6 +59,8 @@ const refs = createAppRefs();
 
 const initialMode = inferInitialMode();
 initializeCanvasSizes(refs);
+let playRunMode: "random-run" | "editor-world-run" =
+  initialMode === "play" ? "random-run" : "editor-world-run";
 
 const EDITOR_GENERATION_STAGE_SUBTITLES = [
   "Förbereder parametrar...",
@@ -459,7 +461,7 @@ if (refs.playActionResultOkButton) {
 
 if (refs.playGameOverOkButton) {
   refs.playGameOverOkButton.addEventListener("click", () => {
-    restartPlayAfterGameOver();
+    void restartPlayAfterGameOver();
   });
 }
 
@@ -709,7 +711,9 @@ async function generateAndRender(
   }
 }
 
-async function startPlayWithRandomSeed() {
+async function startPlayWithRandomSeed(options: { enterMode?: boolean } = {}) {
+  const enterMode = options.enterMode ?? true;
+  playRunMode = "random-run";
   const formParams = normalizeParams(getFormValues(refs.form));
   const playParams = normalizeParams({
     ...formParams,
@@ -719,10 +723,13 @@ async function startPlayWithRandomSeed() {
     paramsOverride: playParams,
     persistParams: false,
   });
-  await playSession.enterPlayMode();
+  if (enterMode) {
+    await playSession.enterPlayMode();
+  }
 }
 
 async function startPlayFromEditorWorld() {
+  playRunMode = "editor-world-run";
   if (!state.currentWorld) {
     await generateAndRender({
       persistParams: false,
@@ -788,8 +795,14 @@ function togglePlayHudPanel(panelName: PlayHudPanelName) {
   playSession.updatePlaySubView();
 }
 
-function restartPlayAfterGameOver() {
+async function restartPlayAfterGameOver() {
   if (!state.currentWorld || !state.playState?.gameOver) {
+    return;
+  }
+
+  if (playRunMode === "random-run") {
+    clearHover(refs.playTooltip);
+    await startPlayWithRandomSeed({ enterMode: false });
     return;
   }
 
@@ -964,7 +977,11 @@ function bootApp() {
       return;
     }
     state.isBootReady = true;
-    generateAndRender();
+    if (state.currentMode === "play") {
+      void startPlayWithRandomSeed({ enterMode: false });
+      return;
+    }
+    void generateAndRender();
   };
 
   if (document.readyState === "complete") {

@@ -155,7 +155,7 @@ function drawGroundLandSegment(
   const width = Math.max(1, rightX - leftX);
   const layerH = Math.max(1, bottomY - topY);
   const centerY = topY + layerH * 0.5;
-  // Water cut-in must match ground height: full diameter == layer height.
+  // Coast bulge uses the same diameter as the ground band height.
   const baseRadius = layerH * 0.5;
   let leftRadius = leftWater ? baseRadius : 0;
   let rightRadius = rightWater ? baseRadius : 0;
@@ -173,15 +173,15 @@ function drawGroundLandSegment(
   ctx.moveTo(leftX, topY);
   ctx.lineTo(rightX, topY);
   if (rightRadius > 0.01) {
-    // Water on the right: carve a concave half-circle into the land edge.
-    ctx.arc(rightX, centerY, rightRadius, -Math.PI / 2, Math.PI / 2, true);
+    // Water on the right: push a convex half-circle out toward the water.
+    ctx.arc(rightX, centerY, rightRadius, -Math.PI / 2, Math.PI / 2, false);
   } else {
     ctx.lineTo(rightX, bottomY);
   }
   ctx.lineTo(leftX, bottomY);
   if (leftRadius > 0.01) {
-    // Water on the left: mirrored concave half-circle.
-    ctx.arc(leftX, centerY, leftRadius, Math.PI / 2, -Math.PI / 2, true);
+    // Water on the left: mirrored convex half-circle.
+    ctx.arc(leftX, centerY, leftRadius, Math.PI / 2, -Math.PI / 2, false);
   } else {
     ctx.lineTo(leftX, topY);
   }

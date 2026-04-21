@@ -56,7 +56,7 @@ const ENCOUNTER_MIN_APPROACH_WORLD = 6;
 const ENCOUNTER_ENDPOINT_SAFE_DISTANCE_WORLD = 4.5;
 const ENCOUNTER_NIGHT_START_HOUR = 20;
 const ENCOUNTER_NIGHT_END_HOUR = 6;
-const STONE_ATTACK_KILL_CHANCE = 0.05;
+const HOSTILE_FLEE_BASE_SUCCESS_CHANCE = 0.2;
 const ENCOUNTER_DEFINITIONS: readonly EncounterDefinition[] = Object.freeze([
   Object.freeze({
     type: "rabbit",
@@ -542,14 +542,13 @@ function handlePlayerAttack(
     }
   }
 
-  const accuracy = usesStone
-    ? STONE_ATTACK_KILL_CHANCE
-    : clamp01(
-        resolveEffectiveWeaponAccuracy(
-          playState.vapenTraffsakerhet,
-          playState.injuryStatus,
-        ) / 100,
-      );
+  const effectiveAccuracy = clamp01(
+    resolveEffectiveWeaponAccuracy(
+      playState.vapenTraffsakerhet,
+      playState.injuryStatus,
+    ) / 100,
+  );
+  const accuracy = usesStone ? effectiveAccuracy * 0.25 : effectiveAccuracy;
   const hitRoll = rollEncounterChance(
     nextEncounter,
     usesStone ? "player-stone-hit" : "player-attack-hit",
@@ -639,12 +638,27 @@ function handlePlayerFlee(
   if (playerStamina > opponentStamina) {
     return finishEncounterWithFleeOutcome(playState, encounter, "player-fled");
   }
+  const fleeRoll = rollEncounterChance(
+    encounter,
+    "player-flee-hostile-base",
+    HOSTILE_FLEE_BASE_SUCCESS_CHANCE,
+  );
+  if (fleeRoll.success) {
+    return finishEncounterWithFleeOutcome(
+      {
+        ...playState,
+        encounter: fleeRoll.encounter,
+      },
+      fleeRoll.encounter,
+      "player-fled",
+    );
+  }
 
   return advanceEncounterUntilPlayerTurn(
     {
       ...playState,
       encounter: {
-        ...encounter,
+        ...fleeRoll.encounter,
         turn: "opponent",
       },
     },

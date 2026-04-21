@@ -266,7 +266,6 @@ export interface PlaySettlementAgent {
   state: SettlementAgentState;
   greeting?: string;
   initiative?: number;
-  vitality?: number;
   vapenTraffsakerhet?: number;
   maxHealth?: number;
   health?: number;
@@ -321,7 +320,6 @@ export interface PlayState {
   renderTimeOfDayHours?: number;
   renderElapsedWorldHours?: number;
   initiative?: number;
-  vitality?: number;
   vapenTraffsakerhet?: number;
   maxHealth?: number;
   health?: number;

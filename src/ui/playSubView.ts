@@ -92,6 +92,7 @@ export function createPlaySubViewController({
   let lastJourneyLootTakeAllEnabled = null;
   let lastJourneyEncounterActionsVisible = null;
   let lastJourneyEncounterCanAttack = null;
+  let lastJourneyEncounterCanFlee = null;
   let lastSettlementActionMenuVisible = null;
   let lastSettlementActionHintVisible = null;
   let lastSettlementActionHintMessage = null;
@@ -191,6 +192,7 @@ export function createPlaySubViewController({
     lastJourneyLootTakeAllEnabled = null;
     lastJourneyEncounterActionsVisible = null;
     lastJourneyEncounterCanAttack = null;
+    lastJourneyEncounterCanFlee = null;
     lastSettlementActionMenuVisible = null;
     lastSettlementActionHintVisible = null;
     lastSettlementActionHintMessage = null;
@@ -531,7 +533,7 @@ export function createPlaySubViewController({
     if (!shouldShow) {
       lastJourneyEventDialogMessage = null;
       syncJourneyLootPanel(false, null);
-      syncJourneyEncounterActions(false, false);
+      syncJourneyEncounterActions(false, false, false);
       syncSettlementEncounterActionMenu(false, null, world);
       dialog.classList.remove("play-journey-event-dialog--loot");
       dialog.classList.remove("play-journey-event-dialog--encounter");
@@ -559,9 +561,16 @@ export function createPlaySubViewController({
     const isEncounterMenuOpen = showEncounterActions && Boolean(state.playActionMenuOpen);
     const isSettlementEncounter =
       showEncounterActions && playState?.encounter?.type === "settlement-group";
+    const isNonHostileEncounter =
+      showEncounterActions &&
+      Boolean(playState?.encounter) &&
+      playState?.encounter?.disposition !== "hostile";
     const canAttack =
       showEncounterActions &&
       Boolean(event?.canAttack);
+    const canFlee =
+      showEncounterActions &&
+      !isNonHostileEncounter;
     dialog.classList.toggle("play-journey-event-dialog--loot", showLootPanel);
     dialog.classList.toggle(
       "play-journey-event-dialog--encounter",
@@ -572,7 +581,7 @@ export function createPlaySubViewController({
       isSettlementEncounter,
     );
     syncJourneyLootPanel(showLootPanel, lootInventory);
-    syncJourneyEncounterActions(isEncounterMenuOpen, canAttack);
+    syncJourneyEncounterActions(isEncounterMenuOpen, canAttack, canFlee);
     syncSettlementEncounterActionMenu(isEncounterMenuOpen, playState, world);
     scheduleAutoClearJourneyEvent(event);
   }
@@ -589,11 +598,27 @@ export function createPlaySubViewController({
     if (!menu) {
       return;
     }
+    const timedActionGrid = menu.querySelector<HTMLElement>(
+      ".play-journey-settlement-actions-grid",
+    );
+    const settlementDividers = menu.querySelectorAll<HTMLElement>(
+      ".play-journey-settlement-divider",
+    );
+    const topDivider = settlementDividers[0] ?? null;
+    const travelDivider = settlementDividers[1] ?? null;
+    const isEncounterTurnActive = isEncounterTurn(playState);
     const isSettlementEncounter = playState?.encounter?.type === "settlement-group";
     const isHostileSettlementEncounter =
       isSettlementEncounter && playState?.encounter?.disposition === "hostile";
+    const isNonHostileEncounter =
+      isEncounterTurnActive &&
+      Boolean(playState?.encounter) &&
+      playState?.encounter?.disposition !== "hostile";
     const canUseTimedActions = isSettlementEncounter && !isHostileSettlementEncounter;
-    const shouldShowMenu = Boolean(showEncounterMenu) && isSettlementEncounter;
+    const shouldShowTimedActions = isSettlementEncounter;
+    const shouldShowMenu =
+      Boolean(showEncounterMenu) &&
+      (isSettlementEncounter || isNonHostileEncounter);
     if (lastSettlementActionMenuVisible !== shouldShowMenu) {
       setElementVisible(menu, shouldShowMenu, "grid");
       lastSettlementActionMenuVisible = shouldShowMenu;
@@ -610,6 +635,10 @@ export function createPlaySubViewController({
       lastSettlementActionHintMessage = null;
       return;
     }
+
+    setElementVisible(timedActionGrid, shouldShowTimedActions, "grid");
+    setElementVisible(topDivider, shouldShowTimedActions, "block");
+    setElementVisible(travelDivider, shouldShowTimedActions, "block");
 
     const huntSituation = describeHuntSituation(playState, world);
     const restDisabled =
@@ -640,6 +669,7 @@ export function createPlaySubViewController({
       if (!button) {
         continue;
       }
+      setElementVisible(button, shouldShowTimedActions, "inline-flex");
       button.disabled = restDisabled;
       if (restrictionReason.length > 0) {
         button.title = restrictionReason;
@@ -652,6 +682,7 @@ export function createPlaySubViewController({
       if (!button) {
         continue;
       }
+      setElementVisible(button, shouldShowTimedActions, "inline-flex");
       button.disabled = huntDisabled;
       const reason = restrictionReason || huntReason;
       if (reason.length > 0) {
@@ -701,19 +732,32 @@ export function createPlaySubViewController({
     }
   }
 
-  function syncJourneyEncounterActions(showActions, canAttack) {
+  function syncJourneyEncounterActions(showActions, canAttack, canFlee) {
     if (lastJourneyEncounterActionsVisible !== showActions) {
       setElementVisible(refs.playJourneyEncounterActions, showActions, "grid");
       lastJourneyEncounterActionsVisible = showActions;
     }
     if (!showActions) {
       lastJourneyEncounterCanAttack = null;
+      lastJourneyEncounterCanFlee = null;
       return;
     }
     if (lastJourneyEncounterCanAttack !== canAttack) {
       lastJourneyEncounterCanAttack = canAttack;
       if (refs.playJourneyEncounterAttackButton) {
         refs.playJourneyEncounterAttackButton.disabled = !canAttack;
+      }
+    }
+    if (lastJourneyEncounterCanFlee !== canFlee) {
+      lastJourneyEncounterCanFlee = canFlee;
+      if (refs.playJourneyEncounterFleeButton) {
+        refs.playJourneyEncounterFleeButton.disabled = !canFlee;
+        if (!canFlee) {
+          refs.playJourneyEncounterFleeButton.title =
+            "Fly är inte tillgängligt i icke-fientliga möten.";
+        } else if (refs.playJourneyEncounterFleeButton.hasAttribute("title")) {
+          refs.playJourneyEncounterFleeButton.removeAttribute("title");
+        }
       }
     }
   }
@@ -743,6 +787,7 @@ export function createPlaySubViewController({
     lastJourneyLootTakeAllEnabled = null;
     lastJourneyEncounterActionsVisible = false;
     lastJourneyEncounterCanAttack = null;
+    lastJourneyEncounterCanFlee = null;
     lastSettlementActionMenuVisible = false;
     lastSettlementActionHintVisible = false;
     lastSettlementActionHintMessage = null;
@@ -1498,11 +1543,10 @@ function syncHudPanelsVisibility(showBottomHud, playActivePanels, refs) {
     [refs.playPanelSettings, "settings"],
   ];
   for (const [panelRef, panelName] of panels) {
-    const displayMode = panelName === "character" ? "block" : "flex";
     setElementVisible(
       panelRef,
       showBottomHud && isPlayHudPanelOpen(playActivePanels, panelName),
-      displayMode,
+      "flex",
     );
   }
 }
@@ -1628,25 +1672,17 @@ function syncJourneyVitals(
 
 function syncCharacterPanel(refs, playState, lastSignature) {
   const initiativeElement = refs.playCharacterInitiative;
-  const vitalityElement = refs.playCharacterVitality;
   const staminaElement = refs.playCharacterStamina;
   const accuracyElement = refs.playCharacterAccuracy;
-  const statusElement = refs.playCharacterStatus;
   if (
     !initiativeElement ||
-    !vitalityElement ||
     !staminaElement ||
-    !accuracyElement ||
-    !statusElement
+    !accuracyElement
   ) {
     return lastSignature;
   }
 
   const initiative = normalizeStat(playState?.initiative, 0);
-  const vitality = normalizeHealth(
-    playState?.vitality,
-    12,
-  );
   const maxStamina = normalizeStamina(playState?.maxStamina, 60);
   const stamina = Math.min(
     maxStamina,
@@ -1660,24 +1696,19 @@ function syncCharacterPanel(refs, playState, lastSignature) {
     baseAccuracy,
     playState?.injuryStatus,
   );
-  const statusLine = describeCharacterStatusLine(playState);
   const signature = [
     initiative,
-    vitality,
     stamina,
     maxStamina,
     effectiveAccuracy,
-    statusLine,
   ].join("|");
   if (signature === lastSignature) {
     return lastSignature;
   }
 
-  initiativeElement.textContent = `Initiativ: ${initiative}`;
-  vitalityElement.textContent = `Vitalitet: ${vitality}`;
-  staminaElement.textContent = `Stamina: ${stamina}/${maxStamina}`;
-  accuracyElement.textContent = `Vapenträffsäkerhet: ${effectiveAccuracy}%`;
-  statusElement.textContent = `Status: ${statusLine}`;
+  initiativeElement.textContent = String(initiative);
+  staminaElement.textContent = `${stamina}/${maxStamina}`;
+  accuracyElement.textContent = `${effectiveAccuracy}%`;
   return signature;
 }
 
@@ -1911,34 +1942,6 @@ function normalizeWeaponAccuracy(value, fallback = 0) {
     return fallbackValue;
   }
   return Math.max(0, Math.min(100, Math.floor(value)));
-}
-
-function describeTravelStatus(playState) {
-  if (playState?.hunt) {
-    return "Jagar";
-  }
-  if (playState?.rest) {
-    return "Vilar";
-  }
-  if (playState?.pendingRestChoice) {
-    return "Utmattad (vila krävs)";
-  }
-  if (playState?.travel && playState?.isTravelPaused) {
-    return "Resan pausad";
-  }
-  if (playState?.travel) {
-    return "Reser";
-  }
-  return "Stilla";
-}
-
-function describeCharacterStatusLine(playState) {
-  const parts = [describeTravelStatus(playState)];
-  const hungerStatus = resolvePlayerHungerStatus(playState?.hungerElapsedHours);
-  const injuryStatus = normalizePlayerInjuryStatus(playState?.injuryStatus);
-  parts.push(describeHungerStatusLabel(hungerStatus));
-  parts.push(describeInjuryStatusLabel(injuryStatus));
-  return parts.join(" · ");
 }
 
 function normalizeElapsedHours(value) {
