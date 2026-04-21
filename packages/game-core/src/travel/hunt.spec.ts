@@ -181,6 +181,59 @@ describe("travel hunt invariants", () => {
     expect(started?.latestHuntFeedback?.text).toContain("bosättning");
   });
 
+  it("restores settlement encounter choices after cancelling hunt", () => {
+    const world = createTestWorld("settlement-encounter-hunt-restore", "abandoned");
+    const playState = createBaseHuntState({
+      pendingJourneyEvent: {
+        type: "encounter-turn",
+        encounterId: "settlement-enc-hunt-restore",
+        message: "Du möter bosättare.",
+        requiresAcknowledgement: true,
+        canAttack: true,
+      },
+      encounter: {
+        id: "settlement-enc-hunt-restore",
+        type: "settlement-group",
+        disposition: "friendly",
+        turn: "player",
+        round: 1,
+        rollIndex: 0,
+        opponentInitiative: 4,
+        opponentDamageMin: 1,
+        opponentDamageMax: 2,
+        opponentMaxHealth: 4,
+        opponentHealth: 4,
+        opponentMaxStamina: 8,
+        opponentStamina: 8,
+      },
+    });
+
+    const hunting = beginHunt(playState, world, -1);
+    expect(hunting?.pendingJourneyEvent).toBeNull();
+    expect(hunting?.encounter).toBeNull();
+    expect(hunting?.hunt?.settlementEncounterContext?.pendingJourneyEvent?.type).toBe(
+      "encounter-turn",
+    );
+    if (!hunting?.hunt) {
+      throw new Error("Expected hunt to start from settlement encounter context.");
+    }
+
+    const cancelled = cancelHunt(
+      {
+        ...hunting,
+        hunt: {
+          ...hunting.hunt,
+          elapsedHours: 2,
+        },
+      },
+      world,
+    );
+    expect(cancelled?.hunt).toBeNull();
+    expect(cancelled?.pendingJourneyEvent?.type).toBe("encounter-turn");
+    expect(cancelled?.encounter?.type).toBe("settlement-group");
+    expect(cancelled?.encounter?.disposition).toBe("friendly");
+  });
+
   it("does not persist per-area depletion state after hunting", () => {
     const world = createTestWorld("no-area-depletion-seed");
     let state = createBaseHuntState({

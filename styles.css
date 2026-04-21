@@ -885,11 +885,11 @@ canvas[data-dragging="true"] {
   left: auto;
   transform: translateY(-50%);
   z-index: 14;
-  width: clamp(300px, 33vw, 520px);
-  max-width: calc(var(--play-surface-width) - 24px);
+  width: clamp(220px, 24vw, 280px);
+  max-width: calc(var(--play-surface-width) - 16px);
   display: grid;
   gap: 10px;
-  padding: 12px 13px;
+  padding: 11px 12px;
   border-radius: 14px;
   border: 1px solid var(--play-ui-border-strong);
   background: var(--play-ui-bg);
@@ -1962,8 +1962,8 @@ canvas[data-dragging="true"] {
     right: calc(50% - (var(--play-surface-width) / 2) + 6px);
     left: auto;
     transform: translateY(-50%);
-    width: min(calc(var(--play-surface-width) - 16px), 420px);
-    padding: 14px 14px;
+    width: min(calc(var(--play-surface-width) - 16px), 300px);
+    padding: 12px 12px;
     gap: 10px;
     border-radius: 12px;
   }

@@ -27,8 +27,10 @@ import {
 } from "./normalizers";
 import { resolveEffectiveWeaponAccuracy } from "./playerStatus";
 import type {
+  PlayEncounterState,
   PlayHuntFeedback,
   PlayHuntState,
+  PlayJourneyEvent,
   PlayState,
 } from "@fardvag/shared/types/play";
 import type { NodeLike } from "@fardvag/shared/node/model";
@@ -119,7 +121,10 @@ export function beginHunt(
   const wasTravelPaused = Boolean(playState.isTravelPaused);
   const priorPauseReason = playState.travelPauseReason ?? null;
   const startTimeOfDay = normalizeTimeOfDayHours(playState.timeOfDayHours);
-  const clearSettlementEncounter = canClearSettlementEncounterForTimedAction(playState);
+  const settlementEncounterContext = getSettlementEncounterContextForTimedAction(
+    playState,
+  );
+  const clearSettlementEncounter = Boolean(settlementEncounterContext);
   const outlook = describeHuntOutlook(
     context,
     startTimeOfDay,
@@ -161,6 +166,7 @@ export function beginHunt(
       priorWasTravelPaused: wasTravelPaused,
       priorTravelPauseReason: priorPauseReason,
       lastMessage: outlook,
+      settlementEncounterContext,
     },
     latestHuntFeedback: {
       type: "hint",
@@ -379,7 +385,13 @@ function completeHunt(
   }
   const huntState = playState.hunt;
   const isExhausted = feedback?.type === "exhausted";
-  const hasBlockingEncounter = hasActiveEncounterInteraction(playState);
+  const restoredSettlementEncounterContext = resolveRestoredSettlementEncounterContext(
+    playState,
+    huntState?.settlementEncounterContext,
+  );
+  const hasBlockingEncounter =
+    hasActiveEncounterInteraction(playState) ||
+    Boolean(restoredSettlementEncounterContext);
   const shouldResumeTravel =
     shouldResumeTravelAfterHunt(huntState) &&
     !isExhausted &&
@@ -387,6 +399,14 @@ function completeHunt(
 
   const nextState: PlayState = {
     ...playState,
+    pendingJourneyEvent:
+      restoredSettlementEncounterContext?.pendingJourneyEvent ??
+      playState.pendingJourneyEvent ??
+      null,
+    encounter:
+      restoredSettlementEncounterContext?.encounter ??
+      playState.encounter ??
+      null,
     hunt: null,
     pendingRestChoice: isExhausted,
     isTravelPaused: hasBlockingEncounter
@@ -631,17 +651,28 @@ function hasBlockingActionInteraction(playState: PlayStateLike): boolean {
   if (!playState?.pendingJourneyEvent) {
     return false;
   }
-  return !canClearSettlementEncounterForTimedAction(playState);
+  return !getSettlementEncounterContextForTimedAction(playState);
 }
 
-function canClearSettlementEncounterForTimedAction(playState: PlayStateLike): boolean {
+function getSettlementEncounterContextForTimedAction(
+  playState: PlayStateLike,
+): {
+  pendingJourneyEvent: PlayJourneyEvent;
+  encounter: PlayEncounterState;
+} | null {
   if (playState?.pendingJourneyEvent?.type !== "encounter-turn") {
-    return false;
+    return null;
   }
   if (playState?.encounter?.type !== "settlement-group") {
-    return false;
+    return null;
   }
-  return playState.encounter.disposition !== "hostile";
+  if (playState.encounter.disposition === "hostile") {
+    return null;
+  }
+  return {
+    pendingJourneyEvent: { ...playState.pendingJourneyEvent },
+    encounter: { ...playState.encounter },
+  };
 }
 
 function shouldResumeTravelAfterHunt(
@@ -659,6 +690,37 @@ function hasActiveEncounterInteraction(playState: PlayStateLike): boolean {
   }
   const eventType = playState.pendingJourneyEvent?.type;
   return eventType === "encounter-turn" || eventType === "encounter-loot";
+}
+
+function resolveRestoredSettlementEncounterContext(
+  playState: PlayStateLike,
+  settlementEncounterContext:
+    | {
+        pendingJourneyEvent?: PlayJourneyEvent | null;
+        encounter?: PlayEncounterState | null;
+      }
+    | null
+    | undefined,
+): {
+  pendingJourneyEvent: PlayJourneyEvent;
+  encounter: PlayEncounterState;
+} | null {
+  if (!settlementEncounterContext) {
+    return null;
+  }
+  if (playState?.pendingJourneyEvent || playState?.encounter) {
+    return null;
+  }
+  if (
+    settlementEncounterContext.pendingJourneyEvent?.type !== "encounter-turn" ||
+    settlementEncounterContext.encounter?.type !== "settlement-group"
+  ) {
+    return null;
+  }
+  return {
+    pendingJourneyEvent: { ...settlementEncounterContext.pendingJourneyEvent },
+    encounter: { ...settlementEncounterContext.encounter },
+  };
 }
 
 function resolveHuntHourOutcome(

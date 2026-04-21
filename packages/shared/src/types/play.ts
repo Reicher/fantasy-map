@@ -88,6 +88,10 @@ export interface PlayRestState {
   resumeTravelOnFinish?: boolean;
   priorWasTravelPaused?: boolean;
   priorTravelPauseReason?: TravelPauseReason | null;
+  settlementEncounterContext?: {
+    pendingJourneyEvent?: PlayJourneyEvent | null;
+    encounter?: PlayEncounterState | null;
+  } | null;
 }
 
 export interface PlayHuntState {
@@ -110,6 +114,10 @@ export interface PlayHuntState {
   priorWasTravelPaused?: boolean;
   priorTravelPauseReason?: TravelPauseReason | null;
   lastMessage?: string;
+  settlementEncounterContext?: {
+    pendingJourneyEvent?: PlayJourneyEvent | null;
+    encounter?: PlayEncounterState | null;
+  } | null;
 }
 
 export interface PlayHuntAreaState {

@@ -122,6 +122,55 @@ describe("travel rest transitions", () => {
     expect(next?.encounter).toBeNull();
   });
 
+  it("restores settlement encounter choices after cancelling rest", () => {
+    const playState = {
+      ...createBasePlayState(),
+      pendingJourneyEvent: {
+        type: "encounter-turn" as const,
+        encounterId: "settlement-enc-restore",
+        message: "Du möter bosättare.",
+        requiresAcknowledgement: true,
+        canAttack: true,
+      },
+      encounter: {
+        id: "settlement-enc-restore",
+        type: "settlement-group" as const,
+        disposition: "friendly" as const,
+        turn: "player" as const,
+        round: 1,
+        rollIndex: 0,
+        opponentInitiative: 4,
+        opponentDamageMin: 1,
+        opponentDamageMax: 2,
+        opponentMaxHealth: 4,
+        opponentHealth: 4,
+        opponentMaxStamina: 8,
+        opponentStamina: 8,
+      },
+    };
+    const resting = beginRest(playState, -1);
+    expect(resting?.pendingJourneyEvent).toBeNull();
+    expect(resting?.encounter).toBeNull();
+    expect(resting?.rest?.settlementEncounterContext?.pendingJourneyEvent?.type).toBe(
+      "encounter-turn",
+    );
+    if (!resting?.rest) {
+      throw new Error("Expected rest to start from settlement encounter.");
+    }
+
+    const cancelled = cancelRest({
+      ...resting,
+      rest: {
+        ...resting.rest,
+        elapsedHours: 2,
+      },
+    });
+    expect(cancelled?.rest).toBeNull();
+    expect(cancelled?.pendingJourneyEvent?.type).toBe("encounter-turn");
+    expect(cancelled?.encounter?.type).toBe("settlement-group");
+    expect(cancelled?.encounter?.disposition).toBe("friendly");
+  });
+
   it("blocks rest while hostile settlement encounter is active", () => {
     const playState = {
       ...createBasePlayState(),

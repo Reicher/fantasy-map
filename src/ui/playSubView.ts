@@ -815,10 +815,12 @@ export function createPlaySubViewController({
     }
     lastRestDialogMessage = null;
 
+    const hasActiveTimedAction = isResting || isHunting;
     const optionsElement = refs.playRestOptions;
-    if (optionsElement && lastRestOptionsVisible !== true) {
-      setElementVisible(optionsElement, true, "grid");
-      lastRestOptionsVisible = true;
+    const shouldShowOptions = !hasActiveTimedAction;
+    if (optionsElement && lastRestOptionsVisible !== shouldShowOptions) {
+      setElementVisible(optionsElement, shouldShowOptions, "grid");
+      lastRestOptionsVisible = shouldShowOptions;
     }
 
     if (refs.playHuntOutlook && lastHuntOutlookVisible !== false) {
@@ -847,7 +849,7 @@ export function createPlaySubViewController({
         }
         const requestedHours = normalizeRestHours(Number(button.dataset.restHours));
         const isActiveButton = isResting && requestedHours === activeRestHours;
-        setElementVisible(button, true, "inline-flex");
+        setElementVisible(button, shouldShowOptions, "inline-flex");
         button.textContent = isActiveButton ? "Avbryt" : getDefaultTimedActionButtonLabel(button);
         button.disabled = disableOtherButtons ? !isActiveButton : false;
         if (button.hasAttribute("title")) {
@@ -862,7 +864,7 @@ export function createPlaySubViewController({
         }
         const requestedHours = normalizeRestHours(Number(button.dataset.huntHours));
         const isActiveButton = isHunting && requestedHours === activeHuntHours;
-        setElementVisible(button, true, "inline-flex");
+        setElementVisible(button, shouldShowOptions, "inline-flex");
         button.textContent = isActiveButton ? "Avbryt" : getDefaultTimedActionButtonLabel(button);
         button.disabled = disableOtherButtons
           ? !isActiveButton
@@ -875,9 +877,9 @@ export function createPlaySubViewController({
       }
     }
 
-    if (refs.playActionCancelButton && lastHuntCancelVisible !== false) {
-      setElementVisible(refs.playActionCancelButton, false, "inline-flex");
-      lastHuntCancelVisible = false;
+    if (refs.playActionCancelButton && lastHuntCancelVisible !== hasActiveTimedAction) {
+      setElementVisible(refs.playActionCancelButton, hasActiveTimedAction, "inline-flex");
+      lastHuntCancelVisible = hasActiveTimedAction;
     }
   }
 

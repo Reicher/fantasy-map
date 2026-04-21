@@ -19,7 +19,12 @@ import {
   normalizePlayerInjuryStatus,
   resolveRestStaminaGainPerHour,
 } from "./playerStatus";
-import type { PlayRestState, PlayState } from "@fardvag/shared/types/play";
+import type {
+  PlayEncounterState,
+  PlayJourneyEvent,
+  PlayRestState,
+  PlayState,
+} from "@fardvag/shared/types/play";
 
 type PlayStateLike = PlayState | null | undefined;
 
@@ -45,7 +50,10 @@ export function beginRest(
   const hasTravel = Boolean(playState.travel);
   const wasTravelPaused = Boolean(playState.isTravelPaused);
   const priorPauseReason = playState.travelPauseReason ?? null;
-  const clearSettlementEncounter = canClearSettlementEncounterForTimedAction(playState);
+  const settlementEncounterContext = getSettlementEncounterContextForTimedAction(
+    playState,
+  );
+  const clearSettlementEncounter = Boolean(settlementEncounterContext);
   const plannedRestHours = isContinuousRest ? 0 : restHours;
   const staminaGainPerHour = resolveRestStaminaGainPerHour(
     playState.injuryStatus,
@@ -69,6 +77,7 @@ export function beginRest(
       resumeTravelOnFinish: hasTravel && !wasTravelPaused,
       priorWasTravelPaused: wasTravelPaused,
       priorTravelPauseReason: priorPauseReason,
+      settlementEncounterContext,
     },
   });
 }
@@ -131,17 +140,28 @@ function hasBlockingActionInteraction(playState: PlayStateLike): boolean {
   if (!playState?.pendingJourneyEvent) {
     return false;
   }
-  return !canClearSettlementEncounterForTimedAction(playState);
+  return !getSettlementEncounterContextForTimedAction(playState);
 }
 
-function canClearSettlementEncounterForTimedAction(playState: PlayStateLike): boolean {
+function getSettlementEncounterContextForTimedAction(
+  playState: PlayStateLike,
+): {
+  pendingJourneyEvent: PlayJourneyEvent;
+  encounter: PlayEncounterState;
+} | null {
   if (playState?.pendingJourneyEvent?.type !== "encounter-turn") {
-    return false;
+    return null;
   }
   if (playState?.encounter?.type !== "settlement-group") {
-    return false;
+    return null;
   }
-  return playState.encounter.disposition !== "hostile";
+  if (playState.encounter.disposition === "hostile") {
+    return null;
+  }
+  return {
+    pendingJourneyEvent: { ...playState.pendingJourneyEvent },
+    encounter: { ...playState.encounter },
+  };
 }
 
 function shouldResumeTravelAfterRest(
@@ -202,7 +222,13 @@ function finishRest(
     : countedHours > 0
       ? `Vila avbruten: ${countedHours}h räknas, +${actualGain} stamina.`
       : "Vila avbruten: ingen full timme räknas (+0 stamina).";
-  const hasBlockingEncounter = hasActiveEncounterInteraction(playState);
+  const restoredSettlementEncounterContext = resolveRestoredSettlementEncounterContext(
+    playState,
+    playState.rest?.settlementEncounterContext,
+  );
+  const hasBlockingEncounter =
+    hasActiveEncounterInteraction(playState) ||
+    Boolean(restoredSettlementEncounterContext);
   const shouldResumeTravel =
     shouldResumeTravelAfterRest(playState.rest) && !hasBlockingEncounter;
 
@@ -216,6 +242,14 @@ function finishRest(
           injuryStatus: "healthy" as const,
         }
       : {}),
+    pendingJourneyEvent:
+      restoredSettlementEncounterContext?.pendingJourneyEvent ??
+      playState.pendingJourneyEvent ??
+      null,
+    encounter:
+      restoredSettlementEncounterContext?.encounter ??
+      playState.encounter ??
+      null,
     maxStamina,
     stamina: nextStamina,
     rest: null,
@@ -252,4 +286,35 @@ function hasActiveEncounterInteraction(playState: PlayStateLike): boolean {
   }
   const eventType = playState.pendingJourneyEvent?.type;
   return eventType === "encounter-turn" || eventType === "encounter-loot";
+}
+
+function resolveRestoredSettlementEncounterContext(
+  playState: PlayStateLike,
+  settlementEncounterContext:
+    | {
+        pendingJourneyEvent?: PlayJourneyEvent | null;
+        encounter?: PlayEncounterState | null;
+      }
+    | null
+    | undefined,
+): {
+  pendingJourneyEvent: PlayJourneyEvent;
+  encounter: PlayEncounterState;
+} | null {
+  if (!settlementEncounterContext) {
+    return null;
+  }
+  if (playState?.pendingJourneyEvent || playState?.encounter) {
+    return null;
+  }
+  if (
+    settlementEncounterContext.pendingJourneyEvent?.type !== "encounter-turn" ||
+    settlementEncounterContext.encounter?.type !== "settlement-group"
+  ) {
+    return null;
+  }
+  return {
+    pendingJourneyEvent: { ...settlementEncounterContext.pendingJourneyEvent },
+    encounter: { ...settlementEncounterContext.encounter },
+  };
 }
