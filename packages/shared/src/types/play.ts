@@ -85,6 +85,8 @@ export interface PlayRestState {
   hours?: number;
   elapsedHours?: number;
   staminaGain?: number;
+  stopAtNextWholeHour?: boolean;
+  usedMedicine?: boolean;
   resumeTravelOnFinish?: boolean;
   priorWasTravelPaused?: boolean;
   priorTravelPauseReason?: TravelPauseReason | null;

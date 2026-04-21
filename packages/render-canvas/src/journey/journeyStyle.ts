@@ -386,9 +386,19 @@ export function drawJourneyTreeOnCanvas(
     return;
   }
 
-  // Draw tree sprites at native pixel size so asset dimensions control scale.
-  const targetWidth = Math.max(1, Number(sprite.width ?? 1));
-  const targetHeightPx = Math.max(1, Number(sprite.height ?? 1));
+  // Scale sprite trees to requested render height so per-layer sizing takes effect.
+  const nativeWidth = Math.max(1, Number(sprite.width ?? 1));
+  const nativeHeight = Math.max(1, Number(sprite.height ?? 1));
+  const requestedHeight = Number(options.heightPx);
+  let targetHeightPx = Number.isFinite(requestedHeight)
+    ? Math.max(12, requestedHeight)
+    : nativeHeight;
+  if (treeFamily === "tuft") {
+    // Plains tuft sprites should never be scaled up; keep their authored size.
+    targetHeightPx = Math.min(targetHeightPx, nativeHeight);
+  }
+  const heightScale = targetHeightPx / nativeHeight;
+  const targetWidth = Math.max(1, nativeWidth * heightScale);
   const groundAnchorFrac = clamp(Number(sprite.groundAnchorFrac), 0.5, 1, 1);
   const drawLeft = Math.round(x - targetWidth * 0.5);
   const drawTop = Math.round(

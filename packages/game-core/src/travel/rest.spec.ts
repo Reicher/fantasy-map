@@ -68,8 +68,12 @@ describe("travel rest transitions", () => {
         elapsedHours: 1.9,
       },
     };
-    const cancelled = cancelRest(progressed);
+    const stopping = cancelRest(progressed);
+    expect(stopping.rest?.stopAtNextWholeHour).toBe(true);
+    expect(stopping.rest?.hours).toBe(3);
+    expect(stopping.rest?.elapsedHours).toBe(1.9);
 
+    const cancelled = advanceRest(stopping, 1);
     expect(cancelled.rest).toBeNull();
     expect(cancelled.stamina).toBe(12);
     expect(cancelled.latestHuntFeedback?.text).toContain("Vila avbruten");
@@ -83,10 +87,26 @@ describe("travel rest transitions", () => {
     expect(progressed?.rest?.hours).toBe(-1);
     expect(progressed?.rest?.elapsedHours).toBe(2);
 
-    const cancelled = cancelRest(progressed);
+    const stopping = cancelRest(progressed);
+    expect(stopping?.rest?.hours).toBe(-1);
+    expect(stopping?.rest?.stopAtNextWholeHour).toBe(true);
+
+    const cancelled = advanceRest(stopping, 1);
     expect(cancelled?.rest).toBeNull();
     expect(cancelled?.stamina).toBe(12);
     expect(cancelled?.latestHuntFeedback?.text).toContain("Vila avbruten");
+  });
+
+  it("stops at the next whole hour when cancelling immediately", () => {
+    const started = beginRest(createBasePlayState(), -1);
+    const stopping = cancelRest(started);
+
+    expect(stopping?.rest?.stopAtNextWholeHour).toBe(true);
+    expect(stopping?.rest?.elapsedHours).toBe(0);
+
+    const cancelled = advanceRest(stopping, 1);
+    expect(cancelled?.rest).toBeNull();
+    expect(cancelled?.latestHuntFeedback?.text).toContain("Vila avbruten: 1h räknas");
   });
 
   it("allows rest from non-hostile settlement encounter and clears encounter interaction", () => {
@@ -158,13 +178,16 @@ describe("travel rest transitions", () => {
       throw new Error("Expected rest to start from settlement encounter.");
     }
 
-    const cancelled = cancelRest({
+    const stopping = cancelRest({
       ...resting,
       rest: {
         ...resting.rest,
         elapsedHours: 2,
       },
     });
+    expect(stopping?.rest?.stopAtNextWholeHour).toBe(true);
+
+    const cancelled = advanceRest(stopping, 1);
     expect(cancelled?.rest).toBeNull();
     expect(cancelled?.pendingJourneyEvent?.type).toBe("encounter-turn");
     expect(cancelled?.encounter?.type).toBe("settlement-group");
@@ -314,5 +337,6 @@ describe("travel rest transitions", () => {
     expect(finished?.health).toBe(12);
     expect(countInventoryItemsByType(finished?.inventory, "medicine")).toBe(2);
     expect(finished?.latestHuntFeedback?.text).not.toContain("läkte alla skador");
+    expect(finished?.latestHuntFeedback?.text).not.toContain("Du använde medicin");
   });
 });

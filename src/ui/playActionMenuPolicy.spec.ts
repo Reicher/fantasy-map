@@ -3,6 +3,8 @@ import {
   canCloseActionMenu,
   isDestinationChoicePending,
   isNonHostileEncounterTurn,
+  resolveTravelActionButtonPolicy,
+  shouldShowTravelActionInIdleMenu,
   shouldForceActionMenuOpen,
   shouldKeepActionMenuOpenAfterEncounter,
 } from "./playActionMenuPolicy";
@@ -104,5 +106,102 @@ describe("playActionMenuPolicy", () => {
     });
 
     expect(shouldKeepActionMenuOpenAfterEncounter(playState)).toBe(false);
+  });
+
+  it("shows travel action in idle menu on any node", () => {
+    const playState = createPlayState({
+      travel: null,
+      isTravelPaused: false,
+      currentNodeId: 12,
+    });
+
+    expect(
+      shouldShowTravelActionInIdleMenu(playState, {
+        inNode: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("resolves continue-travel action when paused travel can resume", () => {
+    const playState = createPlayState({
+      travel: {
+        startNodeId: 1,
+        targetNodeId: 2,
+      },
+      isTravelPaused: true,
+      stamina: 18,
+    });
+
+    expect(resolveTravelActionButtonPolicy(playState)).toEqual({
+      label: "Fortsätt resa",
+      disabled: false,
+      reason: "",
+    });
+  });
+
+  it("resolves blocked continue-travel when travel is not paused", () => {
+    const playState = createPlayState({
+      travel: {
+        startNodeId: 1,
+        targetNodeId: 2,
+      },
+      isTravelPaused: false,
+      stamina: 18,
+    });
+
+    expect(resolveTravelActionButtonPolicy(playState)).toEqual({
+      label: "Fortsätt resa",
+      disabled: true,
+      reason: "Resan måste vara pausad innan den kan fortsätta.",
+    });
+  });
+
+  it("resolves plan-travel action when no travel is active", () => {
+    const playState = createPlayState({
+      travel: null,
+      isTravelPaused: false,
+      currentNodeId: 4,
+    });
+
+    expect(resolveTravelActionButtonPolicy(playState)).toEqual({
+      label: "Planera resa",
+      disabled: false,
+      reason: "",
+    });
+  });
+
+  it("blocks travel action when configured to lock hostile encounters", () => {
+    const playState = createPlayState({
+      travel: {
+        startNodeId: 1,
+        targetNodeId: 2,
+      },
+      isTravelPaused: true,
+      stamina: 18,
+      encounter: {
+        id: "enc-hostile",
+        type: "wolf",
+        disposition: "hostile",
+        turn: "player",
+        round: 2,
+        opponentInitiative: 8,
+        opponentDamageMin: 3,
+        opponentDamageMax: 6,
+        opponentMaxHealth: 8,
+        opponentHealth: 8,
+        opponentMaxStamina: 12,
+        opponentStamina: 12,
+      },
+    });
+
+    expect(
+      resolveTravelActionButtonPolicy(playState, {
+        blockWhenHostile: true,
+      }),
+    ).toEqual({
+      label: "Fortsätt resa",
+      disabled: true,
+      reason: "Du kan inte planera eller fortsätta resan medan någon part är fientlig.",
+    });
   });
 });

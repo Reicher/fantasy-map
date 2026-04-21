@@ -74,6 +74,8 @@ export function beginRest(
       hours: isContinuousRest ? CONTINUOUS_ACTION_HOURS : restHours,
       elapsedHours: 0,
       staminaGain: plannedRestHours * staminaGainPerHour,
+      stopAtNextWholeHour: false,
+      usedMedicine: false,
       resumeTravelOnFinish: hasTravel && !wasTravelPaused,
       priorWasTravelPaused: wasTravelPaused,
       priorTravelPauseReason: priorPauseReason,
@@ -86,15 +88,15 @@ export function cancelRest(playState: PlayStateLike): PlayStateLike {
   if (!playState || playState.gameOver || !playState.rest) {
     return withPlayActionMode(playState);
   }
-
-  const totalRestHours = normalizeRestHours(playState.rest.hours);
-  const elapsedHours = normalizeElapsedHours(playState.rest.elapsedHours);
-  const isContinuousRest = totalRestHours === CONTINUOUS_ACTION_HOURS;
-  const roundedTargetHours = isContinuousRest
-    ? Math.max(0, Math.floor(elapsedHours))
-    : clamp(Math.round(elapsedHours), 0, totalRestHours);
-  return finishRest(playState, roundedTargetHours, {
-    completed: false,
+  if (playState.rest.stopAtNextWholeHour) {
+    return withPlayActionMode(playState);
+  }
+  return withPlayActionMode({
+    ...playState,
+    rest: {
+      ...playState.rest,
+      stopAtNextWholeHour: true,
+    },
   });
 }
 
@@ -113,27 +115,80 @@ export function advanceRest(
     return withPlayActionMode(playState);
   }
 
-  const totalRestHours = normalizeRestHours(playState.rest.hours);
+  const appliedMedicineState = maybeApplyMedicineDuringRest(playState);
+  if (!appliedMedicineState?.rest) {
+    return withPlayActionMode(appliedMedicineState);
+  }
+  const totalRestHours = normalizeRestHours(appliedMedicineState.rest.hours);
   const isContinuousRest = totalRestHours === CONTINUOUS_ACTION_HOURS;
+  const shouldStopAtNextWholeHour = Boolean(
+    appliedMedicineState.rest.stopAtNextWholeHour,
+  );
+  const hoursToAdvance = shouldStopAtNextWholeHour ? 1 : safeElapsedHours;
   const previousElapsed = Math.floor(
-    normalizeElapsedHours(playState.rest.elapsedHours),
+    normalizeElapsedHours(appliedMedicineState.rest.elapsedHours),
   );
   const nextElapsed = isContinuousRest
-    ? previousElapsed + safeElapsedHours
-    : Math.min(totalRestHours, previousElapsed + safeElapsedHours);
+    ? previousElapsed + hoursToAdvance
+    : Math.min(totalRestHours, previousElapsed + hoursToAdvance);
+  const shouldStopNow =
+    shouldStopAtNextWholeHour &&
+    nextElapsed > previousElapsed;
+
+  if (shouldStopNow) {
+    return finishRest(appliedMedicineState, nextElapsed, {
+      completed: false,
+    });
+  }
 
   if (isContinuousRest || nextElapsed < totalRestHours - 1e-6) {
     return withPlayActionMode({
-      ...playState,
+      ...appliedMedicineState,
       rest: {
-        ...playState.rest,
+        ...appliedMedicineState.rest,
         hours: isContinuousRest ? CONTINUOUS_ACTION_HOURS : totalRestHours,
         elapsedHours: nextElapsed,
       },
     });
   }
 
-  return finishRest(playState, totalRestHours, { completed: true });
+  return finishRest(appliedMedicineState, totalRestHours, { completed: true });
+}
+
+function maybeApplyMedicineDuringRest(playState: PlayStateLike): PlayStateLike {
+  if (!playState?.rest || playState.rest.usedMedicine) {
+    return playState;
+  }
+  const maxHealth = Math.max(1, normalizeHealthValue(playState.maxHealth, 1));
+  const currentHealth = Math.min(
+    maxHealth,
+    normalizeHealthValue(playState.health, maxHealth),
+  );
+  const normalizedInjuryStatus = normalizePlayerInjuryStatus(playState.injuryStatus);
+  const needsMedicine =
+    normalizedInjuryStatus !== "healthy" || currentHealth < maxHealth;
+  if (!needsMedicine) {
+    return playState;
+  }
+  const availableMedicine = countInventoryItemsByType(playState.inventory, "medicine");
+  if (availableMedicine <= 0) {
+    return playState;
+  }
+  const consumedMedicine = consumeInventoryItemsByType(playState.inventory, "medicine", 1);
+  if (!consumedMedicine || consumedMedicine.consumed <= 0) {
+    return playState;
+  }
+  return {
+    ...playState,
+    inventory: consumedMedicine.inventory,
+    maxHealth,
+    health: maxHealth,
+    injuryStatus: "healthy",
+    rest: {
+      ...playState.rest,
+      usedMedicine: true,
+    },
+  };
 }
 
 function hasBlockingActionInteraction(playState: PlayStateLike): boolean {
@@ -180,11 +235,20 @@ function finishRest(
   }
   const normalizedRestHours = normalizeRestHours(playState.rest.hours);
   const isContinuousRest = normalizedRestHours === CONTINUOUS_ACTION_HOURS;
+  const rawCountedHours = Number.isFinite(countedRestHours)
+    ? Math.max(0, Math.floor(countedRestHours))
+    : 0;
   const totalRestHours = isContinuousRest
-    ? Math.max(0, Math.floor(normalizeElapsedHours(playState.rest.elapsedHours)))
+    ? Math.max(
+        0,
+        Math.max(
+          Math.floor(normalizeElapsedHours(playState.rest.elapsedHours)),
+          rawCountedHours,
+        ),
+      )
     : normalizedRestHours;
   const countedHours = clamp(
-    Number.isFinite(countedRestHours) ? Math.floor(countedRestHours) : 0,
+    rawCountedHours,
     0,
     totalRestHours,
   );
@@ -211,12 +275,19 @@ function finishRest(
   const normalizedInjuryStatus = normalizePlayerInjuryStatus(playState.injuryStatus);
   const needsMedicine =
     normalizedInjuryStatus !== "healthy" || currentHealth < maxHealth;
+  const medicineAlreadyUsed = Boolean(playState.rest?.usedMedicine);
   const availableMedicine = countInventoryItemsByType(playState.inventory, "medicine");
-  const shouldUseMedicine = countedHours > 0 && needsMedicine && availableMedicine > 0;
+  const shouldUseMedicine =
+    !medicineAlreadyUsed &&
+    countedHours > 0 &&
+    needsMedicine &&
+    availableMedicine > 0;
   const consumedMedicine = shouldUseMedicine
     ? consumeInventoryItemsByType(playState.inventory, "medicine", 1)
     : null;
-  const usedMedicine = Boolean(consumedMedicine && consumedMedicine.consumed > 0);
+  const usedMedicine =
+    medicineAlreadyUsed ||
+    Boolean(consumedMedicine && consumedMedicine.consumed > 0);
   const restSummary = options.completed
     ? `Vila klar: ${countedHours}h, +${actualGain} stamina.`
     : countedHours > 0
@@ -234,7 +305,7 @@ function finishRest(
 
   return withPlayActionMode({
     ...playState,
-    ...(usedMedicine
+    ...(!medicineAlreadyUsed && usedMedicine
       ? {
           inventory: consumedMedicine?.inventory,
           maxHealth,

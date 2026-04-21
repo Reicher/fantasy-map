@@ -68,135 +68,321 @@ const PLAINS_TUFT_VARIANT_COUNT = 4;
 const DEAD_TREE_CHANCE_BY_BIOME = Object.freeze({
   ocean: 0,
   lake: 0,
-  plains: 0.02,
-  forest: 0.04,
+  plains: 0.01,
+  forest: 0.015,
   rainforest: 0.02,
   desert: 0,
-  tundra: 0.38,
-  highlands: 0.22,
-  mountain: 0.14,
+  tundra: 0.54,
+  highlands: 0.72,
+  mountain: 0.46,
 });
 const DEFAULT_TREE_SPAWN_TUNING = Object.freeze({
   segmentChance: 1,
   countScale: 1,
   maxCount: Number.POSITIVE_INFINITY,
 });
-const DESERT_TREE_SPAWN_TUNING_BY_LAYER = Object.freeze({
+const DEFAULT_TREE_SPAWN_TUNING_BY_LAYER = Object.freeze({
   far: Object.freeze({
     segmentChance: 1,
-    countScale: 0.34,
-    maxCount: 5,
+    countScale: 0.42,
+    maxCount: 6,
   }),
   mid: Object.freeze({
     segmentChance: 1,
-    countScale: 0.44,
-    maxCount: 6,
-  }),
-  ground: Object.freeze({
-    segmentChance: 1,
-    countScale: 0.68,
-    maxCount: 7,
-  }),
-  near1: Object.freeze({
-    segmentChance: 1,
     countScale: 0.56,
-    maxCount: 6,
+    maxCount: 8,
   }),
   near2: Object.freeze({
     segmentChance: 1,
-    countScale: 0.46,
-    maxCount: 5,
+    countScale: 0.7,
+    maxCount: 10,
+  }),
+  near1: Object.freeze({
+    segmentChance: 1,
+    countScale: 0.84,
+    maxCount: 12,
+  }),
+  ground: Object.freeze({
+    segmentChance: 1,
+    countScale: 0.96,
+    maxCount: 14,
   }),
   foreground: Object.freeze({
     segmentChance: 1,
-    countScale: 0.44,
+    countScale: 1.12,
+    maxCount: 16,
+  }),
+});
+const DESERT_TREE_SPAWN_TUNING_BY_LAYER = Object.freeze({
+  far: Object.freeze({
+    segmentChance: 0.55,
+    countScale: 0.16,
+    maxCount: 2,
+  }),
+  mid: Object.freeze({
+    segmentChance: 0.68,
+    countScale: 0.24,
+    maxCount: 3,
+  }),
+  ground: Object.freeze({
+    segmentChance: 0.96,
+    countScale: 0.54,
     maxCount: 6,
+  }),
+  near1: Object.freeze({
+    segmentChance: 0.88,
+    countScale: 0.4,
+    maxCount: 5,
+  }),
+  near2: Object.freeze({
+    segmentChance: 0.78,
+    countScale: 0.32,
+    maxCount: 4,
+  }),
+  foreground: Object.freeze({
+    segmentChance: 1,
+    countScale: 0.68,
+    maxCount: 8,
+  }),
+});
+const FOREST_TREE_SPAWN_TUNING_BY_LAYER = Object.freeze({
+  far: Object.freeze({
+    segmentChance: 1,
+    countScale: 1.55,
+    maxCount: 20,
+  }),
+  mid: Object.freeze({
+    segmentChance: 1,
+    countScale: 1.72,
+    maxCount: 22,
+  }),
+  near2: Object.freeze({
+    segmentChance: 1,
+    countScale: 1.96,
+    maxCount: 25,
+  }),
+  near1: Object.freeze({
+    segmentChance: 1,
+    countScale: 2.14,
+    maxCount: 28,
+  }),
+  ground: Object.freeze({
+    segmentChance: 1,
+    countScale: 2.02,
+    maxCount: 26,
+  }),
+  foreground: Object.freeze({
+    segmentChance: 1,
+    countScale: 2.34,
+    maxCount: 30,
+  }),
+});
+const RAINFOREST_TREE_SPAWN_TUNING_BY_LAYER = Object.freeze({
+  far: Object.freeze({
+    segmentChance: 1,
+    countScale: 1.86,
+    maxCount: 24,
+  }),
+  mid: Object.freeze({
+    segmentChance: 1,
+    countScale: 2.08,
+    maxCount: 27,
+  }),
+  near2: Object.freeze({
+    segmentChance: 1,
+    countScale: 2.34,
+    maxCount: 30,
+  }),
+  near1: Object.freeze({
+    segmentChance: 1,
+    countScale: 2.58,
+    maxCount: 33,
+  }),
+  ground: Object.freeze({
+    segmentChance: 1,
+    countScale: 2.46,
+    maxCount: 32,
+  }),
+  foreground: Object.freeze({
+    segmentChance: 1,
+    countScale: 2.86,
+    maxCount: 36,
   }),
 });
 const PLAINS_TREE_SPAWN_TUNING_BY_LAYER = Object.freeze({
   far: Object.freeze({
     segmentChance: 1,
-    countScale: 0.48,
-    maxCount: 7,
+    countScale: 0.26,
+    maxCount: 4,
   }),
   mid: Object.freeze({
+    segmentChance: 1,
+    countScale: 0.36,
+    maxCount: 5,
+  }),
+  ground: Object.freeze({
+    segmentChance: 1,
+    countScale: 0.74,
+    maxCount: 10,
+  }),
+  near1: Object.freeze({
     segmentChance: 1,
     countScale: 0.62,
     maxCount: 8,
   }),
-  ground: Object.freeze({
-    segmentChance: 1,
-    countScale: 0.88,
-    maxCount: 8,
-  }),
-  near1: Object.freeze({
-    segmentChance: 1,
-    countScale: 0.74,
-    maxCount: 7,
-  }),
   near2: Object.freeze({
     segmentChance: 1,
-    countScale: 0.64,
-    maxCount: 6,
+    countScale: 0.5,
+    maxCount: 7,
   }),
   foreground: Object.freeze({
     segmentChance: 1,
-    countScale: 0.58,
-    maxCount: 7,
+    countScale: 0.9,
+    maxCount: 12,
   }),
 });
 const HIGHLANDS_TREE_SPAWN_TUNING_BY_LAYER = Object.freeze({
+  far: Object.freeze({
+    segmentChance: 0.62,
+    countScale: 0.18,
+    maxCount: 3,
+  }),
+  mid: Object.freeze({
+    segmentChance: 0.72,
+    countScale: 0.26,
+    maxCount: 4,
+  }),
+  ground: Object.freeze({
+    segmentChance: 0.94,
+    countScale: 0.58,
+    maxCount: 8,
+  }),
   near1: Object.freeze({
-    segmentChance: 0.82,
+    segmentChance: 0.9,
+    countScale: 0.46,
+    maxCount: 6,
+  }),
+  near2: Object.freeze({
+    segmentChance: 0.86,
+    countScale: 0.36,
+    maxCount: 5,
+  }),
+  foreground: Object.freeze({
+    segmentChance: 1,
+    countScale: 0.72,
+    maxCount: 10,
+  }),
+});
+const TUNDRA_TREE_SPAWN_TUNING_BY_LAYER = Object.freeze({
+  far: Object.freeze({
+    segmentChance: 0.66,
+    countScale: 0.2,
+    maxCount: 3,
+  }),
+  mid: Object.freeze({
+    segmentChance: 0.76,
+    countScale: 0.3,
+    maxCount: 4,
+  }),
+  near2: Object.freeze({
+    segmentChance: 0.86,
     countScale: 0.42,
+    maxCount: 5,
+  }),
+  near1: Object.freeze({
+    segmentChance: 0.92,
+    countScale: 0.54,
+    maxCount: 6,
+  }),
+  ground: Object.freeze({
+    segmentChance: 0.98,
+    countScale: 0.68,
+    maxCount: 8,
+  }),
+  foreground: Object.freeze({
+    segmentChance: 1,
+    countScale: 0.84,
+    maxCount: 10,
+  }),
+});
+const MOUNTAIN_TREE_SPAWN_TUNING_BY_LAYER = Object.freeze({
+  far: Object.freeze({
+    segmentChance: 0.55,
+    countScale: 0.14,
+    maxCount: 2,
+  }),
+  mid: Object.freeze({
+    segmentChance: 0.65,
+    countScale: 0.2,
     maxCount: 3,
   }),
   near2: Object.freeze({
+    segmentChance: 0.74,
+    countScale: 0.28,
+    maxCount: 4,
+  }),
+  near1: Object.freeze({
+    segmentChance: 0.82,
+    countScale: 0.36,
+    maxCount: 5,
+  }),
+  ground: Object.freeze({
     segmentChance: 0.9,
-    countScale: 0.5,
-    maxCount: 3,
+    countScale: 0.46,
+    maxCount: 6,
+  }),
+  foreground: Object.freeze({
+    segmentChance: 0.96,
+    countScale: 0.6,
+    maxCount: 8,
   }),
 });
 const HIGHLANDS_TREE_HEIGHT_SCALE_BY_LAYER = Object.freeze({
-  near1: 0.48,
-  near2: 0.58,
+  near1: 0.46,
+  near2: 0.34,
+});
+const PLAINS_TREE_HEIGHT_SCALE_BY_LAYER = Object.freeze({
+  far: 0.54,
+  mid: 0.62,
+  near2: 0.52,
+  near1: 0.72,
 });
 const TREE_LAYER_CONFIG = {
   far: {
-    minSpacingPx: 24,
-    maxSpacingPx: 40,
-    minHeightPx: 18,
-    maxHeightPx: 28,
+    minSpacingPx: 40,
+    maxSpacingPx: 66,
+    minHeightPx: 16,
+    maxHeightPx: 26,
     minUpwardOffsetPx: 0,
     maxUpwardOffsetPx: 0,
     minRootOffsetFrac: 0.03,
     maxRootOffsetFrac: 0.1,
   },
   mid: {
-    minSpacingPx: 32,
-    maxSpacingPx: 52,
-    minHeightPx: 26,
-    maxHeightPx: 40,
+    minSpacingPx: 34,
+    maxSpacingPx: 56,
+    minHeightPx: 22,
+    maxHeightPx: 34,
     minUpwardOffsetPx: 0,
     maxUpwardOffsetPx: 1,
     minRootOffsetFrac: 0.03,
     maxRootOffsetFrac: 0.12,
   },
   near2: {
-    minSpacingPx: 44,
-    maxSpacingPx: 74,
-    minHeightPx: 88,
-    maxHeightPx: 126,
+    minSpacingPx: 30,
+    maxSpacingPx: 48,
+    minHeightPx: 40,
+    maxHeightPx: 62,
     minUpwardOffsetPx: 0,
     maxUpwardOffsetPx: 1,
     minRootOffsetFrac: 0.04,
     maxRootOffsetFrac: 0.16,
   },
   near1: {
-    minSpacingPx: 58,
-    maxSpacingPx: 98,
-    minHeightPx: 120,
-    maxHeightPx: 172,
+    minSpacingPx: 28,
+    maxSpacingPx: 44,
+    minHeightPx: 72,
+    maxHeightPx: 102,
     minUpwardOffsetPx: 0,
     maxUpwardOffsetPx: 1,
     minRootOffsetFrac: 0.08,
@@ -204,30 +390,30 @@ const TREE_LAYER_CONFIG = {
   },
 };
 const GROUND_TREE_CONFIG = {
-  minSpacingPx: 104,
-  maxSpacingPx: 164,
+  minSpacingPx: 40,
+  maxSpacingPx: 64,
   minHeightPx: 150,
   maxHeightPx: 210,
   edgePaddingPx: 14,
-  maxPerSegment: 8,
+  maxPerSegment: 18,
   minSegmentWidthPx: 84,
   minRootOffsetFrac: 0.06,
   maxRootOffsetFrac: 0.94,
 };
 const FOREGROUND_TREE_CONFIG = {
-  minSpacingPx: 74,
-  maxSpacingPx: 118,
-  minHeightPx: 238,
-  maxHeightPx: 322,
+  minSpacingPx: 34,
+  maxSpacingPx: 54,
+  minHeightPx: 140,
+  maxHeightPx: 188,
   edgePaddingPx: 12,
   minSegmentWidthPx: 72,
-  maxPerSegment: 9,
-  minSinkFrac: 0.24,
-  maxSinkFrac: 0.42,
+  maxPerSegment: 20,
+  minSinkFrac: 0.36,
+  maxSinkFrac: 0.58,
 };
-const LAYER_TREE_DENSITY_BOOST = 1.34;
-const GROUND_TREE_DENSITY_BOOST = 1.28;
-const FOREGROUND_TREE_DENSITY_BOOST = 1.26;
+const LAYER_TREE_DENSITY_BOOST = 1.35;
+const GROUND_TREE_DENSITY_BOOST = 2.0;
+const FOREGROUND_TREE_DENSITY_BOOST = 2.1;
 const NODE_DECORATION_EXCLUSION_RADIUS_BY_LAYER = Object.freeze({
   ground: 158,
   groundDetails: 172,
@@ -1195,26 +1381,50 @@ function computeTreeSpawnCountForSegment(baseCount, biomeKey, layerName, rng) {
 }
 
 function getTreeSpawnTuningForBiome(layerName, biomeKey) {
+  const baseLayerTuning =
+    DEFAULT_TREE_SPAWN_TUNING_BY_LAYER[layerName] ?? DEFAULT_TREE_SPAWN_TUNING;
+  if (biomeKey === "rainforest") {
+    return (
+      RAINFOREST_TREE_SPAWN_TUNING_BY_LAYER[layerName] ?? baseLayerTuning
+    );
+  }
+  if (biomeKey === "forest") {
+    return (
+      FOREST_TREE_SPAWN_TUNING_BY_LAYER[layerName] ?? baseLayerTuning
+    );
+  }
   if (biomeKey === "desert") {
     return (
-      DESERT_TREE_SPAWN_TUNING_BY_LAYER[layerName] ?? DEFAULT_TREE_SPAWN_TUNING
+      DESERT_TREE_SPAWN_TUNING_BY_LAYER[layerName] ?? baseLayerTuning
     );
   }
   if (biomeKey === "plains") {
     return (
-      PLAINS_TREE_SPAWN_TUNING_BY_LAYER[layerName] ?? DEFAULT_TREE_SPAWN_TUNING
+      PLAINS_TREE_SPAWN_TUNING_BY_LAYER[layerName] ?? baseLayerTuning
     );
   }
   if (biomeKey === "highlands") {
     return (
-      HIGHLANDS_TREE_SPAWN_TUNING_BY_LAYER[layerName] ??
-      DEFAULT_TREE_SPAWN_TUNING
+      HIGHLANDS_TREE_SPAWN_TUNING_BY_LAYER[layerName] ?? baseLayerTuning
     );
   }
-  return DEFAULT_TREE_SPAWN_TUNING;
+  if (biomeKey === "tundra") {
+    return (
+      TUNDRA_TREE_SPAWN_TUNING_BY_LAYER[layerName] ?? baseLayerTuning
+    );
+  }
+  if (biomeKey === "mountain") {
+    return (
+      MOUNTAIN_TREE_SPAWN_TUNING_BY_LAYER[layerName] ?? baseLayerTuning
+    );
+  }
+  return baseLayerTuning;
 }
 
 function getLayerTreeHeightScaleForBiome(layerName, biomeKey) {
+  if (biomeKey === "plains") {
+    return PLAINS_TREE_HEIGHT_SCALE_BY_LAYER[layerName] ?? 1;
+  }
   if (biomeKey === "highlands") {
     return HIGHLANDS_TREE_HEIGHT_SCALE_BY_LAYER[layerName] ?? 1;
   }

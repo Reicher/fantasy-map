@@ -354,6 +354,34 @@ if (refs.playActionCancelButton) {
   });
 }
 
+if (refs.playRestResumeTravelButton) {
+  refs.playRestResumeTravelButton.addEventListener("click", () => {
+    if (state.currentMode !== "play" || !state.playState) {
+      return;
+    }
+    if (!state.playState.travel) {
+      state.playActionMenuOpen = false;
+      if (state.playState.viewMode !== "map") {
+        playSession.setPlayViewMode("map");
+        return;
+      }
+      playSession.updatePlaySubView();
+      return;
+    }
+    const canAttemptResume =
+      Boolean(state.playState.isTravelPaused) &&
+      !state.playState.rest &&
+      !state.playState.hunt;
+    if (!canAttemptResume || !playSession.toggleTravelPause()) {
+      return;
+    }
+    if (state.playState?.travel && !state.playState.isTravelPaused) {
+      state.playActionMenuOpen = false;
+    }
+    playSession.updatePlaySubView();
+  });
+}
+
 if (refs.playJourneyEncounterGreetButton) {
   refs.playJourneyEncounterGreetButton.addEventListener("click", () => {
     if (state.currentMode !== "play" || !state.playState) {
@@ -392,6 +420,30 @@ if (refs.playJourneyEncounterFleeButton) {
       return;
     }
     autoCloseActionMenuAfterEncounter(previousPlayState);
+    playSession.updatePlaySubView();
+  });
+}
+
+if (refs.playJourneySettlementTravelButton) {
+  refs.playJourneySettlementTravelButton.addEventListener("click", () => {
+    if (state.currentMode !== "play" || !state.playState) {
+      return;
+    }
+    if (state.playState.travel) {
+      if (
+        !isNonHostileEncounterTurn(state.playState) ||
+        !hasPresentedCurrentEncounter(state.playState)
+      ) {
+        return;
+      }
+      continueTravelAfterEncounter();
+      return;
+    }
+    state.playActionMenuOpen = false;
+    if (state.playState.viewMode !== "map") {
+      playSession.setPlayViewMode("map");
+      return;
+    }
     playSession.updatePlaySubView();
   });
 }
@@ -515,22 +567,7 @@ window.addEventListener("keydown", (event) => {
         }
         return;
       }
-      const previousPlayState = state.playState;
-      const resolved = playSession.encounterFlee();
-      if (resolved) {
-        autoCloseActionMenuAfterEncounter(previousPlayState);
-      }
-      const canResumeAfterEncounter =
-        resolved &&
-        Boolean(state.playState?.travel) &&
-        Boolean(state.playState?.isTravelPaused) &&
-        !state.playState?.encounter &&
-        !state.playState?.pendingJourneyEvent &&
-        state.playState?.travelPauseReason === "encounter";
-      if (canResumeAfterEncounter && playSession.toggleTravelPause()) {
-        state.playActionMenuOpen = false;
-      }
-      playSession.updatePlaySubView();
+      continueTravelAfterEncounter();
       return;
     }
     runPrimaryActionButton();
@@ -852,6 +889,25 @@ function hasPresentedCurrentEncounter(playState): boolean {
     return false;
   }
   return encounterId === String(state.playPresentedEncounterId ?? "");
+}
+
+function continueTravelAfterEncounter(): void {
+  const previousPlayState = state.playState;
+  const resolved = playSession.encounterFlee();
+  if (resolved) {
+    autoCloseActionMenuAfterEncounter(previousPlayState);
+  }
+  const canResumeAfterEncounter =
+    resolved &&
+    Boolean(state.playState?.travel) &&
+    Boolean(state.playState?.isTravelPaused) &&
+    !state.playState?.encounter &&
+    !state.playState?.pendingJourneyEvent &&
+    state.playState?.travelPauseReason === "encounter";
+  if (canResumeAfterEncounter && playSession.toggleTravelPause()) {
+    state.playActionMenuOpen = false;
+  }
+  playSession.updatePlaySubView();
 }
 
 function autoCloseActionMenuAfterEncounter(previousPlayState): void {

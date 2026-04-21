@@ -75,6 +75,7 @@ export interface AppRefs {
   playJourneyEncounterAttackButton: HTMLButtonElement | null;
   playJourneyEncounterFleeButton: HTMLButtonElement | null;
   playJourneySettlementActions: HTMLElement | null;
+  playJourneySettlementTravelButton: HTMLButtonElement | null;
   playJourneySettlementActionsHint: HTMLElement | null;
   playSettlementDebug: HTMLElement | null;
   playSettlementDebugBody: HTMLElement | null;
@@ -82,6 +83,7 @@ export interface AppRefs {
   playRestBody: HTMLElement | null;
   playHuntOutlook: HTMLElement | null;
   playRestOptions: HTMLElement | null;
+  playRestResumeTravelButton: HTMLButtonElement | null;
   playActionCancelButton: HTMLButtonElement | null;
   playActionResultDialog: HTMLElement | null;
   playActionResultBody: HTMLElement | null;

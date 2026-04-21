@@ -23,6 +23,8 @@ import {
   canCloseActionMenu,
   isDestinationChoicePending,
   isEncounterTurn,
+  resolveTravelActionButtonPolicy,
+  shouldShowTravelActionInIdleMenu,
   shouldForceActionMenuOpen,
 } from "./playActionMenuPolicy";
 import type { PlaySubViewDeps } from "@fardvag/shared/types/runtime";
@@ -582,6 +584,7 @@ export function createPlaySubViewController({
   ) {
     const dialog = refs.playJourneyEventDialog;
     const menu = refs.playJourneySettlementActions;
+    const travelButton = refs.playJourneySettlementTravelButton;
     const hint = refs.playJourneySettlementActionsHint;
     if (!menu) {
       return;
@@ -618,6 +621,12 @@ export function createPlaySubViewController({
       restDisabled ||
       normalizeStamina(playState?.stamina, 0) <= 0 ||
       !huntSituation.available;
+    const travelActionPolicy = resolveTravelActionButtonPolicy(playState, {
+      blockWhenHostile: true,
+      hostileReason: "Du kan inte planera eller fortsätta resan medan någon part är fientlig.",
+      pauseRequiredReason: "Resan måste vara pausad innan den kan fortsätta.",
+      restRequiredReason: "Vila krävs innan resan kan fortsätta.",
+    });
     const restrictionReason = !isSettlementEncounter
       ? "Vila och jakt är endast tillgängligt i bosättningsmöten."
       : isHostileSettlementEncounter
@@ -649,6 +658,18 @@ export function createPlaySubViewController({
         button.title = reason;
       } else if (button.hasAttribute("title")) {
         button.removeAttribute("title");
+      }
+    }
+
+    if (travelButton) {
+      if (travelButton.textContent !== travelActionPolicy.label) {
+        travelButton.textContent = travelActionPolicy.label;
+      }
+      travelButton.disabled = travelActionPolicy.disabled;
+      if (travelActionPolicy.reason.length > 0) {
+        travelButton.title = travelActionPolicy.reason;
+      } else if (travelButton.hasAttribute("title")) {
+        travelButton.removeAttribute("title");
       }
     }
 
@@ -768,6 +789,7 @@ export function createPlaySubViewController({
   function syncRestDialog(playState, isPlay, world) {
     const dialog = refs.playRestDialog;
     const body = refs.playRestBody;
+    const resumeTravelButton = refs.playRestResumeTravelButton;
     if (!dialog || !body) {
       return;
     }
@@ -804,6 +826,13 @@ export function createPlaySubViewController({
       lastRestBodyVisible = false;
       lastHuntOutlookVisible = false;
       lastRestOptionsVisible = null;
+      if (resumeTravelButton) {
+        setElementVisible(resumeTravelButton, false, "inline-flex");
+        resumeTravelButton.disabled = false;
+        if (resumeTravelButton.hasAttribute("title")) {
+          resumeTravelButton.removeAttribute("title");
+        }
+      }
       if (refs.playActionCancelButton) {
         setElementVisible(refs.playActionCancelButton, false, "inline-flex");
       }
@@ -838,6 +867,17 @@ export function createPlaySubViewController({
       needsRestChoice ||
       normalizeStamina(playState?.stamina, 0) <= 0 ||
       !huntSituation.available;
+    const shouldShowResumeTravel =
+      shouldShowOptions &&
+      shouldShowTravelActionInIdleMenu(playState, {
+        inNode,
+      });
+    const travelActionPolicy = resolveTravelActionButtonPolicy(playState, {
+      blockWhenHostile: true,
+      hostileReason: "Du kan inte fortsätta färden medan motståndaren är fientlig.",
+      pauseRequiredReason: "Resan måste vara pausad innan den kan fortsätta.",
+      restRequiredReason: "Vila krävs innan resan kan fortsätta.",
+    });
     const huntUnavailableReason = needsRestChoice
       ? "Du måste vila innan du kan jaga."
       : !huntSituation.available
@@ -879,6 +919,27 @@ export function createPlaySubViewController({
       }
     }
 
+    if (resumeTravelButton) {
+      if (resumeTravelButton.textContent !== travelActionPolicy.label) {
+        resumeTravelButton.textContent = travelActionPolicy.label;
+      }
+      setElementVisible(resumeTravelButton, shouldShowResumeTravel, "inline-flex");
+      resumeTravelButton.disabled = shouldShowResumeTravel
+        ? travelActionPolicy.disabled
+        : false;
+      if (!shouldShowResumeTravel) {
+        if (resumeTravelButton.hasAttribute("title")) {
+          resumeTravelButton.removeAttribute("title");
+        }
+      } else {
+        if (travelActionPolicy.reason.length > 0) {
+          resumeTravelButton.title = travelActionPolicy.reason;
+        } else if (resumeTravelButton.hasAttribute("title")) {
+          resumeTravelButton.removeAttribute("title");
+        }
+      }
+    }
+
     if (refs.playActionCancelButton && lastHuntCancelVisible !== hasActiveTimedAction) {
       setElementVisible(refs.playActionCancelButton, hasActiveTimedAction, "inline-flex");
       lastHuntCancelVisible = hasActiveTimedAction;
@@ -898,6 +959,13 @@ export function createPlaySubViewController({
     }
     if (refs.playRestOptions) {
       setElementVisible(refs.playRestOptions, false, "grid");
+    }
+    if (refs.playRestResumeTravelButton) {
+      setElementVisible(refs.playRestResumeTravelButton, false, "inline-flex");
+      refs.playRestResumeTravelButton.disabled = false;
+      if (refs.playRestResumeTravelButton.hasAttribute("title")) {
+        refs.playRestResumeTravelButton.removeAttribute("title");
+      }
     }
     if (refs.playActionCancelButton) {
       setElementVisible(refs.playActionCancelButton, false, "inline-flex");

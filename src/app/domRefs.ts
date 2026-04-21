@@ -90,6 +90,9 @@ export function createAppRefs(): AppRefs {
     playJourneySettlementActions: queryOptional<HTMLElement>(
       "#play-journey-settlement-actions",
     ),
+    playJourneySettlementTravelButton: queryOptional<HTMLButtonElement>(
+      "#play-journey-settlement-travel",
+    ),
     playJourneySettlementActionsHint: queryOptional<HTMLElement>(
       "#play-journey-settlement-actions-hint",
     ),
@@ -99,6 +102,9 @@ export function createAppRefs(): AppRefs {
     playRestBody: queryOptional<HTMLElement>("#play-rest-body"),
     playHuntOutlook: queryOptional<HTMLElement>("#play-hunt-outlook"),
     playRestOptions: queryOptional<HTMLElement>("#play-rest-options"),
+    playRestResumeTravelButton: queryOptional<HTMLButtonElement>(
+      "#play-rest-resume-travel",
+    ),
     playActionCancelButton: queryOptional<HTMLButtonElement>("#play-action-cancel"),
     playActionResultDialog: queryOptional<HTMLElement>("#play-action-result-dialog"),
     playActionResultBody: queryOptional<HTMLElement>("#play-action-result-body"),

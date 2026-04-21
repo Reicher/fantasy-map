@@ -45,13 +45,13 @@ const TREE_DECOR_RENDER_CONFIG = Object.freeze({
   far: Object.freeze({
     cullPaddingPx: 64,
     defaultRootOffsetFrac: 0.08,
-    preferFallback: true,
+    preferFallback: false,
     alpha: 0.74,
   }),
   mid: Object.freeze({
     cullPaddingPx: 78,
     defaultRootOffsetFrac: 0.1,
-    preferFallback: true,
+    preferFallback: false,
     alpha: 0.82,
   }),
   near2: Object.freeze({
