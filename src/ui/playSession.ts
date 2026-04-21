@@ -296,6 +296,7 @@ export function createPlaySession({ refs, state, syncModeUi }: PlaySessionDeps) 
       return;
     }
 
+    prewarmPlayMapAtlas();
     renderPlayWorld();
     playController.ensureAnimation();
 
@@ -315,6 +316,16 @@ export function createPlaySession({ refs, state, syncModeUi }: PlaySessionDeps) 
     }
 
     renderPlayWorld();
+  }
+
+  function prewarmPlayMapAtlas() {
+    if (!state.currentWorld) {
+      return;
+    }
+    const cacheMiss = playMapCache.ensure({
+      showSnow: state.renderOptions.showSnow,
+    });
+    state.playProfiler.count(cacheMiss ? "play-cache-prewarm-miss" : "play-cache-prewarm-hit");
   }
 
   function createPlayCamera() {

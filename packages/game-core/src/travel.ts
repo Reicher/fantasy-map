@@ -186,7 +186,7 @@ function createPlayerStartingInventoryWithWelcomeLetter(
     resolveEasternmostSettlementName(world) ?? "den östligaste bosättningen";
   const letterContent = [
     "Välkommen till nya världen",
-    `Jag bor i ${settlementName}`,
+    `Jag bor i ${settlementName}, på östra sidan av ön.`,
     "/Pappa",
   ].join("\n");
 

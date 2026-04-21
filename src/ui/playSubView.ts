@@ -521,7 +521,12 @@ export function createPlaySubViewController({
         ? true
         : String(presentation?.encounterId ?? "") === encounterId &&
           Boolean(presentation?.encounterIntroComplete));
-    const shouldShow = Boolean(event) && introReady && shouldShowEncounterDialog;
+    const hasActionResult = playState?.latestHuntFeedback?.type === "result";
+    const shouldShow =
+      Boolean(event) &&
+      introReady &&
+      shouldShowEncounterDialog &&
+      !hasActionResult;
     if (lastJourneyEventDialogVisible !== shouldShow) {
       setElementVisible(dialog, shouldShow, "grid");
       lastJourneyEventDialogVisible = shouldShow;

@@ -801,7 +801,18 @@ async function restartPlayAfterGameOver() {
   }
 
   if (playRunMode === "random-run") {
+    playSession.stopAnimation();
+    playSession.resetJourney();
+    state.playActivePanels = [];
+    state.playActionMenuOpen = false;
+    state.playPresentedEncounterId = null;
+    state.playSettlementDebugOpen = false;
+    state.playState = null;
     clearHover(refs.playTooltip);
+    state.playLoading = true;
+    state.editorLoading = false;
+    setGenerationLoadingStage(0);
+    syncModeUi();
     await startPlayWithRandomSeed({ enterMode: false });
     return;
   }

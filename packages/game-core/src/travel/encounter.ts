@@ -208,6 +208,12 @@ export function maybeTriggerWildernessHostileEncounter(
     activateEncounter(
       {
         ...playState,
+        rest: playState.rest
+          ? {
+              ...playState.rest,
+              stopAtNextWholeHour: true,
+            }
+          : playState.rest,
         encounter: {
           ...encounter,
           entryStyle: "slide-right",

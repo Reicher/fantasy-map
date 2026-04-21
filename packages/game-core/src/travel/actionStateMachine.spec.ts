@@ -192,6 +192,49 @@ describe("travel action state machine", () => {
     expect(next?.latestHuntFeedback).toBeNull();
   });
 
+  it("allows dismissing result feedback while encounter event is active", () => {
+    const withResultInEventMode = createBasePlayState({
+      latestHuntFeedback: {
+        type: "result",
+        text: "Vila avbruten: 1h räknas.",
+      },
+      pendingJourneyEvent: {
+        type: "encounter-turn",
+        encounterId: "enc-result-dismiss",
+        message: "En varg blockerar vägen.",
+        requiresAcknowledgement: true,
+        canAttack: true,
+      },
+      encounter: {
+        id: "enc-result-dismiss",
+        type: "wolf",
+        disposition: "hostile",
+        turn: "player",
+        round: 1,
+        rollIndex: 0,
+        opponentInitiative: 9,
+        opponentDamageMin: 4,
+        opponentDamageMax: 8,
+        opponentMaxHealth: 12,
+        opponentHealth: 12,
+        opponentMaxStamina: 20,
+        opponentStamina: 20,
+      },
+      travel: { routeType: "road", progress: 1, totalLength: 4 },
+      isTravelPaused: true,
+      travelPauseReason: "encounter",
+    });
+
+    const next = reduceTravelActionState(withResultInEventMode, {
+      type: "DISMISS_HUNT_RESULT",
+    });
+
+    expect(next).not.toBe(withResultInEventMode);
+    expect(next?.latestHuntFeedback).toBeNull();
+    expect(next?.pendingJourneyEvent?.type).toBe("encounter-turn");
+    expect(next?.encounter?.id).toBe("enc-result-dismiss");
+  });
+
   it("handles encounter events while in event mode", () => {
     const withEncounter = createBasePlayState({
       pendingJourneyEvent: {

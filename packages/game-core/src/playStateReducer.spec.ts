@@ -316,6 +316,96 @@ describe("playStateReducer", () => {
     expect(advanced?.encounter?.id).toBe("enc-blocking-travel");
   });
 
+  it("finalizes interrupted rest before showing wilderness encounter choices", () => {
+    const world = {
+      ...createTravelWorld(),
+      params: {
+        ...(createTravelWorld().params ?? {}),
+        seed: "encounter-rest-wilderness-seed",
+      },
+    } as World;
+
+    let interrupted = false;
+    for (let hour = 0; hour < 256; hour += 1) {
+      const restingState: PlayState = {
+        ...createTravelPlayState(),
+        actionMode: "resting",
+        journeyElapsedHours: hour,
+        timeOfDayHours: 23,
+        travel: {
+          startNodeId: 0,
+          targetNodeId: 1,
+          routeType: "road",
+          points: [
+            { x: 2, y: 2 },
+            { x: 4, y: 2 },
+          ],
+          segmentLengths: [2],
+          totalLength: 2,
+          progress: 1,
+        },
+        isTravelPaused: true,
+        travelPauseReason: "resting",
+        pendingJourneyEvent: null,
+        encounter: null,
+        injuryStatus: "injured",
+        maxHealth: 12,
+        health: 5,
+        inventory: {
+          columns: 4,
+          rows: 4,
+          items: [
+            {
+              id: "medicine-1",
+              type: "medicine",
+              name: "Medicin",
+              symbol: "medicine",
+              count: 1,
+              width: 1,
+              height: 1,
+              column: 0,
+              row: 0,
+            },
+          ],
+        },
+        rest: {
+          hours: -1,
+          elapsedHours: 0,
+          staminaGain: 0,
+          stopAtNextWholeHour: false,
+          usedMedicine: false,
+          resumeTravelOnFinish: false,
+          priorWasTravelPaused: true,
+          priorTravelPauseReason: "manual",
+        },
+      };
+
+      const advanced = reducePlayState(
+        restingState,
+        {
+          type: "ADVANCE_WORLD_HOURS",
+          hours: 1,
+        },
+        { world },
+      );
+      if (advanced?.pendingJourneyEvent?.type !== "encounter-turn") {
+        continue;
+      }
+
+      interrupted = true;
+      expect(advanced?.encounter?.type).toBe("wolf");
+      expect(advanced?.rest).toBeNull();
+      expect(advanced?.latestHuntFeedback?.type).toBe("result");
+      expect(advanced?.latestHuntFeedback?.text).toContain("Vila avbruten");
+      expect(advanced?.latestHuntFeedback?.text).toContain("läkte alla skador");
+      expect(advanced?.injuryStatus).toBe("healthy");
+      expect(advanced?.health).toBe(12);
+      break;
+    }
+
+    expect(interrupted).toBe(true);
+  });
+
   it("starts friendly settlement encounter on arrival when settlement has agents", () => {
     const world = createTravelWorld();
     const started = reducePlayState(

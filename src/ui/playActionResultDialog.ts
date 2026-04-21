@@ -27,8 +27,7 @@ export function syncActionResultDialog(
     playState?.latestHuntFeedback?.type === "result"
       ? String(playState.latestHuntFeedback.text ?? "")
       : "";
-  const hasBlockingInteraction = Boolean(playState?.pendingJourneyEvent);
-  const shouldShow = isPlay && resultMessage.length > 0 && !hasBlockingInteraction;
+  const shouldShow = isPlay && resultMessage.length > 0;
   let nextVisible = previousState.visible;
   let nextMessage = previousState.message;
 
