@@ -41,6 +41,7 @@
   --ui-shadow: rgba(12, 8, 5, 0.46);
   --night-bg: #140e0a;
   --overlay-border-soft: rgba(157, 126, 92, 0.26);
+  --play-symbols-image: url("./src/assets/ui/symbols.png");
 }
 
 html {
@@ -576,24 +577,6 @@ canvas[data-dragging="true"] {
   color: var(--ui-text-soft);
   font-size: 0.95rem;
   line-height: 1.35;
-}
-
-.play-loading {
-  position: absolute;
-  top: calc(50% - (var(--play-surface-height) / 2) + var(--play-ui-pad));
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 14;
-  padding: 10px 16px;
-  border-radius: 999px;
-  background: var(--play-ui-bg-strong);
-  border: 1px solid var(--play-ui-border);
-  color: var(--play-ui-text);
-  font-size: 0.92rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  box-shadow: 0 8px 20px var(--play-ui-shadow);
-  pointer-events: none;
 }
 
 .editor-loading {
@@ -2351,12 +2334,61 @@ canvas[data-dragging="true"] {
   height: 24px;
 }
 
-.play-hud-status-icon-image {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
+.play-symbol-icon {
+  --play-symbol-size: 24px;
+  --play-symbol-index: 0;
+  --play-symbol-columns: 7;
+  display: inline-block;
+  width: var(--play-symbol-size);
+  height: var(--play-symbol-size);
+  background-image: var(--play-symbols-image);
+  background-repeat: no-repeat;
+  background-size: calc(var(--play-symbol-size) * var(--play-symbol-columns))
+    var(--play-symbol-size);
+  background-position: calc(var(--play-symbol-size) * var(--play-symbol-index) * -1)
+    0;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
+}
+
+.play-symbol-icon--status {
+  --play-symbol-size: 24px;
+}
+
+.play-symbol-icon--panel {
+  --play-symbol-size: 22px;
+}
+
+.play-symbol-icon--resource {
+  --play-symbol-size: 30px;
+}
+
+.play-symbol-icon--flame {
+  --play-symbol-index: 0;
+}
+
+.play-symbol-icon--heart {
+  --play-symbol-index: 1;
+}
+
+.play-symbol-icon--inventory {
+  --play-symbol-index: 2;
+}
+
+.play-symbol-icon--character {
+  --play-symbol-index: 3;
+}
+
+.play-symbol-icon--settings {
+  --play-symbol-index: 4;
+}
+
+.play-symbol-icon--bread {
+  --play-symbol-index: 5;
+}
+
+.play-symbol-icon--bullets {
+  --play-symbol-index: 6;
 }
 
 .play-hud-status-track {
@@ -2528,6 +2560,15 @@ canvas[data-dragging="true"] {
   gap: 2px;
 }
 
+.play-hud-panel-button-row .play-main-panel-button--icon {
+  min-height: 42px;
+  padding: 2px;
+}
+
+.play-hud-panel-button-row .play-symbol-icon--panel {
+  --play-symbol-size: 34px;
+}
+
 .play-hud-icon {
   display: inline-flex;
   align-items: center;
@@ -2618,24 +2659,17 @@ canvas[data-dragging="true"] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 30px;
+  min-width: 36px;
   color: var(--hud-accent);
 }
 
-.play-hud-resource-icon-image {
-  width: 30px;
-  height: 30px;
-  object-fit: contain;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
-}
-
 .play-hud-resource-value {
-  min-width: 30px;
+  min-width: 36px;
   text-align: left;
   color: var(--hud-ink);
-  font-size: 1.32rem;
-  font-weight: 700;
+  font-size: 1.52rem;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .play-settings-button {
@@ -2742,6 +2776,18 @@ canvas[data-dragging="true"] {
 
   .play-main-panel-button {
     min-height: 40px;
+  }
+
+  .play-hud-panel-button-row .play-symbol-icon--panel {
+    --play-symbol-size: 32px;
+  }
+
+  .play-symbol-icon--resource {
+    --play-symbol-size: 34px;
+  }
+
+  .play-hud-resource-value {
+    font-size: 1.42rem;
   }
 
   .play-hud-tooltip-button::after {

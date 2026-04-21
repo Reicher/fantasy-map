@@ -30,7 +30,7 @@ const SETTLEMENT_AGENT_DEFAULT_OFFSET_Y = 0.1;
 const SETTLEMENT_AGENT_HIT_RADIUS_SCALE = 0.34;
 
 const SETTLEMENT_AGENT_SPRITE_URL = new URL(
-  "../../../../src/assets/journey/agent.png",
+  "../../../../src/assets/journey/settlement-agent.png",
   import.meta.url,
 ).href;
 

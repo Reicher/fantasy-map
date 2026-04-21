@@ -16,7 +16,7 @@ import { drawNodeMarkerGlyph } from "../nodeGlyph";
 const SNOW_GROUND_RGB = WORLD_RGB.snow;
 const JOURNEY_SIGNPOST_IMAGE = createJourneySignpostImage();
 const JOURNEY_PLAYER_ANIMATION_SRC = new URL(
-  "../../../../src/assets/journey/horse.png",
+  "../../../../src/assets/journey/player-horse.png",
   import.meta.url,
 ).href;
 const JOURNEY_PLAYER_ANIMATION_IMAGE = createJourneyPlayerAnimationImage();
@@ -41,11 +41,17 @@ const JOURNEY_NODE_WIDTH_SCALE_BY_MARKER = {
 };
 const JOURNEY_NODE_SPRITESHEET_BY_MARKER = {
   settlement: createJourneySpritesheet(
-    new URL("../../../../src/assets/journey/campfire.png", import.meta.url).href,
+    new URL(
+      "../../../../src/assets/journey/settlement-campfire.png",
+      import.meta.url,
+    ).href,
     "settlement",
   ),
   abandoned: createJourneySpritesheet(
-    new URL("../../../../src/assets/journey/crash-site-nodes.png", import.meta.url).href,
+    new URL(
+      "../../../../src/assets/journey/abandoned-site-nodes.png",
+      import.meta.url,
+    ).href,
     "abandoned",
   ),
 };
@@ -55,22 +61,22 @@ const JOURNEY_NODE_VARIANT_COUNT_BY_MARKER = {
 };
 const JOURNEY_TREE_SPRITESHEET_BY_FAMILY = {
   pine: createJourneySpritesheet(
-    new URL("../../../../src/assets/journey/journey-pines.png", import.meta.url).href,
+    new URL("../../../../src/assets/journey/pines.png", import.meta.url).href,
   ),
   dead: createJourneySpritesheet(
-    new URL("../../../../src/assets/journey/journey-dead-trees.png", import.meta.url)
+    new URL("../../../../src/assets/journey/dead-trees.png", import.meta.url)
       .href,
   ),
   cactus: createJourneySpritesheet(
-    new URL("../../../../src/assets/journey/journey-cacti.png", import.meta.url).href,
+    new URL("../../../../src/assets/journey/cacti.png", import.meta.url).href,
   ),
   tuft: createJourneySpritesheet(
-    new URL("../../../../src/assets/journey/journey-plains-tufts.png", import.meta.url)
+    new URL("../../../../src/assets/journey/plains-tufts.png", import.meta.url)
       .href,
   ),
 };
 const JOURNEY_TREE_VARIANT_COUNT_BY_FAMILY = {
-  pine: 5,
+  pine: 6,
   dead: 3,
   cactus: 2,
   tuft: 4,
@@ -339,7 +345,7 @@ export function drawJourneyTreeOnCanvas(
   groundY,
   options: DrawJourneyTreeOptions = {},
 ) {
-  const targetHeight = Math.max(18, Number(options.heightPx ?? 64));
+  const fallbackTargetHeight = Math.max(18, Number(options.heightPx ?? 64));
   const upwardOffset = Math.max(0, Number(options.upwardOffsetPx ?? 0));
   const treeFamily = resolveTreeFamily(options.treeFamily);
   const treeAlpha = clamp(Number(options.alpha ?? 1), 0, 1, 1);
@@ -347,7 +353,7 @@ export function drawJourneyTreeOnCanvas(
   const isSnowTree =
     treeFamily === "pine" && Number(options.variantIndex ?? 0) >= 3;
   if (preferFallback) {
-    drawFallbackJourneyTree(ctx, x, groundY, targetHeight, upwardOffset, {
+    drawFallbackJourneyTree(ctx, x, groundY, fallbackTargetHeight, upwardOffset, {
       isSnowTree,
       treeFamily,
       alpha: treeAlpha,
@@ -357,7 +363,7 @@ export function drawJourneyTreeOnCanvas(
   const variants =
     getJourneyTreeVariants(treeFamily) ?? getJourneyTreeVariants("pine");
   if (!variants?.length) {
-    drawFallbackJourneyTree(ctx, x, groundY, targetHeight, upwardOffset, {
+    drawFallbackJourneyTree(ctx, x, groundY, fallbackTargetHeight, upwardOffset, {
       isSnowTree,
       treeFamily,
       alpha: treeAlpha,
@@ -372,7 +378,7 @@ export function drawJourneyTreeOnCanvas(
     ((rawIndex % variants.length) + variants.length) % variants.length;
   const sprite = variants[variantIndex];
   if (!sprite) {
-    drawFallbackJourneyTree(ctx, x, groundY, targetHeight, upwardOffset, {
+    drawFallbackJourneyTree(ctx, x, groundY, fallbackTargetHeight, upwardOffset, {
       isSnowTree,
       treeFamily,
       alpha: treeAlpha,
@@ -380,11 +386,13 @@ export function drawJourneyTreeOnCanvas(
     return;
   }
 
-  const targetWidth = targetHeight * (sprite.width / sprite.height);
+  // Draw tree sprites at native pixel size so asset dimensions control scale.
+  const targetWidth = Math.max(1, Number(sprite.width ?? 1));
+  const targetHeightPx = Math.max(1, Number(sprite.height ?? 1));
   const groundAnchorFrac = clamp(Number(sprite.groundAnchorFrac), 0.5, 1, 1);
   const drawLeft = Math.round(x - targetWidth * 0.5);
   const drawTop = Math.round(
-    groundY - targetHeight * groundAnchorFrac - upwardOffset,
+    groundY - targetHeightPx * groundAnchorFrac - upwardOffset,
   );
 
   ctx.save();
@@ -398,7 +406,7 @@ export function drawJourneyTreeOnCanvas(
     drawLeft,
     drawTop,
     Math.round(targetWidth),
-    Math.round(targetHeight),
+    Math.round(targetHeightPx),
   );
   ctx.restore();
 }
@@ -623,7 +631,7 @@ function createJourneySignpostImage() {
   const image = new Image();
   image.decoding = "async";
   image.src = new URL(
-    "../../../../src/assets/journey/signpost-marker.png",
+    "../../../../src/assets/journey/signpost.png",
     import.meta.url,
   ).href;
   return image;
@@ -756,7 +764,18 @@ function getJourneyNodeVariants(marker) {
 function getJourneyTreeVariants(treeFamily = "pine") {
   const family = resolveTreeFamily(treeFamily);
   if (journeyTreeVariantsByFamily.has(family)) {
-    return journeyTreeVariantsByFamily.get(family);
+    const cachedVariants = journeyTreeVariantsByFamily.get(family);
+    const expectedVariantCount = Math.max(
+      1,
+      Number(JOURNEY_TREE_VARIANT_COUNT_BY_FAMILY[family] ?? 1),
+    );
+    if (
+      Array.isArray(cachedVariants) &&
+      cachedVariants.length === expectedVariantCount
+    ) {
+      return cachedVariants;
+    }
+    journeyTreeVariantsByFamily.delete(family);
   }
   const sheet = JOURNEY_TREE_SPRITESHEET_BY_FAMILY[family];
   const variantCount = JOURNEY_TREE_VARIANT_COUNT_BY_FAMILY[family];
@@ -781,7 +800,8 @@ function sliceJourneyVariants(sheetImage, variantCount, chromaTolerance = 24) {
   if (typeof document === "undefined") return null;
   const sourceW = sheetImage.naturalWidth;
   const sourceH = sheetImage.naturalHeight;
-  if (sourceW <= 0 || sourceH <= 0 || variantCount <= 0) return null;
+  const safeVariantCount = Math.max(1, Math.floor(variantCount));
+  if (sourceW <= 0 || sourceH <= 0 || safeVariantCount <= 0) return null;
 
   const sourceCanvas = document.createElement("canvas");
   sourceCanvas.width = sourceW;
@@ -790,41 +810,149 @@ function sliceJourneyVariants(sheetImage, variantCount, chromaTolerance = 24) {
   if (!sourceCtx) return null;
   sourceCtx.drawImage(sheetImage, 0, 0);
 
-  const corner = sourceCtx.getImageData(1, 1, 1, 1).data;
-  const keyR = corner[0];
-  const keyG = corner[1];
-  const keyB = corner[2];
+  const sourceData = sourceCtx.getImageData(0, 0, sourceW, sourceH);
+  const sourcePixels = sourceData.data;
+  const corner = sourceCtx.getImageData(0, 0, 1, 1).data;
+  const shouldApplyChromaKey = corner[3] > 8;
+  if (shouldApplyChromaKey) {
+    const keyR = corner[0];
+    const keyG = corner[1];
+    const keyB = corner[2];
+    for (let p = 0; p < sourcePixels.length; p += 4) {
+      const dr = sourcePixels[p] - keyR;
+      const dg = sourcePixels[p + 1] - keyG;
+      const db = sourcePixels[p + 2] - keyB;
+      const distance = Math.hypot(dr, dg, db);
+      if (distance <= chromaTolerance) {
+        sourcePixels[p + 3] = 0;
+      }
+    }
+    sourceCtx.putImageData(sourceData, 0, 0);
+  }
+
+  const columnHasOpaque = new Array(sourceW).fill(false);
+  for (let x = 0; x < sourceW; x += 1) {
+    for (let y = 0; y < sourceH; y += 1) {
+      const alpha = sourcePixels[(y * sourceW + x) * 4 + 3];
+      if (alpha > 8) {
+        columnHasOpaque[x] = true;
+        break;
+      }
+    }
+  }
+
+  const clusters = detectJourneyTreeColumnClusters(
+    columnHasOpaque,
+    safeVariantCount,
+  );
+  if (clusters.length === safeVariantCount) {
+    const padX = Math.max(
+      1,
+      Math.floor(sourceW / Math.max(1, safeVariantCount * 72)),
+    );
+    const clusteredVariants = [];
+    for (const cluster of clusters) {
+      const sx = Math.max(0, cluster.start - padX);
+      const ex = Math.min(sourceW - 1, cluster.end + padX);
+      const sw = Math.max(1, ex - sx + 1);
+      const canvas = document.createElement("canvas") as SpriteCanvas;
+      canvas.width = sw;
+      canvas.height = sourceH;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) continue;
+      ctx.drawImage(sourceCanvas, sx, 0, sw, sourceH, 0, 0, sw, sourceH);
+      const imageData = ctx.getImageData(0, 0, sw, sourceH);
+      canvas.groundAnchorFrac = computeSpriteGroundAnchorFrac(imageData, sourceH);
+      clusteredVariants.push(canvas);
+    }
+    if (clusteredVariants.length === safeVariantCount) {
+      return clusteredVariants;
+    }
+  }
 
   const variants = [];
-  const frameW = sourceW / variantCount;
-
-  for (let index = 0; index < variantCount; index += 1) {
-    const sx = frameW * index;
-    const sw = Math.max(1, frameW);
+  for (let index = 0; index < safeVariantCount; index += 1) {
+    const sx = Math.round((index * sourceW) / safeVariantCount);
+    const ex = Math.round(((index + 1) * sourceW) / safeVariantCount);
+    const sw = Math.max(1, ex - sx);
     const canvas = document.createElement("canvas") as SpriteCanvas;
-    canvas.width = Math.max(1, Math.round(sw));
+    canvas.width = sw;
     canvas.height = sourceH;
     const ctx = canvas.getContext("2d");
     if (!ctx) continue;
 
-    ctx.drawImage(sheetImage, sx, 0, sw, sourceH, 0, 0, canvas.width, sourceH);
-    const imageData = ctx.getImageData(0, 0, canvas.width, sourceH);
-    const pixels = imageData.data;
-    for (let p = 0; p < pixels.length; p += 4) {
-      const dr = pixels[p] - keyR;
-      const dg = pixels[p + 1] - keyG;
-      const db = pixels[p + 2] - keyB;
-      const distance = Math.hypot(dr, dg, db);
-      if (distance <= chromaTolerance) {
-        pixels[p + 3] = 0;
-      }
-    }
-    ctx.putImageData(imageData, 0, 0);
+    ctx.drawImage(sourceCanvas, sx, 0, sw, sourceH, 0, 0, sw, sourceH);
+    const imageData = ctx.getImageData(0, 0, sw, sourceH);
     canvas.groundAnchorFrac = computeSpriteGroundAnchorFrac(imageData, sourceH);
     variants.push(canvas);
   }
 
   return variants;
+}
+
+function detectJourneyTreeColumnClusters(columnHasOpaque, targetCount) {
+  const width = columnHasOpaque.length;
+  if (!width || targetCount <= 0) return [];
+  const minClusterWidth = Math.max(
+    2,
+    Math.floor(width / Math.max(1, targetCount * 18)),
+  );
+  const maxGapAsSeparator = Math.max(
+    1,
+    Math.min(48, Math.floor(width / Math.max(1, targetCount * 2))),
+  );
+  let bestMatch = [];
+  for (let separatorGap = 1; separatorGap <= maxGapAsSeparator; separatorGap += 1) {
+    const clusters = splitOpaqueClustersByTransparentGap(
+      columnHasOpaque,
+      separatorGap,
+      minClusterWidth,
+    );
+    if (clusters.length === targetCount) {
+      bestMatch = clusters;
+    }
+  }
+  return bestMatch;
+}
+
+function splitOpaqueClustersByTransparentGap(
+  columnHasOpaque,
+  separatorGapPx = 1,
+  minClusterWidthPx = 1,
+) {
+  const width = columnHasOpaque.length;
+  const safeSeparatorGap = Math.max(1, Math.floor(separatorGapPx));
+  const safeMinWidth = Math.max(1, Math.floor(minClusterWidthPx));
+  const clusters = [];
+  let index = 0;
+  while (index < width) {
+    while (index < width && !columnHasOpaque[index]) {
+      index += 1;
+    }
+    if (index >= width) break;
+    const start = index;
+    let lastOpaque = index;
+    let transparentRun = 0;
+    index += 1;
+    while (index < width) {
+      if (columnHasOpaque[index]) {
+        lastOpaque = index;
+        transparentRun = 0;
+        index += 1;
+        continue;
+      }
+      transparentRun += 1;
+      index += 1;
+      if (transparentRun >= safeSeparatorGap) {
+        break;
+      }
+    }
+    const clusterWidth = lastOpaque - start + 1;
+    if (clusterWidth >= safeMinWidth) {
+      clusters.push({ start, end: lastOpaque });
+    }
+  }
+  return clusters;
 }
 
 function sliceJourneySpriteStripVariants(sheetImage, variantCount) {

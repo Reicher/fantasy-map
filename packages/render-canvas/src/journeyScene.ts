@@ -65,7 +65,7 @@ const ENCOUNTER_VISUAL_HEIGHT_BY_TYPE = {
 };
 const ENCOUNTER_SPRITE_BY_TYPE = {
   rabbit: createJourneySprite(
-    new URL("../../../src/assets/journey/kanin.png", import.meta.url).href,
+    new URL("../../../src/assets/journey/rabbit.png", import.meta.url).href,
   ),
   wolf: createJourneySprite(
     new URL("../../../src/assets/journey/wolf.png", import.meta.url).href,
