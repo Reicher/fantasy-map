@@ -55,13 +55,11 @@ export function buildSettlementDebugSummary(context: SettlementDebugContext): st
   const residentLines = agents.length
     ? agents.map((agent, index) => {
         const name = String(agent?.name ?? "").trim() || `Agent ${index + 1}`;
-        const health = normalizePositiveInteger(agent?.health);
-        const maxHealth = Math.max(1, normalizePositiveInteger(agent?.maxHealth));
         const stamina = normalizePositiveInteger(agent?.stamina);
         const maxStamina = Math.max(1, normalizePositiveInteger(agent?.maxStamina));
         const carriedFood = countInventoryFood(agent?.inventory);
         const stateLabel = String(agent?.state ?? "okänd");
-        return `- ${name} (${stateLabel})\n  Hälsa: ${health}/${maxHealth}  Liv: ${health}/${maxHealth}  Stamina: ${stamina}/${maxStamina}  Mat: ${carriedFood}`;
+        return `- ${name} (${stateLabel})\n  Stamina: ${stamina}/${maxStamina}  Mat: ${carriedFood}`;
       })
     : ["- Inga boende kvar."];
 

@@ -2,6 +2,7 @@ import {
   consumeInventoryItemsByType,
   countInventoryItemsByType,
 } from "../inventory";
+import { createGeneratedAgentProfile } from "../agentFactory";
 import { withPlayActionMode } from "./actionMode";
 import {
   normalizeStaminaValue,
@@ -30,11 +31,6 @@ interface EncounterDefinition {
   label: string;
   weight: number;
   disposition: "friendly" | "neutral" | "hostile";
-  initiative: number;
-  damageMin: number;
-  damageMax: number;
-  maxHealth: number;
-  maxStamina: number;
   lootMeatMin: number;
   lootMeatMax: number;
 }
@@ -63,11 +59,6 @@ const ENCOUNTER_DEFINITIONS: readonly EncounterDefinition[] = Object.freeze([
     label: "kanin",
     weight: 0.55,
     disposition: "neutral",
-    initiative: 4,
-    damageMin: 1,
-    damageMax: 2,
-    maxHealth: 4,
-    maxStamina: 14,
     lootMeatMin: 1,
     lootMeatMax: 2,
   }),
@@ -76,11 +67,6 @@ const ENCOUNTER_DEFINITIONS: readonly EncounterDefinition[] = Object.freeze([
     label: "varg",
     weight: 0.45,
     disposition: "hostile",
-    initiative: 9,
-    damageMin: 4,
-    damageMax: 8,
-    maxHealth: 12,
-    maxStamina: 20,
     lootMeatMin: 2,
     lootMeatMax: 4,
   }),
@@ -89,11 +75,6 @@ const ENCOUNTER_DEFINITIONS: readonly EncounterDefinition[] = Object.freeze([
     label: "gruppen",
     weight: 0,
     disposition: "friendly",
-    initiative: 7,
-    damageMin: 2,
-    damageMax: 5,
-    maxHealth: 14,
-    maxStamina: 14,
     lootMeatMin: 1,
     lootMeatMax: 3,
   }),
@@ -364,6 +345,15 @@ function createEncounterFromDefinition(
 ): PlayEncounterState {
   const hourIndex = normalizeWorldHour(playState.journeyElapsedHours);
   const encounterId = `encounter-${hourIndex}-${rng.int(100, 999)}`;
+  const profileArchetype = definition.type === "wolf"
+    ? "wolf"
+    : definition.type === "rabbit"
+      ? "rabbit"
+      : "settler";
+  const opponentProfile = createGeneratedAgentProfile(null, encounterId, {
+    archetype: profileArchetype,
+    inventorySeedSuffix: "encounter",
+  });
   const playerInitiative = Number.isFinite(playState.initiative)
     ? Math.max(0, Math.floor(Number(playState.initiative)))
     : 0;
@@ -371,17 +361,17 @@ function createEncounterFromDefinition(
     id: encounterId,
     type: definition.type,
     disposition: definition.disposition,
-    turn: definition.initiative > playerInitiative ? "opponent" : "player",
+    turn: opponentProfile.initiative > playerInitiative ? "opponent" : "player",
     entryStyle: options.entryStyle ?? "travel-static",
     round: 1,
     rollIndex: 0,
-    opponentInitiative: definition.initiative,
-    opponentDamageMin: definition.damageMin,
-    opponentDamageMax: definition.damageMax,
-    opponentMaxHealth: definition.maxHealth,
-    opponentHealth: definition.maxHealth,
-    opponentMaxStamina: definition.maxStamina,
-    opponentStamina: definition.maxStamina,
+    opponentInitiative: opponentProfile.initiative,
+    opponentDamageMin: opponentProfile.damageMin,
+    opponentDamageMax: opponentProfile.damageMax,
+    opponentMaxHealth: opponentProfile.maxHealth,
+    opponentHealth: opponentProfile.health,
+    opponentMaxStamina: opponentProfile.maxStamina,
+    opponentStamina: opponentProfile.stamina,
   };
 }
 
@@ -1066,23 +1056,16 @@ function syncSettlementStateFromEncounter(
   }
 
   let changed = false;
-  const nextAgents = settlementState.agents.map((agent) => {
+  const nextAgents = settlementState.agents.flatMap((agent) => {
     const agentId = String(agent?.id ?? "");
     const member = membersById.get(agentId);
     if (!member || !agent) {
-      return agent;
+      return [agent];
     }
-    const nextMaxHealth = Math.max(
-      1,
-      Math.floor(Number(member.maxHealth ?? agent.maxHealth ?? 1)),
-    );
-    const nextHealth = Math.max(
-      0,
-      Math.min(
-        nextMaxHealth,
-        Math.floor(Number(member.health ?? agent.health ?? nextMaxHealth)),
-      ),
-    );
+    if (member.defeated) {
+      changed = true;
+      return [];
+    }
     const nextMaxStamina = Math.max(
       1,
       Math.floor(Number(member.maxStamina ?? agent.maxStamina ?? 1)),
@@ -1095,21 +1078,17 @@ function syncSettlementStateFromEncounter(
       ),
     );
     if (
-      Number(agent.maxHealth) === nextMaxHealth &&
-      Number(agent.health) === nextHealth &&
       Number(agent.maxStamina) === nextMaxStamina &&
       Number(agent.stamina) === nextStamina
     ) {
-      return agent;
+      return [agent];
     }
     changed = true;
-    return {
+    return [{
       ...agent,
-      maxHealth: nextMaxHealth,
-      health: nextHealth,
       maxStamina: nextMaxStamina,
       stamina: nextStamina,
-    };
+    }];
   });
 
   if (!changed) {
@@ -1186,15 +1165,7 @@ function getAliveSettlementMembers(
   if (!Array.isArray(encounter.opponentMembers)) {
     return [];
   }
-  return encounter.opponentMembers.filter((member) =>
-    normalizeEncounterMemberHealth(member) > 0,
-  );
-}
-
-function normalizeEncounterMemberHealth(member: PlayEncounterOpponentMember): number {
-  const maxHealth = Math.max(1, Math.floor(Number(member?.maxHealth ?? 1)));
-  const health = Math.floor(Number(member?.health ?? 0));
-  return Math.max(0, Math.min(maxHealth, Number.isFinite(health) ? health : 0));
+  return encounter.opponentMembers.filter((member) => !member?.defeated);
 }
 
 function normalizeEncounterMemberStamina(member: PlayEncounterOpponentMember): number {
@@ -1216,32 +1187,18 @@ function recalculateSettlementEncounter(
   members: PlayEncounterOpponentMember[],
 ): PlayEncounterState {
   const normalizedMembers = members.map((member) => {
-    const damageMin = normalizeEncounterMemberDamage(member.damageMin, 1);
-    const damageMax = Math.max(
-      damageMin,
-      normalizeEncounterMemberDamage(member.damageMax, damageMin),
-    );
-    const maxHealth = Math.max(1, Math.floor(Number(member.maxHealth ?? 1)));
+    const maxStamina = Math.max(1, Math.floor(Number(member.maxStamina ?? 1)));
     return {
       ...member,
-      damageMin,
-      damageMax,
-      maxHealth,
-      health: normalizeEncounterMemberHealth({
-        ...member,
-        maxHealth,
-      }),
-      maxStamina: Math.max(1, Math.floor(Number(member.maxStamina ?? 1))),
+      defeated: Boolean(member.defeated),
+      maxStamina,
       stamina: normalizeEncounterMemberStamina(member),
     };
   });
-  const aliveMembers = normalizedMembers.filter((member) => member.health > 0);
+  const aliveMembers = normalizedMembers.filter((member) => !member.defeated);
   const memberCount = Math.max(1, aliveMembers.length);
-  const totalMaxHealth = normalizedMembers.reduce(
-    (sum, member) => sum + member.maxHealth,
-    0,
-  );
-  const totalHealth = normalizedMembers.reduce((sum, member) => sum + member.health, 0);
+  const totalMembers = normalizedMembers.length;
+  const aliveCount = aliveMembers.length;
   const averageMaxStamina = aliveMembers.length > 0
     ? Math.max(
         1,
@@ -1258,22 +1215,6 @@ function recalculateSettlementEncounter(
         ),
       )
     : 0;
-  const averageDamageMin = aliveMembers.length > 0
-    ? Math.max(
-        1,
-        Math.floor(
-          aliveMembers.reduce((sum, member) => sum + member.damageMin, 0) / memberCount,
-        ),
-      )
-    : encounter.opponentDamageMin;
-  const averageDamageMax = aliveMembers.length > 0
-    ? Math.max(
-        averageDamageMin,
-        Math.ceil(
-          aliveMembers.reduce((sum, member) => sum + member.damageMax, 0) / memberCount,
-        ),
-      )
-    : Math.max(averageDamageMin, encounter.opponentDamageMax);
   const activeMemberStillAlive = aliveMembers.some(
     (member) => member.id === encounter.activeOpponentMemberId,
   );
@@ -1284,12 +1225,12 @@ function recalculateSettlementEncounter(
   return {
     ...encounter,
     opponentMembers: normalizedMembers,
-    opponentHealth: totalHealth,
-    opponentMaxHealth: totalMaxHealth,
+    opponentHealth: aliveCount,
+    opponentMaxHealth: totalMembers,
     opponentStamina: averageStamina,
     opponentMaxStamina: averageMaxStamina,
-    opponentDamageMin: averageDamageMin,
-    opponentDamageMax: averageDamageMax,
+    opponentDamageMin: 0,
+    opponentDamageMax: 0,
     activeOpponentMemberId: nextActiveOpponentMemberId,
   };
 }
@@ -1303,7 +1244,7 @@ function defeatSettlementMember(
   const members = Array.isArray(encounter.opponentMembers)
     ? encounter.opponentMembers
     : [];
-  const aliveMembers = members.filter((member) => normalizeEncounterMemberHealth(member) > 0);
+  const aliveMembers = members.filter((member) => !member.defeated);
   const target = aliveMembers[0] ?? null;
   if (!target) {
     return {
@@ -1317,7 +1258,7 @@ function defeatSettlementMember(
     }
     return {
       ...member,
-      health: 0,
+      defeated: true,
     };
   });
   const recalculated = recalculateSettlementEncounter(encounter, updatedMembers);

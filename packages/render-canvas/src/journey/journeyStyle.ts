@@ -97,6 +97,35 @@ const SILHOUETTE_BIOME_SMOOTHING_BY_BIOME = Object.freeze({
   rainforest: 1.4,
   mountain: 0.74,
 });
+const SILHOUETTE_PERIOD_SCALE_BY_BIOME = Object.freeze({
+  mountain: 1.18,
+});
+const SILHOUETTE_TOP_OVERSHOOT_SOFTNESS = 1.65;
+const SILHOUETTE_BACKGROUND_LIFT_BY_BIOME = Object.freeze({
+  mountain: Object.freeze({
+    // Negative lift means a slightly higher baseY -> lower valley floors.
+    baseYLift: -0.045,
+    amplitudeScale: 1.1,
+    sharpnessScale: 1.26,
+  }),
+  highlands: Object.freeze({
+    baseYLift: -0.02,
+    amplitudeScale: 1.06,
+    sharpnessScale: 1.16,
+  }),
+  plains: Object.freeze({
+    // Raise plains silhouette slightly so it does not sit too low on screen.
+    baseYLift: 0.035,
+    amplitudeScale: 1,
+    sharpnessScale: 1,
+  }),
+});
+const SILHOUETTE_LAYER_LIFT_BY_BIOME = Object.freeze({
+  plains: Object.freeze({
+    near1: 0.095,
+    near2: 0.075,
+  }),
+});
 const journeyNodeVariantsByMarker = new Map();
 const journeyTreeVariantsByFamily = new Map();
 
@@ -232,24 +261,74 @@ function getSilhouetteSpec(biomeKey, layerDepth) {
     1.8,
     1,
   );
+  const biomePeriodScale = clamp(
+    Number(SILHOUETTE_PERIOD_SCALE_BY_BIOME[biomeKey] ?? 1),
+    0.7,
+    1.6,
+    1,
+  );
   // smoothing < 1 → shorter wavelengths + bigger amplitude (more detail)
   // smoothing > 1 → longer wavelengths + smaller amplitude (smoother)
   const smoothing = Math.max(0.55, 1 + depthFactor * 0.26);
-  const totalSmoothing = smoothing * biomeSmoothing;
+  const totalSmoothing = smoothing * biomeSmoothing * biomePeriodScale;
   const amplitudeDamping = Math.pow(biomeSmoothing, 0.32);
   const softenedSharpness = Math.max(
     0.7,
     base.sharpness / Math.pow(biomeSmoothing, 0.28),
   );
+  const backgroundTuning = resolveBackgroundSilhouetteTuning(
+    biomeKey,
+    layerDepth,
+  );
+  const layerSpecificLift = resolveLayerSpecificSilhouetteLift(
+    biomeKey,
+    layerDepth,
+  );
+  const tunedBaseY =
+    base.baseY - backgroundTuning.baseYLift - layerSpecificLift;
+  const tunedAmplitude =
+    (base.amplitude * backgroundTuning.amplitudeScale) /
+    (smoothing * amplitudeDamping);
+  const tunedSharpness = softenedSharpness * backgroundTuning.sharpnessScale;
   return {
-    baseY: base.baseY,
-    amplitude: base.amplitude / (smoothing * amplitudeDamping),
+    baseY: tunedBaseY,
+    amplitude: tunedAmplitude,
     wavelength1: base.wavelength1 * totalSmoothing,
     wavelength2: base.wavelength2 * totalSmoothing,
-    sharpness: softenedSharpness,
+    sharpness: tunedSharpness,
     phase1: p1,
     phase2: p2,
   };
+}
+
+function resolveBackgroundSilhouetteTuning(biomeKey, layerDepth) {
+  if (layerDepth === "ground" || layerDepth === "foreground") {
+    return {
+      baseYLift: 0,
+      amplitudeScale: 1,
+      sharpnessScale: 1,
+    };
+  }
+  const tuning = SILHOUETTE_BACKGROUND_LIFT_BY_BIOME[biomeKey];
+  if (!tuning) {
+    return {
+      baseYLift: 0,
+      amplitudeScale: 1,
+      sharpnessScale: 1,
+    };
+  }
+  return tuning;
+}
+
+function resolveLayerSpecificSilhouetteLift(biomeKey, layerDepth) {
+  if (layerDepth === "ground" || layerDepth === "foreground") {
+    return 0;
+  }
+  const byLayer = SILHOUETTE_LAYER_LIFT_BY_BIOME[biomeKey];
+  if (!byLayer) {
+    return 0;
+  }
+  return clamp(Number(byLayer[layerDepth] ?? 0), -0.2, 0.25, 0);
 }
 
 function getBiomeBaseSpec(biomeKey) {
@@ -272,7 +351,20 @@ function sampleSilhouetteY(spec, x) {
     Math.max(0.5, spec.sharpness * 0.6),
   );
   const raw = spec.baseY - spec.amplitude * (shaped1 * 0.7 + shaped2 * 0.3);
-  return Math.max(0, Math.min(1, raw));
+  return Math.min(1, softenTopOvershoot(raw));
+}
+
+function softenTopOvershoot(value) {
+  if (!Number.isFinite(value)) {
+    return 1;
+  }
+  if (value >= 0) {
+    return value;
+  }
+  const overshoot = -value;
+  // Compresses excessive top overshoot without introducing a hard flat cap.
+  return -Math.log1p(overshoot * SILHOUETTE_TOP_OVERSHOOT_SOFTNESS) /
+    SILHOUETTE_TOP_OVERSHOOT_SOFTNESS;
 }
 
 // ---------------------------------------------------------------------------

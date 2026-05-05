@@ -409,7 +409,7 @@ describe("travel encounters", () => {
 
     const next = resolveEncounterPlayerAction(state, "attack") ?? state;
     expect(next.latestEncounterResolution?.outcome).toBe("opponent-died");
-    expect(next.settlementStates?.["2"]?.agents?.[0]?.health).toBe(0);
+    expect(next.settlementStates?.["2"]?.agents?.length ?? 0).toBe(0);
   });
 
   it("spends ammo and creates loot event when opponent dies", () => {

@@ -216,10 +216,6 @@ export function findRestingSettlementAgentAtWorldPoint(
       if (!agent || agent.state !== "resting") {
         continue;
       }
-      const health = Number.isFinite(agent.health) ? Number(agent.health) : 0;
-      if (health <= 0) {
-        continue;
-      }
       const agentX =
         settlement.x + (Number.isFinite(agent.campfireOffsetX) ? Number(agent.campfireOffsetX) : 0);
       const agentY =
@@ -274,6 +270,7 @@ function buildSettlementState(
   for (const [index, seed] of agentSeeds.entries()) {
     const agentKey = `settlement:${settlementId}:agent:${seed.id}`;
     const profile = createGeneratedAgentProfile(world, agentKey, {
+      archetype: "settler",
       randomizeCurrentStamina: true,
       inventorySeedSuffix: "npc",
     });
@@ -318,8 +315,6 @@ function buildSettlementState(
       greeting,
       initiative: profile.initiative,
       vapenTraffsakerhet: profile.vapenTraffsakerhet,
-      maxHealth: profile.maxHealth,
-      health: profile.health,
       maxStamina: profile.maxStamina,
       stamina: profile.stamina,
       staminaElapsedHours: profile.staminaElapsedHours,
@@ -417,9 +412,7 @@ function advanceRestingAgentHour(
   agent: PlaySettlementAgent | null;
   settlementInventory: InventoryState;
 } {
-  const maxHealth = Math.max(1, Math.floor(Number(agent.maxHealth ?? 1)));
   const maxStamina = Math.max(1, Math.floor(Number(agent.maxStamina ?? 1)));
-  const currentHealth = Math.max(0, Math.floor(Number(agent.health ?? maxHealth)));
   const currentStamina = Math.max(0, Math.floor(Number(agent.stamina ?? maxStamina)));
   const currentHungerElapsed = Math.max(
     0,
@@ -432,8 +425,7 @@ function advanceRestingAgentHour(
 
   const hunger = consumeInventoryItemsByType(settlementInventory, "meat", 1);
   const nextSettlementInventory = hunger.inventory as InventoryState;
-  const nextHealth = Math.max(0, currentHealth - hunger.missing);
-  if (nextHealth <= 0) {
+  if (hunger.missing > 0) {
     return {
       agent: null,
       settlementInventory: nextSettlementInventory,
@@ -448,8 +440,6 @@ function advanceRestingAgentHour(
   let nextAgent: PlaySettlementAgent = {
     ...agent,
     state: "resting",
-    maxHealth,
-    health: nextHealth,
     maxStamina,
     stamina: recoveredStamina,
     hungerElapsedHours: currentHungerElapsed + 1,
@@ -497,9 +487,7 @@ function advanceHuntingAgentHour(
   agent: PlaySettlementAgent | null;
   settlementInventory: InventoryState;
 } {
-  const maxHealth = Math.max(1, Math.floor(Number(agent.maxHealth ?? 1)));
   const maxStamina = Math.max(1, Math.floor(Number(agent.maxStamina ?? 1)));
-  const currentHealth = Math.max(0, Math.floor(Number(agent.health ?? maxHealth)));
   const currentStamina = Math.max(0, Math.floor(Number(agent.stamina ?? maxStamina)));
   const currentHungerElapsed = Math.max(
     0,
@@ -512,8 +500,7 @@ function advanceHuntingAgentHour(
 
   const hunger = consumeInventoryItemsByType(agent.inventory, "meat", 1);
   const nextAgentInventory = hunger.inventory as InventoryState;
-  const nextHealth = Math.max(0, currentHealth - hunger.missing);
-  if (nextHealth <= 0) {
+  if (hunger.missing > 0) {
     return {
       agent: null,
       settlementInventory,
@@ -524,8 +511,6 @@ function advanceHuntingAgentHour(
   let nextAgent: PlaySettlementAgent = {
     ...agent,
     state: "hunting",
-    maxHealth,
-    health: nextHealth,
     maxStamina,
     stamina: nextStamina,
     hungerElapsedHours: currentHungerElapsed + 1,

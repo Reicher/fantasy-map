@@ -26,6 +26,7 @@ import {
   drawGroundLayer,
   drawGroundTrees,
   drawNodeMarkers,
+  resetJourneyLayerRendererCaches,
   drawSilhouetteLayer,
   drawTreeDecorationsForLayer,
 } from "./journey/journeyLayerRenderers";
@@ -213,6 +214,7 @@ export function createJourneyScene({ canvas, getWorld = () => null }) {
   }
 
   function reset() {
+    resetJourneyLayerRendererCaches();
     state.strip = null;
     state.travelKey = null;
     state.lastTravel = null;

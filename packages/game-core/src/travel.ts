@@ -74,6 +74,7 @@ type NodeArrivalResult = {
 
 export function createPlayState(world): PlayState {
   const playerProfile = createGeneratedAgentProfile(world, "player", {
+    archetype: "player",
     inventorySeedSuffix: "player",
   });
   const playerInventory = createPlayerStartingInventoryWithWelcomeLetter(
@@ -612,9 +613,7 @@ function createSettlementEncounterArrivalResult(
     playState?.settlementStates?.[String(settlementId)] ?? null;
   const agents = Array.isArray(settlementState?.agents)
     ? settlementState.agents.filter(
-        (agent) =>
-          normalizeSettlementStat(agent?.health, 0) > 0 &&
-          String(agent?.state ?? "resting") === "resting",
+        (agent) => String(agent?.state ?? "resting") === "resting",
       )
     : [];
   if (!agents.length) {
@@ -628,28 +627,18 @@ function createSettlementEncounterArrivalResult(
   const opponentMembers: PlayEncounterOpponentMember[] = agents.map((agent, index) => {
     const fallbackName = `Bosättare ${index + 1}`;
     const name = String(agent?.name ?? "").trim() || fallbackName;
-    const maxHealth = Math.max(4, normalizeSettlementStat(agent?.maxHealth, 12));
-    const health = Math.max(
-      1,
-      Math.min(maxHealth, normalizeSettlementStat(agent?.health, maxHealth)),
-    );
     const maxStamina = Math.max(
-      4,
+      1,
       normalizeSettlementStat(agent?.maxStamina, 12),
     );
     const stamina = Math.max(
-      1,
+      0,
       Math.min(maxStamina, normalizeSettlementStat(agent?.stamina, maxStamina)),
     );
-    const damageMin = Math.max(1, Math.floor(maxHealth * 0.28));
-    const damageMax = Math.max(damageMin, Math.ceil(maxHealth * 0.52));
     return {
       id: String(agent?.id ?? `settlement-member-${settlementId}-${index + 1}`),
       name,
-      damageMin,
-      damageMax,
-      maxHealth,
-      health,
+      defeated: false,
       maxStamina,
       stamina,
     };
@@ -659,30 +648,19 @@ function createSettlementEncounterArrivalResult(
     averageSettlementStat(agents, "initiative", 0),
     0,
   );
-  const totalMaxHealth = opponentMembers.reduce((sum, member) => sum + member.maxHealth, 0);
-  const totalHealth = opponentMembers.reduce((sum, member) => sum + member.health, 0);
+  const totalMembers = opponentMembers.length;
   const averageMaxStamina = Math.max(
     1,
     Math.floor(
-      opponentMembers.reduce((sum, member) => sum + member.maxStamina, 0) / memberCount,
+      opponentMembers.reduce((sum, member) => sum + Number(member.maxStamina ?? 1), 0) /
+        memberCount,
     ),
   );
   const averageStamina = Math.max(
-    1,
+    0,
     Math.floor(
-      opponentMembers.reduce((sum, member) => sum + member.stamina, 0) / memberCount,
-    ),
-  );
-  const averageDamageMin = Math.max(
-    1,
-    Math.floor(
-      opponentMembers.reduce((sum, member) => sum + member.damageMin, 0) / memberCount,
-    ),
-  );
-  const averageDamageMax = Math.max(
-    averageDamageMin,
-    Math.ceil(
-      opponentMembers.reduce((sum, member) => sum + member.damageMax, 0) / memberCount,
+      opponentMembers.reduce((sum, member) => sum + Number(member.stamina ?? 0), 0) /
+        memberCount,
     ),
   );
   const settlementName = String(
@@ -736,10 +714,10 @@ function createSettlementEncounterArrivalResult(
       round: 1,
       rollIndex: 0,
       opponentInitiative: averageInitiative,
-      opponentDamageMin: averageDamageMin,
-      opponentDamageMax: averageDamageMax,
-      opponentMaxHealth: totalMaxHealth,
-      opponentHealth: totalHealth,
+      opponentDamageMin: 0,
+      opponentDamageMax: 0,
+      opponentMaxHealth: totalMembers,
+      opponentHealth: totalMembers,
       opponentMaxStamina: averageMaxStamina,
       opponentStamina: averageStamina,
       opponentMembers,

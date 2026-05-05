@@ -93,6 +93,7 @@ export function createPlaySubViewController({
   let lastJourneyEncounterActionsVisible = null;
   let lastJourneyEncounterCanAttack = null;
   let lastJourneyEncounterCanFlee = null;
+  let lastJourneyEncounterCanTrade = null;
   let lastSettlementActionMenuVisible = null;
   let lastSettlementActionHintVisible = null;
   let lastSettlementActionHintMessage = null;
@@ -193,6 +194,7 @@ export function createPlaySubViewController({
     lastJourneyEncounterActionsVisible = null;
     lastJourneyEncounterCanAttack = null;
     lastJourneyEncounterCanFlee = null;
+    lastJourneyEncounterCanTrade = null;
     lastSettlementActionMenuVisible = null;
     lastSettlementActionHintVisible = null;
     lastSettlementActionHintMessage = null;
@@ -538,7 +540,7 @@ export function createPlaySubViewController({
     if (!shouldShow) {
       lastJourneyEventDialogMessage = null;
       syncJourneyLootPanel(false, null);
-      syncJourneyEncounterActions(false, false, false);
+      syncJourneyEncounterActions(false, false, false, false);
       syncSettlementEncounterActionMenu(false, null, world);
       dialog.classList.remove("play-journey-event-dialog--loot");
       dialog.classList.remove("play-journey-event-dialog--encounter");
@@ -576,6 +578,9 @@ export function createPlaySubViewController({
     const canFlee =
       showEncounterActions &&
       !isNonHostileEncounter;
+    const canTrade =
+      showEncounterActions &&
+      isSettlementEncounter;
     dialog.classList.toggle("play-journey-event-dialog--loot", showLootPanel);
     dialog.classList.toggle(
       "play-journey-event-dialog--encounter",
@@ -586,7 +591,7 @@ export function createPlaySubViewController({
       isSettlementEncounter,
     );
     syncJourneyLootPanel(showLootPanel, lootInventory);
-    syncJourneyEncounterActions(isEncounterMenuOpen, canAttack, canFlee);
+    syncJourneyEncounterActions(isEncounterMenuOpen, canAttack, canFlee, canTrade);
     syncSettlementEncounterActionMenu(isEncounterMenuOpen, playState, world);
     scheduleAutoClearJourneyEvent(event);
   }
@@ -737,7 +742,7 @@ export function createPlaySubViewController({
     }
   }
 
-  function syncJourneyEncounterActions(showActions, canAttack, canFlee) {
+  function syncJourneyEncounterActions(showActions, canAttack, canFlee, canTrade) {
     if (lastJourneyEncounterActionsVisible !== showActions) {
       setElementVisible(refs.playJourneyEncounterActions, showActions, "grid");
       lastJourneyEncounterActionsVisible = showActions;
@@ -745,6 +750,10 @@ export function createPlaySubViewController({
     if (!showActions) {
       lastJourneyEncounterCanAttack = null;
       lastJourneyEncounterCanFlee = null;
+      lastJourneyEncounterCanTrade = null;
+      if (refs.playJourneyEncounterTradeButton) {
+        setElementVisible(refs.playJourneyEncounterTradeButton, false, "inline-flex");
+      }
       return;
     }
     if (lastJourneyEncounterCanAttack !== canAttack) {
@@ -764,6 +773,20 @@ export function createPlaySubViewController({
           refs.playJourneyEncounterFleeButton.removeAttribute("title");
         }
       }
+    }
+    if (lastJourneyEncounterCanTrade !== canTrade) {
+      lastJourneyEncounterCanTrade = canTrade;
+      if (refs.playJourneyEncounterTradeButton) {
+        setElementVisible(
+          refs.playJourneyEncounterTradeButton,
+          canTrade,
+          "inline-flex",
+        );
+      }
+    }
+    if (refs.playJourneyEncounterTradeButton) {
+      refs.playJourneyEncounterTradeButton.disabled = true;
+      refs.playJourneyEncounterTradeButton.title = "Byteshandel kommer snart.";
     }
   }
 
@@ -793,6 +816,7 @@ export function createPlaySubViewController({
     lastJourneyEncounterActionsVisible = false;
     lastJourneyEncounterCanAttack = null;
     lastJourneyEncounterCanFlee = null;
+    lastJourneyEncounterCanTrade = null;
     lastSettlementActionMenuVisible = false;
     lastSettlementActionHintVisible = false;
     lastSettlementActionHintMessage = null;

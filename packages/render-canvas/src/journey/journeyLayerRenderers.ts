@@ -73,11 +73,21 @@ const LAYER_TOP_RIM = Object.freeze({
   near2: Object.freeze({ lineWidthPx: 1.22, alpha: 0.44, haze: 0.36, lift: 0.38 }),
   near1: Object.freeze({ lineWidthPx: 1.28, alpha: 0.48, haze: 0.28, lift: 0.4 }),
 });
+const SILHOUETTE_WATER_BULGE_SCALE = Object.freeze({
+  far: 0.34,
+  mid: 0.38,
+  near2: 0.42,
+  near1: 0.46,
+});
 const settlementAgentSprite = createJourneySprite(SETTLEMENT_AGENT_SPRITE_URL);
 const settlementAgentAlphaById = new Map<
   string,
   { alpha: number; lastUpdatedAtMs: number; lastSeenAtMs: number }
 >();
+
+export function resetJourneyLayerRendererCaches() {
+  settlementAgentAlphaById.clear();
+}
 
 export function drawGroundLayer(ctx, strip, scrollX, playerX, viewW) {
   const speed = PARALLAX_SPEED.ground;
@@ -209,7 +219,8 @@ export function drawSilhouetteLayer(
   const { topY, bottomY } = band;
   const layerH = bottomY - topY;
 
-  for (const segment of segments) {
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
     if (isWaterSilhouetteSegment(segment)) continue;
     const samples = segment.topEdgeSamples;
     if (!samples) continue;
@@ -220,13 +231,20 @@ export function drawSilhouetteLayer(
     const haze = LAYER_HAZE[layerName] ?? 0;
 
     const drawPx = Math.ceil(segment.stripWidth);
-    ctx.beginPath();
-    ctx.moveTo(canvasX, bottomY);
-    for (let i = 0; i < width && i <= drawPx; i += 1) {
-      ctx.lineTo(canvasX + i, topY + samples[i] * layerH);
-    }
-    ctx.lineTo(canvasX + segment.stripWidth, bottomY);
-    ctx.closePath();
+    const leftWater = isWaterSilhouetteNeighbor(segments[index - 1]);
+    const rightWater = isWaterSilhouetteNeighbor(segments[index + 1]);
+    drawSilhouetteLandSegmentPath(ctx, {
+      canvasX,
+      segmentWidth: segment.stripWidth,
+      samples,
+      drawPx,
+      topY,
+      bottomY,
+      layerH,
+      layerName,
+      leftWater,
+      rightWater,
+    });
     if (segment.isBlend && segment.colorA && segment.colorB && haze > 0) {
       ctx.save();
       ctx.clip();
@@ -303,6 +321,129 @@ function isWaterSilhouetteSegment(segment) {
     );
   }
   return isWaterBiome(segment.biomeKey);
+}
+
+function isWaterSilhouetteNeighbor(segment) {
+  if (!segment) return false;
+  if (segment.isBlend) {
+    return (
+      isWaterBiome(segment.biomeKeyA) || isWaterBiome(segment.biomeKeyB)
+    );
+  }
+  return isWaterBiome(segment.biomeKey);
+}
+
+function drawSilhouetteLandSegmentPath(
+  ctx,
+  {
+    canvasX,
+    segmentWidth,
+    samples,
+    drawPx,
+    topY,
+    bottomY,
+    layerH,
+    layerName,
+    leftWater,
+    rightWater,
+  },
+) {
+  const leftX = canvasX;
+  const rightX = canvasX + segmentWidth;
+  const topLeftSample = sampleTopEdgeAtOffset(samples, 0);
+  const topRightSample = sampleTopEdgeAtOffset(samples, segmentWidth);
+  const topLeftY = topY + topLeftSample * layerH;
+  const topRightY = topY + topRightSample * layerH;
+  const bulgeScale = Number(SILHOUETTE_WATER_BULGE_SCALE[layerName] ?? 0);
+  const maxRadiusByWidth = Math.max(0, segmentWidth * 0.45);
+  let leftRadius = leftWater
+    ? Math.min(
+        maxRadiusByWidth,
+        Math.max(0, bottomY - topLeftY) * bulgeScale,
+      )
+    : 0;
+  let rightRadius = rightWater
+    ? Math.min(
+        maxRadiusByWidth,
+        Math.max(0, bottomY - topRightY) * bulgeScale,
+      )
+    : 0;
+  const totalRadius = leftRadius + rightRadius;
+  const maxTotalRadius = segmentWidth * 0.9;
+  if (leftRadius > 0 && rightRadius > 0 && totalRadius > maxTotalRadius) {
+    const scale = maxTotalRadius / totalRadius;
+    leftRadius *= scale;
+    rightRadius *= scale;
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(leftX, topLeftY);
+  for (let i = 1; i <= drawPx; i += 1) {
+    const sampleIndex = Math.min(samples.length - 1, i);
+    ctx.lineTo(canvasX + i, topY + samples[sampleIndex] * layerH);
+  }
+  ctx.lineTo(rightX, topRightY);
+
+  if (rightRadius > 0.01) {
+    drawVerticalWaterBulgeBezier(
+      ctx,
+      rightX,
+      topRightY,
+      bottomY,
+      rightRadius,
+      1,
+    );
+  } else {
+    ctx.lineTo(rightX, bottomY);
+  }
+
+  ctx.lineTo(leftX, bottomY);
+  if (leftRadius > 0.01) {
+    drawVerticalWaterBulgeBezier(
+      ctx,
+      leftX,
+      bottomY,
+      topLeftY,
+      leftRadius,
+      -1,
+    );
+  } else {
+    ctx.lineTo(leftX, topLeftY);
+  }
+  ctx.closePath();
+}
+
+function drawVerticalWaterBulgeBezier(
+  ctx,
+  edgeX,
+  startY,
+  endY,
+  radius,
+  direction,
+) {
+  const ctrlX = edgeX + Math.max(0, radius) * direction;
+  const cp1Y = startY + (endY - startY) * 0.3;
+  const cp2Y = startY + (endY - startY) * 0.74;
+  ctx.bezierCurveTo(ctrlX, cp1Y, ctrlX, cp2Y, edgeX, endY);
+}
+
+function sampleTopEdgeAtOffset(samples, offset) {
+  if (!samples?.length || !Number.isFinite(offset)) {
+    return 1;
+  }
+  if (offset <= 0) {
+    return samples[0] ?? 1;
+  }
+  const maxIndex = samples.length - 1;
+  if (offset >= maxIndex) {
+    return samples[maxIndex] ?? 1;
+  }
+  const low = Math.floor(offset);
+  const high = Math.min(maxIndex, low + 1);
+  const t = offset - low;
+  const a = samples[low] ?? samples[0] ?? 1;
+  const b = samples[high] ?? a;
+  return a + (b - a) * t;
 }
 
 export function drawGroundDetails(ctx, strip, scrollX, playerX, viewW) {

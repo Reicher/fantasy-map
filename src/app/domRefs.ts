@@ -79,6 +79,9 @@ export function createAppRefs(): AppRefs {
     playJourneyEncounterGreetButton: queryOptional<HTMLButtonElement>(
       "#play-journey-encounter-greet",
     ),
+    playJourneyEncounterTradeButton: queryOptional<HTMLButtonElement>(
+      "#play-journey-encounter-trade",
+    ),
     playJourneyEncounterAttackButton: queryOptional<HTMLButtonElement>(
       "#play-journey-encounter-attack",
     ),

@@ -213,12 +213,13 @@ export type PlayEncounterOutcome =
 export interface PlayEncounterOpponentMember {
   id: string;
   name: string;
-  damageMin: number;
-  damageMax: number;
-  maxHealth: number;
-  health: number;
-  maxStamina: number;
-  stamina: number;
+  defeated?: boolean;
+  damageMin?: number;
+  damageMax?: number;
+  maxHealth?: number;
+  health?: number;
+  maxStamina?: number;
+  stamina?: number;
 }
 
 export interface PlayEncounterState {

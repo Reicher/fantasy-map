@@ -70,6 +70,7 @@ export interface AppRefs {
   playJourneyEventTakeAllButton: HTMLButtonElement | null;
   playJourneyEncounterActions: HTMLElement | null;
   playJourneyEncounterGreetButton: HTMLButtonElement | null;
+  playJourneyEncounterTradeButton: HTMLButtonElement | null;
   playJourneyEncounterAttackButton: HTMLButtonElement | null;
   playJourneyEncounterFleeButton: HTMLButtonElement | null;
   playJourneySettlementActions: HTMLElement | null;

@@ -12,6 +12,7 @@ import {
 // ---------------------------------------------------------------------------
 const MID_OFFSET_WORLD = 5;
 const FAR_OFFSET_WORLD = 10;
+const NEAR_LAYER_HEIGHT_SCALE = 1.5;
 
 // Pixels per world unit – the canonical scroll mapping.
 // One world unit of travel = this many pixels of strip scrolling.
@@ -54,6 +55,7 @@ const FOREGROUND_SUPPRESSED_BIOMES = new Set([
   "rainforest",
   "tundra",
 ]);
+const SEGMENT_WIDTH_EPS = 1e-3;
 const FOREGROUND_TREE_ALLOWED_BIOMES = new Set([
   ...FOREGROUND_SUPPRESSED_BIOMES,
   "desert",
@@ -414,6 +416,12 @@ const FOREGROUND_TREE_CONFIG = {
 const LAYER_TREE_DENSITY_BOOST = 1.35;
 const GROUND_TREE_DENSITY_BOOST = 2.0;
 const FOREGROUND_TREE_DENSITY_BOOST = 2.1;
+const DECORATION_EDGE_PADDING_FACTOR = 0.42;
+const DECORATION_SEAM_PADDING_FACTOR = 0.48;
+const GROUND_TREE_MIN_GAP_FACTOR = 0.74;
+const FOREGROUND_TREE_MIN_GAP_FACTOR = 0.72;
+const LAYER_TREE_MIN_GAP_FACTOR = 0.62;
+const GROUND_DETAIL_MIN_GAP_FACTOR = 0.58;
 const NODE_DECORATION_EXCLUSION_RADIUS_BY_LAYER = Object.freeze({
   ground: 158,
   groundDetails: 172,
@@ -523,8 +531,8 @@ export function buildJourneyStrip(
   //
   // The four background silhouette layers (far, mid, near2, near1) are
   // distributed as equal slices between silhouetteZoneTop and groundTopY.
-  // Each layer's bottomY extends 2px past groundTopY so that sub-pixel
-  // anti-aliasing never leaves a gap at the ground line.
+  // far + mid keep the standard 2px ground overlap. near1 + near2 are
+  // intentionally extended downward (50% taller) for stronger depth.
 
   const groundTopY = Math.round(viewH * 0.67);
   const groundBottomY = viewH;
@@ -539,16 +547,22 @@ export function buildJourneyStrip(
   const farTop = silhouetteZoneTop;
 
   const SILHOUETTE_BOTTOM = groundTopY + 2; // 2px overlap so ground covers the anti-aliased edge
+  const near1BaseHeight = SILHOUETTE_BOTTOM - near1Top;
+  const near2BaseHeight = SILHOUETTE_BOTTOM - near2Top;
+  const near1Bottom = Math.min(
+    groundBottomY,
+    near1Top + near1BaseHeight * NEAR_LAYER_HEIGHT_SCALE,
+  );
+  const near2Bottom = Math.min(
+    groundBottomY,
+    near2Top + near2BaseHeight * NEAR_LAYER_HEIGHT_SCALE,
+  );
 
   const layers = {
     ground: { topY: groundTopY, bottomY: groundBottomY },
     foreground: { topY: Math.round(viewH * 0.8), bottomY: groundBottomY },
-    // All background silhouette layers share the same bottomY so that each
-    // layer's polygon fills from its own top edge all the way down to the
-    // ground line. Layers are drawn back-to-front (far → near1), so each
-    // closer layer's polygon naturally occludes the ones behind it.
-    near1: { topY: near1Top, bottomY: SILHOUETTE_BOTTOM },
-    near2: { topY: near2Top, bottomY: SILHOUETTE_BOTTOM },
+    near1: { topY: near1Top, bottomY: near1Bottom },
+    near2: { topY: near2Top, bottomY: near2Bottom },
     mid: { topY: midTop, bottomY: SILHOUETTE_BOTTOM },
     far: { topY: farTop, bottomY: SILHOUETTE_BOTTOM },
   };
@@ -976,7 +990,8 @@ function buildGroundTrees(groundSegments, strip = null) {
   );
   const trees = [];
 
-  for (const segment of groundSegments) {
+  for (let index = 0; index < groundSegments.length; index += 1) {
+    const segment = groundSegments[index];
     if (!segment || segment.isBlend) continue;
     if (!segment.biomeKey || !TREE_ALLOWED_BIOMES.has(segment.biomeKey))
       continue;
@@ -987,15 +1002,21 @@ function buildGroundTrees(groundSegments, strip = null) {
         `ground-tree:${segment.biomeKey}:${Number(segment.isSnow) ? 1 : 0}:${Math.round(segment.stripX)}:${Math.round(segment.stripWidth)}`,
       ),
     );
-    const segStart =
-      segment.stripX + GROUND_TREE_CONFIG.edgePaddingPx + rng() * 16;
-    const segEnd =
-      segment.stripX + segment.stripWidth - GROUND_TREE_CONFIG.edgePaddingPx;
+    const prevSegment = groundSegments[index - 1] ?? null;
+    const nextSegment = groundSegments[index + 1] ?? null;
+    const avgSpacing =
+      (GROUND_TREE_CONFIG.minSpacingPx + GROUND_TREE_CONFIG.maxSpacingPx) * 0.5;
+    const { segStart, segEnd } = resolveDecorationSpawnWindow(
+      segment,
+      prevSegment,
+      nextSegment,
+      avgSpacing,
+      GROUND_TREE_CONFIG.edgePaddingPx,
+      rng() * 16,
+    );
     const usableWidth = Math.max(0, segEnd - segStart);
     if (usableWidth < 36) continue;
 
-    const avgSpacing =
-      (GROUND_TREE_CONFIG.minSpacingPx + GROUND_TREE_CONFIG.maxSpacingPx) * 0.5;
     const expectedBaseCount =
       (usableWidth / avgSpacing) * GROUND_TREE_DENSITY_BOOST +
       (rng() < 0.3 ? 0.7 : 0);
@@ -1005,21 +1026,35 @@ function buildGroundTrees(groundSegments, strip = null) {
       GROUND_TREE_CONFIG.maxPerSegment,
     );
     if (baseCount <= 0) continue;
-    const count = computeTreeSpawnCountForSegment(
+    const unclampedCount = computeTreeSpawnCountForSegment(
       baseCount,
       segment.biomeKey,
       "ground",
       rng,
     );
+    const minGapPx = Math.max(1, avgSpacing * GROUND_TREE_MIN_GAP_FACTOR);
+    const count = clampSpawnCountBySpacing(
+      unclampedCount,
+      usableWidth,
+      minGapPx,
+    );
     if (count <= 0) continue;
 
+    let lastPlacedX = Number.NEGATIVE_INFINITY;
     for (let i = 0; i < count; i += 1) {
       const t = (i + 0.2 + rng() * 0.6) / count;
       const jitter = (rng() - 0.5) * avgSpacing * 0.2;
-      const stripX = Math.max(
+      let stripX = Math.max(
         segStart,
         Math.min(segEnd, segStart + usableWidth * t + jitter),
       );
+      if (
+        Number.isFinite(lastPlacedX) &&
+        stripX - lastPlacedX < minGapPx
+      ) {
+        stripX = lastPlacedX + minGapPx;
+        if (stripX > segEnd) continue;
+      }
       if (isInsideNodeDecorationExclusionZone(stripX, nodeExclusionZones))
         continue;
       const treeVisual = pickTreeVisualForBiome(
@@ -1043,6 +1078,7 @@ function buildGroundTrees(groundSegments, strip = null) {
           rng(),
         ),
       });
+      lastPlacedX = stripX;
     }
   }
 
@@ -1057,7 +1093,8 @@ function buildGroundDetails(groundSegments, strip = null) {
   );
   const details = [];
 
-  for (const segment of groundSegments) {
+  for (let index = 0; index < groundSegments.length; index += 1) {
+    const segment = groundSegments[index];
     if (!segment || segment.isBlend) continue;
     if (!segment.biomeKey || segment.stripWidth < 20) continue;
     if (WATER_BIOME_KEYS.has(segment.biomeKey)) continue;
@@ -1067,27 +1104,48 @@ function buildGroundDetails(groundSegments, strip = null) {
         `ground-detail:${segment.biomeKey}:${Number(segment.isSnow) ? 1 : 0}:${Math.round(segment.stripX)}:${Math.round(segment.stripWidth)}`,
       ),
     );
-    const segStart = segment.stripX + 5 + rng() * 6;
-    const segEnd = segment.stripX + segment.stripWidth - 5;
-    const usableWidth = Math.max(0, segEnd - segStart);
-    if (usableWidth < 4) continue;
-
     const { minSpacingPx, maxSpacingPx } = getGroundDetailSpacing(
       segment.biomeKey,
       segment.isSnow,
     );
     const avgSpacing = (minSpacingPx + maxSpacingPx) * 0.5;
-    const count = Math.max(1, Math.round(usableWidth / avgSpacing));
-    const motifs = getGroundDetailMotifs(segment.biomeKey, segment.isSnow);
-    if (!motifs.length) continue;
+    const prevSegment = groundSegments[index - 1] ?? null;
+    const nextSegment = groundSegments[index + 1] ?? null;
+    const { segStart, segEnd } = resolveDecorationSpawnWindow(
+      segment,
+      prevSegment,
+      nextSegment,
+      avgSpacing,
+      5,
+      rng() * 6,
+    );
+    const usableWidth = Math.max(0, segEnd - segStart);
+    if (usableWidth < 4) continue;
 
+    const minGapPx = Math.max(1, avgSpacing * GROUND_DETAIL_MIN_GAP_FACTOR);
+    const count = clampSpawnCountBySpacing(
+      Math.max(1, Math.round(usableWidth / avgSpacing)),
+      usableWidth,
+      minGapPx,
+    );
+    const motifs = getGroundDetailMotifs(segment.biomeKey, segment.isSnow);
+    if (!motifs.length || count <= 0) continue;
+
+    let lastPlacedX = Number.NEGATIVE_INFINITY;
     for (let i = 0; i < count; i += 1) {
       const t = (i + 0.08 + rng() * 0.84) / count;
       const jitter = (rng() - 0.5) * avgSpacing * 0.24;
-      const stripX = Math.max(
+      let stripX = Math.max(
         segStart,
         Math.min(segEnd, segStart + usableWidth * t + jitter),
       );
+      if (
+        Number.isFinite(lastPlacedX) &&
+        stripX - lastPlacedX < minGapPx
+      ) {
+        stripX = lastPlacedX + minGapPx;
+        if (stripX > segEnd) continue;
+      }
       if (isInsideNodeDecorationExclusionZone(stripX, nodeExclusionZones))
         continue;
       const motif = motifs[Math.floor(rng() * motifs.length)];
@@ -1103,6 +1161,7 @@ function buildGroundDetails(groundSegments, strip = null) {
         scale: lerp(0.72, 1.28, rng()),
         verticalFrac: lerp(verticalRange.min, verticalRange.max, rng()),
       });
+      lastPlacedX = stripX;
     }
   }
 
@@ -1117,7 +1176,8 @@ function buildForegroundTrees(groundSegments, strip = null) {
   );
   const trees = [];
 
-  for (const segment of groundSegments) {
+  for (let index = 0; index < groundSegments.length; index += 1) {
+    const segment = groundSegments[index];
     if (!segment || segment.isBlend) continue;
     if (
       !segment.biomeKey ||
@@ -1131,19 +1191,23 @@ function buildForegroundTrees(groundSegments, strip = null) {
         `foreground-tree:${segment.biomeKey}:${Number(segment.isSnow) ? 1 : 0}:${Math.round(segment.stripX)}:${Math.round(segment.stripWidth)}`,
       ),
     );
-    const segStart =
-      segment.stripX + FOREGROUND_TREE_CONFIG.edgePaddingPx + rng() * 12;
-    const segEnd =
-      segment.stripX +
-      segment.stripWidth -
-      FOREGROUND_TREE_CONFIG.edgePaddingPx;
-    const usableWidth = Math.max(0, segEnd - segStart);
-    if (usableWidth < 24) continue;
-
     const avgSpacing =
       (FOREGROUND_TREE_CONFIG.minSpacingPx +
         FOREGROUND_TREE_CONFIG.maxSpacingPx) *
       0.5;
+    const prevSegment = groundSegments[index - 1] ?? null;
+    const nextSegment = groundSegments[index + 1] ?? null;
+    const { segStart, segEnd } = resolveDecorationSpawnWindow(
+      segment,
+      prevSegment,
+      nextSegment,
+      avgSpacing,
+      FOREGROUND_TREE_CONFIG.edgePaddingPx,
+      rng() * 12,
+    );
+    const usableWidth = Math.max(0, segEnd - segStart);
+    if (usableWidth < 24) continue;
+
     const expectedBaseCount =
       (usableWidth / avgSpacing) * FOREGROUND_TREE_DENSITY_BOOST +
       (rng() < 0.26 ? 0.65 : 0);
@@ -1153,21 +1217,35 @@ function buildForegroundTrees(groundSegments, strip = null) {
       FOREGROUND_TREE_CONFIG.maxPerSegment,
     );
     if (baseCount <= 0) continue;
-    const count = computeTreeSpawnCountForSegment(
+    const unclampedCount = computeTreeSpawnCountForSegment(
       baseCount,
       segment.biomeKey,
       "foreground",
       rng,
     );
+    const minGapPx = Math.max(1, avgSpacing * FOREGROUND_TREE_MIN_GAP_FACTOR);
+    const count = clampSpawnCountBySpacing(
+      unclampedCount,
+      usableWidth,
+      minGapPx,
+    );
     if (count <= 0) continue;
 
+    let lastPlacedX = Number.NEGATIVE_INFINITY;
     for (let i = 0; i < count; i += 1) {
       const t = (i + 0.1 + rng() * 0.8) / count;
       const jitter = (rng() - 0.5) * avgSpacing * 0.22;
-      const stripX = Math.max(
+      let stripX = Math.max(
         segStart,
         Math.min(segEnd, segStart + usableWidth * t + jitter),
       );
+      if (
+        Number.isFinite(lastPlacedX) &&
+        stripX - lastPlacedX < minGapPx
+      ) {
+        stripX = lastPlacedX + minGapPx;
+        if (stripX > segEnd) continue;
+      }
       if (isInsideNodeDecorationExclusionZone(stripX, nodeExclusionZones))
         continue;
       const treeVisual = pickTreeVisualForBiome(
@@ -1191,6 +1269,7 @@ function buildForegroundTrees(groundSegments, strip = null) {
           rng(),
         ),
       });
+      lastPlacedX = stripX;
     }
   }
 
@@ -1206,7 +1285,8 @@ function buildLayerTreeDecorations(layerSegments, layerName, strip = null) {
   );
 
   const trees = [];
-  for (const segment of layerSegments) {
+  for (let index = 0; index < layerSegments.length; index += 1) {
+    const segment = layerSegments[index];
     if (!segment || segment.isBlend || !segment.topEdgeSamples) continue;
     if (!segment.biomeKey || TREE_BLOCKED_BIOMES.has(segment.biomeKey))
       continue;
@@ -1218,11 +1298,20 @@ function buildLayerTreeDecorations(layerSegments, layerName, strip = null) {
         `${layerName}:${segment.biomeKey}:${Number(segment.isSnow) ? 1 : 0}:${Math.round(segment.stripX)}:${Math.round(segment.stripWidth)}`,
       ),
     );
-    const segStart = segment.stripX + 5 + rng() * 8;
-    const segEnd = segment.stripX + segment.stripWidth - 5;
+    const avgSpacing = (config.minSpacingPx + config.maxSpacingPx) * 0.5;
+    const prevSegment = layerSegments[index - 1] ?? null;
+    const nextSegment = layerSegments[index + 1] ?? null;
+    const { segStart, segEnd } = resolveDecorationSpawnWindow(
+      segment,
+      prevSegment,
+      nextSegment,
+      avgSpacing,
+      5,
+      rng() * 8,
+    );
     const usableWidth = Math.max(0, segEnd - segStart);
     if (usableWidth < 4) continue;
-    const avgSpacing = (config.minSpacingPx + config.maxSpacingPx) * 0.5;
+
     const expectedBaseCount =
       (usableWidth / avgSpacing) * LAYER_TREE_DENSITY_BOOST +
       (rng() < 0.22 ? 0.55 : 0);
@@ -1231,21 +1320,35 @@ function buildLayerTreeDecorations(layerSegments, layerName, strip = null) {
       rng,
     );
     if (baseCount <= 0) continue;
-    const targetCount = computeTreeSpawnCountForSegment(
+    const unclampedTargetCount = computeTreeSpawnCountForSegment(
       baseCount,
       segment.biomeKey,
       layerName,
       rng,
     );
+    const minGapPx = Math.max(1, avgSpacing * LAYER_TREE_MIN_GAP_FACTOR);
+    const targetCount = clampSpawnCountBySpacing(
+      unclampedTargetCount,
+      usableWidth,
+      minGapPx,
+    );
     if (targetCount <= 0) continue;
 
+    let lastPlacedX = Number.NEGATIVE_INFINITY;
     for (let i = 0; i < targetCount; i += 1) {
       const t = (i + 0.15 + rng() * 0.7) / targetCount;
       const jitter = (rng() - 0.5) * avgSpacing * 0.2;
-      const cursor = Math.max(
+      let cursor = Math.max(
         segStart,
         Math.min(segEnd, segStart + usableWidth * t + jitter),
       );
+      if (
+        Number.isFinite(lastPlacedX) &&
+        cursor - lastPlacedX < minGapPx
+      ) {
+        cursor = lastPlacedX + minGapPx;
+        if (cursor > segEnd) continue;
+      }
       if (isInsideNodeDecorationExclusionZone(cursor, nodeExclusionZones))
         continue;
       const treeVisual = pickTreeVisualForBiome(
@@ -1286,9 +1389,60 @@ function buildLayerTreeDecorations(layerSegments, layerName, strip = null) {
         downwardOffsetPx: rng() * heightPx,
         topEdgeSample: segment.topEdgeSamples[sampleIndex] ?? 1,
       });
+      lastPlacedX = cursor;
     }
   }
   return trees;
+}
+
+function resolveDecorationSpawnWindow(
+  segment,
+  prevSegment,
+  nextSegment,
+  avgSpacing,
+  basePaddingPx,
+  randomStartJitterPx = 0,
+) {
+  const spacingPaddingPx = Math.max(
+    0,
+    avgSpacing * DECORATION_EDGE_PADDING_FACTOR,
+  );
+  const seamPaddingPx = Math.max(0, avgSpacing * DECORATION_SEAM_PADDING_FACTOR);
+  const leftTransition = hasBiomeTransitionOnEdge(segment, prevSegment);
+  const rightTransition = hasBiomeTransitionOnEdge(segment, nextSegment);
+  const leftPaddingPx =
+    Math.max(basePaddingPx, spacingPaddingPx) + (leftTransition ? seamPaddingPx : 0);
+  const rightPaddingPx =
+    Math.max(basePaddingPx, spacingPaddingPx) + (rightTransition ? seamPaddingPx : 0);
+  const segStart =
+    segment.stripX + leftPaddingPx + Math.max(0, Number(randomStartJitterPx));
+  const segEnd = segment.stripX + segment.stripWidth - rightPaddingPx;
+  return { segStart, segEnd };
+}
+
+function hasBiomeTransitionOnEdge(segment, neighbor) {
+  if (!segment || !neighbor) return false;
+  if (neighbor.isBlend) return true;
+  if (!segment.biomeKey || !neighbor.biomeKey) return false;
+  return (
+    segment.biomeKey !== neighbor.biomeKey ||
+    Boolean(segment.isSnow) !== Boolean(neighbor.isSnow)
+  );
+}
+
+function clampSpawnCountBySpacing(targetCount, usableWidth, minGapPx) {
+  if (!Number.isFinite(targetCount) || targetCount <= 0) {
+    return 0;
+  }
+  if (!Number.isFinite(usableWidth) || usableWidth <= 0) {
+    return 0;
+  }
+  const safeGap = Math.max(1, Number(minGapPx));
+  const maxBySpacing = Math.max(
+    1,
+    Math.floor((usableWidth + safeGap * 0.2) / safeGap),
+  );
+  return Math.min(Math.floor(targetCount), maxBySpacing);
 }
 
 function pickTreeVisualForBiome(biomeKey, isSnow, roll = 0) {
@@ -1560,11 +1714,16 @@ function truncateLayerAtX(layerSegs, cutX) {
   if (layerSegs.length > 0) {
     const last = layerSegs[layerSegs.length - 1];
     if (last.stripX + last.stripWidth > cutX) {
-      const newWidth = Math.max(1, cutX - last.stripX);
+      const newWidth = cutX - last.stripX;
+      if (!(newWidth > SEGMENT_WIDTH_EPS)) {
+        layerSegs.pop();
+        return;
+      }
       if (last.topEdgeSamples) {
+        const sampleCount = Math.max(2, Math.ceil(newWidth) + 1);
         last.topEdgeSamples = last.topEdgeSamples.slice(
           0,
-          Math.ceil(newWidth) + 1,
+          sampleCount,
         );
       }
       last.stripWidth = newWidth;
@@ -1920,30 +2079,37 @@ function replaceBiomeInWindow(segments, startX, endX, patch) {
     }
 
     if (segStart < windowStart) {
-      result.push({
-        ...segment,
-        stripWidth: Math.max(1, windowStart - segStart),
-      });
+      const leftWidth = windowStart - segStart;
+      if (leftWidth > SEGMENT_WIDTH_EPS) {
+        result.push({
+          ...segment,
+          stripWidth: leftWidth,
+        });
+      }
     }
 
     const overlapStart = Math.max(segStart, windowStart);
     const overlapEnd = Math.min(segEnd, windowEnd);
-    if (overlapEnd > overlapStart) {
+    const overlapWidth = overlapEnd - overlapStart;
+    if (overlapWidth > SEGMENT_WIDTH_EPS) {
       result.push({
         ...segment,
         biomeKey: patch.biomeKey,
         isSnow: patch.isSnow,
         stripX: overlapStart,
-        stripWidth: Math.max(1, overlapEnd - overlapStart),
+        stripWidth: overlapWidth,
       });
     }
 
     if (segEnd > windowEnd) {
-      result.push({
-        ...segment,
-        stripX: windowEnd,
-        stripWidth: Math.max(1, segEnd - windowEnd),
-      });
+      const rightWidth = segEnd - windowEnd;
+      if (rightWidth > SEGMENT_WIDTH_EPS) {
+        result.push({
+          ...segment,
+          stripX: windowEnd,
+          stripWidth: rightWidth,
+        });
+      }
     }
   }
 
@@ -2203,26 +2369,28 @@ function applyForegroundSuppression(segments) {
       1,
       Math.min(sampleCount - 1, Math.round(Math.min(taperPx, seg.stripWidth))),
     );
-    if (fadeCount <= 1) continue;
+    for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex += 1) {
+      const baseY = sampleSilhouetteAtX(
+        seg.biomeKey,
+        seg.stripX + sampleIndex,
+        "foreground",
+      );
+      if (fadeCount <= 1) {
+        seg.topEdgeSamples[sampleIndex] = baseY;
+        continue;
+      }
 
-    if (leftSuppressed) {
-      for (let i = 0; i < fadeCount; i += 1) {
-        const t = i / (fadeCount - 1);
-        const w = (1 - t) * (1 - t);
-        seg.topEdgeSamples[i] = lerp(seg.topEdgeSamples[i], 1, w);
+      let sinkWeight = 0;
+      if (leftSuppressed && sampleIndex < fadeCount) {
+        const t = sampleIndex / (fadeCount - 1);
+        sinkWeight = Math.max(sinkWeight, (1 - t) * (1 - t));
       }
-    }
-    if (rightSuppressed) {
-      for (let i = 0; i < fadeCount; i += 1) {
-        const t = i / (fadeCount - 1);
-        const w = (1 - t) * (1 - t);
-        const sampleIndex = sampleCount - 1 - i;
-        seg.topEdgeSamples[sampleIndex] = lerp(
-          seg.topEdgeSamples[sampleIndex],
-          1,
-          w,
-        );
+      if (rightSuppressed && sampleIndex >= sampleCount - fadeCount) {
+        const distanceFromRight = sampleCount - 1 - sampleIndex;
+        const t = distanceFromRight / (fadeCount - 1);
+        sinkWeight = Math.max(sinkWeight, (1 - t) * (1 - t));
       }
+      seg.topEdgeSamples[sampleIndex] = lerp(baseY, 1, sinkWeight);
     }
   }
 }
